@@ -26,6 +26,15 @@ func open(player_count: int) -> void:
 	head.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	head.offset_top = 28
 	add_child(head)
+	var hint := Label.new()
+	hint.text = "Click a hero to choose  -  or move with left/right and confirm with attack / dash"
+	hint.add_theme_font_size_override("font_size", 16)
+	hint.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.offset_top = -50
+	hint.offset_bottom = -20
+	add_child(hint)
 	for i in player_count:
 		var pk := Picker.new()
 		pk.index = i
@@ -52,16 +61,48 @@ class Picker extends Control:
 	var _p := "p1_"
 	var _age := 0.0
 
+	var _last_mouse := Vector2(-1, -1)
+
 	func _ready() -> void:
 		_p = "p%d_" % (index + 1)
+
+	## Screen rect of hero card i (shared by drawing and mouse picking).
+	func _card(i: int) -> Rect2:
+		var n := Hero.all().size()
+		var w := n * HeroSelect.CARD.x + (n - 1) * HeroSelect.GAP
+		var cx := get_viewport_rect().size.x * (index + 0.5) / count
+		var top := (get_viewport_rect().size.y - HeroSelect.CARD.y) / 2.0 + 20.0
+		return Rect2(Vector2(cx - w / 2.0 + i * (HeroSelect.CARD.x + HeroSelect.GAP), top), HeroSelect.CARD)
+
+	func _input(event: InputEvent) -> void:
+		# Left click on a card picks that hero for this player.
+		if done or _age <= HeroSelect.INPUT_DELAY:
+			return
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			for i in Hero.all().size():
+				if _card(i).has_point(event.position):
+					cursor = i
+					done = true
+					get_viewport().set_input_as_handled()
+					return
 
 	func _process(delta: float) -> void:
 		_age += delta
 		if not done and _age > HeroSelect.INPUT_DELAY:
+			# Hovering a card moves the highlight (only when the mouse actually moves, so keys still work).
+			var m := get_local_mouse_position()
+			if m != _last_mouse:
+				_last_mouse = m
+				for i in Hero.all().size():
+					if _card(i).has_point(m):
+						cursor = i
 			var d := int(Input.is_action_just_pressed(_p + "right")) - int(Input.is_action_just_pressed(_p + "left"))
 			if d != 0:
 				cursor = posmod(cursor + d, Hero.all().size())
-			if Input.is_action_just_pressed(_p + "basic") or Input.is_action_just_pressed(_p + "dash"):
+			# Left mouse is also the P1 basic action; clicks are handled in _input, so ignore it here.
+			var confirm := Input.is_action_just_pressed(_p + "dash") \
+				or (Input.is_action_just_pressed(_p + "basic") and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
+			if confirm:
 				done = true
 		queue_redraw()
 
@@ -76,7 +117,7 @@ class Picker extends Control:
 		draw_string(font, Vector2(cx - w / 2.0, top - 16), tag, HORIZONTAL_ALIGNMENT_LEFT, w, 22, Color(0.6, 1, 0.6) if done else Color(1, 0.9, 0.6))
 		for i in heroes.size():
 			var h := heroes[i]
-			var r := Rect2(Vector2(cx - w / 2.0 + i * (CARD.x + GAP), top), CARD)
+			var r := _card(i)
 			var sel := i == cursor
 			var accent := Color(1.0, 0.55, 0.2) if h.attack_type == "melee" else Color(0.45, 0.75, 1.0)
 			draw_rect(r, Color(0.08, 0.07, 0.12, 0.96))
