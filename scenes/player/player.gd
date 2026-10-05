@@ -11,12 +11,12 @@ const DASH_SPEED := 1500.0
 const DASH_TIME := 0.16
 const DASH_RECHARGE := 1.5
 const AIM_REACH := 280.0   ## aim_pos distance for stick aiming
-const UNIT_DIR := "res://assets/tiny_swords/units/%s/Monk/"
 
 @export var player_index := 0
 @export var max_hp := 100
 @export var speed := 260.0
 @export var spells: Array[Spell] = []
+var hero: Hero              ## set before add_child; defaults to the Wizard
 
 var hp := 0
 var down := false
@@ -31,6 +31,7 @@ var knock := Vector2.ZERO
 var _p := "p1_"
 var _dash_time := 0.0
 var _dash_vec := Vector2.RIGHT
+var _dash_speed := DASH_SPEED
 var _cast_time := 0.0
 var _iframes := 0.0
 var _sprite: AnimatedSprite2D
@@ -49,22 +50,21 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	_p = "p%d_" % (player_index + 1)
+	if hero == null:
+		hero = Hero.by_id("wizard")
+	max_hp = hero.max_hp
+	speed = hero.speed
 	hp = max_hp
 	if spells.is_empty():
-		spells = [FireBolt.new(), Blast.new(), FireWave.new(), MeteorBarrage.new()]
+		spells = [hero.make_basic(), Blast.new(), FireWave.new(), MeteorBarrage.new()]
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 14.0
 	shape.shape = circle
 	shape.position = Vector2(0, 14)
 	add_child(shape)
-	var dir: String = UNIT_DIR % ["Blue", "Yellow"][player_index % 2]
 	_sprite = AnimatedSprite2D.new()
-	_sprite.sprite_frames = SheetFrames.build({
-		"idle": [dir + "Idle.png", 6, 8.0],
-		"run": [dir + "Run.png", 4, 10.0],
-		"cast": [dir + "Heal.png", 11, 44.0, false],
-	})
+	_sprite.sprite_frames = hero.frames(["Blue", "Yellow"][player_index % 2])
 	_sprite.offset = Vector2(0, -4)  # sprite art sits slightly below frame center
 	add_child(_sprite)
 	_sprite.play("idle")
@@ -78,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	_update_aim(move)
 	if _dash_time > 0.0:
 		_dash_time -= delta
-		velocity = _dash_vec * DASH_SPEED
+		velocity = _dash_vec * _dash_speed
 	else:
 		if Input.is_action_just_pressed(_p + "dash") and dash_charges > 0:
 			_start_dash(move)
@@ -112,12 +112,19 @@ func _update_aim(move: Vector2) -> void:
 			aim_dir = move.normalized()  # keyboard fallback: aim where you walk
 		aim_pos = global_position + aim_dir * AIM_REACH
 
+## Short forward burst without spending a dash charge (melee sweeps step into the target).
+func lunge(vec: Vector2, time: float, spd: float) -> void:
+	_dash_vec = vec.normalized()
+	_dash_time = time
+	_dash_speed = spd
+
 func _start_dash(move: Vector2) -> void:
 	dash_charges -= 1
 	if dash_recharge <= 0.0:
 		dash_recharge = DASH_RECHARGE
 	_dash_vec = move if move != Vector2.ZERO else aim_dir
 	_dash_time = DASH_TIME
+	_dash_speed = DASH_SPEED
 	_iframes = maxf(_iframes, DASH_TIME + 0.05)
 	SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 0.8)
 

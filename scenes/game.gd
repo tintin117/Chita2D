@@ -20,6 +20,7 @@ var _hud: Hud
 var _cam: GameCamera
 var _banner: Label
 var _over := false
+var _selecting := false
 var _index := -1  # set from start_room in _ready
 
 func _ready() -> void:
@@ -46,15 +47,20 @@ func _ready() -> void:
 	_show("WIZARDS OF CHITA\n\n1 - Solo      2 - Co-op", 0.0, true)
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if _players.is_empty() and event.is_pressed() and (event.keycode == KEY_1 or event.keycode == KEY_2):
+	if _players.is_empty() and not _selecting and event.is_pressed() and (event.keycode == KEY_1 or event.keycode == KEY_2):
 		num_players = 1 if event.keycode == KEY_1 else 2
-		_begin()
+		_selecting = true
+		_banner.modulate.a = 0.0
+		var select := HeroSelect.new()
+		add_child(select)
+		select.open(num_players)
+		_begin(await select.finished)
 
-func _begin() -> void:
-	_banner.modulate.a = 0.0
+func _begin(heroes: Array) -> void:
 	for i in num_players:
 		var p := Player.new()
 		p.player_index = i
+		p.hero = heroes[i]
 		add_child(p)
 		_hud.add_player(p)
 		_players.append(p)
