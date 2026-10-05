@@ -56,7 +56,7 @@ func _ready() -> void:
 	speed = hero.speed
 	hp = max_hp
 	if spells.is_empty():
-		spells = [hero.make_basic(), Blast.new(), FireWave.new(), MeteorBarrage.new()]
+		spells = hero.make_kit()
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 14.0

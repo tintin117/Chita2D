@@ -3,7 +3,7 @@ class_name HeroSelect extends CanvasLayer
 
 signal finished(heroes: Array)
 
-const CARD := Vector2(190, 372)
+const CARD := Vector2(190, 412)
 const GAP := 12.0
 const INPUT_DELAY := 0.4
 const COLORS := ["Blue", "Yellow"]
@@ -91,6 +91,9 @@ class Picker extends Control:
 			_stat(r.position + Vector2(10, 272), "Speed", h.speed / 300.0, Color(0.5, 0.9, 0.5))
 			_stat(r.position + Vector2(10, 292), "Damage", h.basic_damage / 14.0, Color(1.0, 0.8, 0.3))
 			draw_multiline_string(font, r.position + Vector2(10, 326), h.description, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 12, 3, Color(0.85, 0.85, 0.85))
+			var kit := h.make_kit()
+			draw_string(font, r.position + Vector2(10, 376), "Right click: " + kit[1].display_name, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 13, Color(1, 0.9, 0.6))
+			draw_string(font, r.position + Vector2(10, 396), "Special: " + kit[3].display_name, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 13, Color(1, 0.9, 0.6))
 			draw_rect(r, Color(1, 0.95, 0.5) if sel else Color(accent, 0.6), false, 5.0 if sel else 2.0)
 
 	func _stat(pos: Vector2, label: String, frac: float, col: Color) -> void:

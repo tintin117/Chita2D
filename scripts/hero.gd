@@ -21,6 +21,8 @@ const MAX_RANGE_FOR_UI := 700.0
 @export var bolt_pierce := 0
 @export var finisher_spread := 1           ## extra bolt pairs on the 3rd cast (1 = 3 bolts)
 @export var finisher_mult := 1.0           ## damage multiplier on the 3rd cast
+@export var rmb_skill := "blast"           ## right click: blast | shield_charge | snipe_shot
+@export var special_skill := "meteor_barrage"   ## signature: meteor_barrage | blade_storm | arrow_barrage
 
 static var _all: Array[Hero] = []
 
@@ -29,13 +31,15 @@ static func all() -> Array[Hero]:
 		_all = [
 			_make({"id": "knight", "display_name": "Knight", "unit": "Warrior", "attack_type": "melee", "attack_range": 115.0,
 				"description": "Sweeping flame slashes at close range. Tough and hard-hitting.", "basic_name": "Flame Slash",
-				"basic_damage": 12, "max_hp": 130, "speed": 255.0, "finisher_mult": 1.8}),
+				"basic_damage": 12, "max_hp": 130, "speed": 255.0, "finisher_mult": 1.8,
+				"rmb_skill": "shield_charge", "special_skill": "blade_storm"}),
 			_make({"id": "wizard", "display_name": "Wizard", "unit": "Monk", "attack_type": "ranged", "attack_range": 380.0,
 				"description": "Rapid fire bolts at mid range; every third cast fans out three.", "basic_name": "Fire Bolt",
 				"basic_damage": 10, "max_hp": 100, "speed": 260.0, "bolt_speed": 640.0, "finisher_spread": 1}),
 			_make({"id": "ranger", "display_name": "Ranger", "unit": "Archer", "attack_type": "ranged", "attack_range": 650.0,
 				"description": "Fast piercing shots from far away. Fragile, but never needs to get close.", "basic_name": "Flame Arrow",
-				"basic_damage": 9, "max_hp": 80, "speed": 275.0, "bolt_speed": 900.0, "bolt_pierce": 1, "finisher_spread": 0, "finisher_mult": 2.2}),
+				"basic_damage": 9, "max_hp": 80, "speed": 275.0, "bolt_speed": 900.0, "bolt_pierce": 1, "finisher_spread": 0, "finisher_mult": 2.2,
+				"rmb_skill": "snipe_shot", "special_skill": "arrow_barrage"}),
 		]
 	return _all
 
@@ -70,6 +74,19 @@ func make_basic() -> Spell:
 		s.bolt_radius = 10.0 if bolt_pierce == 0 else 8.0
 		s.finisher_spread = finisher_spread
 	return s
+
+static func make_skill(skill_id: String) -> Spell:
+	match skill_id:
+		"shield_charge": return ShieldCharge.new()
+		"blade_storm": return BladeStorm.new()
+		"snipe_shot": return SnipeShot.new()
+		"arrow_barrage": return ArrowBarrage.new()
+		"meteor_barrage": return MeteorBarrage.new()
+	return Blast.new()
+
+## Slot order: basic (LMB), right click, Q, special (R). Fire Wave (Q) is shared for now.
+func make_kit() -> Array[Spell]:
+	return [make_basic(), make_skill(rmb_skill), FireWave.new(), make_skill(special_skill)]
 
 func frames(color: String) -> SpriteFrames:
 	var d := UNIT_PATH % [color, unit]

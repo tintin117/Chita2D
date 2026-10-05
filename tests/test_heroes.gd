@@ -31,3 +31,20 @@ func test_player_takes_hero_stats() -> void:
 	p.max_hp = p.hero.max_hp
 	assert_eq(p.max_hp, 130)
 	assert_eq(Hero.by_id("nobody").id, "wizard", "unknown ids fall back to the Wizard")
+
+func test_each_hero_has_its_own_right_click_and_special() -> void:
+	var seen_rmb := {}
+	var seen_special := {}
+	for h in Hero.all():
+		var kit := h.make_kit()
+		assert_eq(kit.size(), 4)
+		seen_rmb[kit[1].display_name] = true
+		seen_special[kit[3].display_name] = true
+		assert_gt(kit[3].charge_cost, 0.0, h.id + " special spends the signature meter")
+	assert_eq(seen_rmb.size(), 3, "three different right-click skills")
+	assert_eq(seen_special.size(), 3, "three different specials")
+
+func test_wizard_keeps_blast_and_meteor_barrage() -> void:
+	var kit := Hero.by_id("wizard").make_kit()
+	assert_eq(kit[1].display_name, "Blast")
+	assert_eq(kit[3].display_name, "Meteor Barrage")

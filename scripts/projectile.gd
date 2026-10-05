@@ -11,6 +11,7 @@ var life := 1.5
 var radius := 10.0
 var from_player := true
 var source: Node
+var silent := false          ## rapid-fire hits: no knockback / shake / hit-stop on enemies
 var arrow_tex := ""
 var color := Color(1.0, 0.55, 0.15)
 var _hit: Array[Node] = []
@@ -60,7 +61,10 @@ func _on_body_entered(body: Node) -> void:
 		if body in _hit:
 			return
 		_hit.append(body)
-		body.take_damage(damage, global_position)
+		if silent and from_player:
+			body.take_damage(damage, global_position, true)
+		else:
+			body.take_damage(damage, global_position)
 		if source and source.has_method("on_dealt_damage"):
 			source.on_dealt_damage(damage)
 		if pierce > 0:

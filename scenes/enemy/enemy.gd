@@ -211,18 +211,20 @@ func _draw() -> void:
 		draw_rect(Rect2(-20, bar_y, 40, 5), Color.BLACK)
 		draw_rect(Rect2(-19, bar_y + 1, 38.0 * hp / max_hp, 3), Color(0.9, 0.2, 0.2))
 
-func take_damage(amount: int, from_pos: Vector2) -> void:
+## silent = rapid multi-hit sources (Blade Storm, Arrow Barrage): no flinch knockback, shake or hit-stop,
+## otherwise the constant hit-stop slows the whole game to a crawl.
+func take_damage(amount: int, from_pos: Vector2, silent := false) -> void:
 	if hp <= 0:
 		return
 	hp -= amount
-	if _state != "charge" and kind != "boss":
+	if not silent and _state != "charge" and kind != "boss":
 		knock = (global_position - from_pos).normalized() * 260.0
 	_spawn_number(amount)
 	if _state != "windup":
 		_sprite.modulate = Color(2, 2, 2)
 		create_tween().tween_property(_sprite, "modulate", Color.WHITE, 0.12)
 	var cam := get_tree().get_first_node_in_group("camera") as GameCamera
-	if cam:
+	if cam and not silent:
 		cam.shake(0.15)
 		cam.hit_stop(0.04)
 	queue_redraw()
