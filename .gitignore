@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
