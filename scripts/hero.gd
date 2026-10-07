@@ -93,7 +93,7 @@ func frames(color: String) -> SpriteFrames:
 	match unit:
 		"Warrior":
 			return SheetFrames.build({"idle": [d + "Warrior_Idle.png", 8, 8.0], "run": [d + "Warrior_Run.png", 6, 12.0],
-				"cast": [d + "Warrior_Attack1.png", 4, 22.0, false]})
+				"cast": [d + "Warrior_Attack1.png", 4, 22.0, false], "cast2": [d + "Warrior_Attack2.png", 4, 22.0, false]})
 		"Archer":
 			return SheetFrames.build({"idle": [d + "Archer_Idle.png", 6, 8.0], "run": [d + "Archer_Run.png", 4, 10.0],
 				"cast": [d + "Archer_Shoot.png", 8, 36.0, false]})

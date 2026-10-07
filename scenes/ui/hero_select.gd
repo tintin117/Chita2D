@@ -30,7 +30,7 @@ func open(player_count: int) -> void:
 	head.offset_top = 28
 	add_child(head)
 	var hint := Label.new()
-	hint.text = "Click a hero to select, then press START  -  or move with left/right and press attack / dash to ready up"
+	hint.text = "Click a hero to select, then press START  -  or move left/right and press attack / dash (gamepad: stick + A) to ready up"
 	hint.add_theme_font_size_override("font_size", 15)
 	hint.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

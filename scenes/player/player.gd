@@ -11,6 +11,7 @@ const DASH_SPEED := 1500.0
 const DASH_TIME := 0.16
 const DASH_RECHARGE := 1.5
 const AIM_REACH := 280.0   ## aim_pos distance for stick aiming
+const BUFFER_TIME := 0.15  ## a press this close to coming off cooldown is queued, not dropped
 
 @export var player_index := 0
 @export var max_hp := 100
@@ -33,6 +34,10 @@ var _dash_time := 0.0
 var _dash_vec := Vector2.RIGHT
 var _dash_speed := DASH_SPEED
 var _cast_time := 0.0
+var _queued := -1          ## buffered slot index, -1 = none
+var _queued_time := 0.0
+var _mouse_aim := true     ## P1 only: aim with the mouse until a gamepad is touched, then with the right stick
+var _swing := false        ## alternates basic-attack animations (cast / cast2) when the hero has both
 var _iframes := 0.0
 var _sprite: AnimatedSprite2D
 
@@ -70,6 +75,14 @@ func _ready() -> void:
 	_sprite.play("idle")
 	hp_changed.emit(hp, max_hp)
 
+func _input(event: InputEvent) -> void:
+	if player_index != 0:
+		return
+	if event is InputEventMouseMotion or event is InputEventMouseButton:
+		_mouse_aim = true
+	elif event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
+		_mouse_aim = false
+
 func _physics_process(delta: float) -> void:
 	_tick_timers(delta)
 	if down:
@@ -82,7 +95,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		if Input.is_action_just_pressed(_p + "dash") and dash_charges > 0:
 			_start_dash(move)
-		velocity = move * speed
+		velocity = Vector2.ZERO if _firing() else move * speed  # hold attack = stand still, aim with move input
 		_try_cast()
 	velocity += knock
 	move_and_slide()
@@ -91,6 +104,9 @@ func _physics_process(delta: float) -> void:
 func _tick_timers(delta: float) -> void:
 	_iframes = maxf(_iframes - delta, 0.0)
 	_cast_time = maxf(_cast_time - delta, 0.0)
+	_queued_time -= delta
+	if _queued_time <= 0.0:
+		_queued = -1
 	knock = knock.move_toward(Vector2.ZERO, 1800.0 * delta)
 	for i in cooldowns.size():
 		cooldowns[i] = maxf(cooldowns[i] - delta, 0.0)
@@ -101,7 +117,7 @@ func _tick_timers(delta: float) -> void:
 			dash_recharge = DASH_RECHARGE
 
 func _update_aim(move: Vector2) -> void:
-	if player_index == 0:
+	if player_index == 0 and _mouse_aim:
 		aim_pos = get_global_mouse_position()
 		aim_dir = (aim_pos - global_position).normalized() if aim_pos.distance_to(global_position) > 4.0 else aim_dir
 	else:
@@ -122,29 +138,55 @@ func _start_dash(move: Vector2) -> void:
 	dash_charges -= 1
 	if dash_recharge <= 0.0:
 		dash_recharge = DASH_RECHARGE
+	_cast_time = 0.0  # dash cancels the cast lock
 	_dash_vec = move if move != Vector2.ZERO else aim_dir
 	_dash_time = DASH_TIME
 	_dash_speed = DASH_SPEED
 	_iframes = maxf(_iframes, DASH_TIME + 0.05)
 	SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 0.8)
 
+## True while an attack button is held or the cast anim is still playing (no gap between rapid taps).
+func _firing() -> bool:
+	if _cast_time > 0.0 or _queued >= 0:
+		return true
+	for slot in SLOTS:
+		if Input.is_action_pressed(_p + slot):
+			return true
+	return false
+
 func _try_cast() -> void:
 	for i in SLOTS.size():
+		if Input.is_action_just_pressed(_p + SLOTS[i]) and cooldowns[i] > 0.0:
+			_queued = i
+			_queued_time = BUFFER_TIME
+	for i in SLOTS.size():
 		var spell: Spell = spells[i] if i < spells.size() else null
-		if spell and cooldowns[i] <= 0.0 and signature_charge >= spell.charge_cost and Input.is_action_pressed(_p + SLOTS[i]):
+		if spell and cooldowns[i] <= 0.0 and signature_charge >= spell.charge_cost and (_queued == i or Input.is_action_pressed(_p + SLOTS[i])):
 			signature_charge -= spell.charge_cost
 			var cd := spell.cast(self, aim_dir, aim_pos)
 			cooldowns[i] = cd
 			cooldown_max[i] = cd
-			_cast_time = 0.25
-			_sprite.play("cast")
+			_cast_time = clampf(cd, 0.25, 0.4)  # cover fast-attack cooldowns so tapping never unlocks movement
+			_queued = -1
+			_play_cast(i)
 			return
+
+## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
+func _play_cast(slot: int) -> void:
+	var anim := "cast"
+	if slot == 0 and _sprite.sprite_frames.has_animation("cast2"):
+		_swing = not _swing
+		anim = "cast2" if _swing else "cast"
+	var frames := _sprite.sprite_frames
+	_sprite.speed_scale = frames.get_frame_count(anim) / frames.get_animation_speed(anim) / _cast_time
+	_sprite.play(anim)
 
 func _animate(move: Vector2) -> void:
 	_sprite.flip_h = aim_dir.x < 0.0
 	if _cast_time > 0.0:
 		return
-	var anim := "run" if move != Vector2.ZERO else "idle"
+	_sprite.speed_scale = 1.0
+	var anim := "run" if move != Vector2.ZERO and not _firing() else "idle"
 	if _sprite.animation != anim:
 		_sprite.play(anim)
 

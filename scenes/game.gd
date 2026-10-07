@@ -20,6 +20,7 @@ var _hud: Hud
 var _cam: GameCamera
 var _banner: Label
 var _over := false
+var _over_msec := 0
 var _selecting := false
 var _index := -1  # set from start_room in _ready
 
@@ -44,11 +45,20 @@ func _ready() -> void:
 	_room = Room.new()  # backdrop for the title screen; replaced by _next_room()
 	add_child(_room)
 	_cam.global_position = _room.center()
-	_show("WIZARDS OF CHITA\n\n1 - Solo      2 - Co-op", 0.0, true)
+	_show("WIZARDS OF CHITA\n\n1 / A - Solo      2 / X - Co-op", 0.0, true)
 
-func _unhandled_key_input(event: InputEvent) -> void:
-	if _players.is_empty() and not _selecting and event.is_pressed() and (event.keycode == KEY_1 or event.keycode == KEY_2):
-		num_players = 1 if event.keycode == KEY_1 else 2
+func _unhandled_input(event: InputEvent) -> void:
+	if _over:
+		# Enter / Space / pad A or Start. Short delay so button-mashing at the moment of death doesn't skip the screen.
+		if Time.get_ticks_msec() - _over_msec > 800 and event.is_pressed() and not event.is_echo() and (event.is_action("ui_accept") or (event is InputEventJoypadButton and event.button_index in [JOY_BUTTON_A, JOY_BUTTON_START])):
+			get_tree().reload_current_scene()
+		return
+	if _players.is_empty() and not _selecting and event.is_pressed() and not event.is_echo():
+		var solo: bool = (event is InputEventKey and event.keycode == KEY_1) or (event is InputEventJoypadButton and event.button_index == JOY_BUTTON_A)
+		var coop: bool = (event is InputEventKey and event.keycode == KEY_2) or (event is InputEventJoypadButton and event.button_index == JOY_BUTTON_X)
+		if not (solo or coop):
+			return
+		num_players = 1 if solo else 2
 		_selecting = true
 		_banner.modulate.a = 0.0
 		var select := HeroSelect.new()
@@ -69,8 +79,6 @@ func _begin(heroes: Array) -> void:
 
 func _process(_delta: float) -> void:
 	if _over:
-		if Input.is_action_just_pressed("ui_accept"):
-			get_tree().reload_current_scene()
 		return
 	if not _players.is_empty() and _players.all(func(p: Player) -> bool: return p.down):
 		_end("DEFEATED")
@@ -83,7 +91,8 @@ func _show(text: String, seconds := 2.0, hold := false) -> void:
 
 func _end(text: String) -> void:
 	_over = true
-	_show(text + "\n\nPress Enter to restart", 0.0, true)
+	_over_msec = Time.get_ticks_msec()
+	_show(text + "\n\nPress Enter / A to restart", 0.0, true)
 
 func _next_room() -> void:
 	_index += 1

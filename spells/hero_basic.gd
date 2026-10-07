@@ -62,7 +62,7 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		fx.z_index = 5
 		scene.add_child(fx)
 		if lunge_speed > 0.0:
-			caster.lunge(aim_dir, 0.08, lunge_speed)
+			caster.lunge(aim_dir, 0.12 if finisher else 0.08, lunge_speed * (2.0 if finisher else 1.0))  # finisher steps in harder
 	else:
 		var extra := finisher_spread if finisher else 0
 		for i in extra * 2 + 1:
