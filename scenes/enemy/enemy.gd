@@ -12,6 +12,8 @@ var hp_mult := 1.0       ## set by the spawner (scales with player count)
 var max_hp := 40
 var hp := 40
 var speed := 120.0
+var _base_speed := 120.0   ## before slot-machine rules
+var _base_max_hp := 40
 var knock := Vector2.ZERO
 var bar_y := -54.0
 var _state := "chase"
@@ -51,8 +53,12 @@ func _ready() -> void:
 				max_hp = 60; speed = 130.0; bar_y = -70.0
 			anims = {"idle": [UNITS % [color, "Lancer", "Lancer_Idle.png"], 12, 8.0], "run": [UNITS % [color, "Lancer", "Lancer_Run.png"], 6, 10.0],
 				"attack": [UNITS % [color, "Lancer", "Lancer_Right_Attack.png"], 3, 8.0]}
-	max_hp = int(max_hp * hp_mult)
+	_base_speed = speed
+	_base_max_hp = int(max_hp * hp_mult)
+	max_hp = int(_base_max_hp * RuleSet.current.hp)
 	hp = max_hp
+	speed = _base_speed * RuleSet.current.speed
+	RuleSet.current.changed.connect(_apply_rules)
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 16.0 * scale_f
@@ -65,12 +71,24 @@ func _ready() -> void:
 	_sprite.scale = Vector2.ONE * scale_f
 	add_child(_sprite)
 	_sprite.play("idle")
+	var bar := OverheadHpBar.new()
+	bar.scale = Vector2.ONE * scale_f
+	add_child(bar)
 	_strafe = 1.0 if randf() < 0.5 else -1.0
 	_cd = randf_range(0.8, 1.6)
 
+## Slot-machine rules changed: rescale speed and max HP (keeping the HP ratio).
+func _apply_rules() -> void:
+	if hp <= 0:
+		return
+	var ratio := float(hp) / max_hp
+	max_hp = maxi(int(_base_max_hp * RuleSet.current.hp), 1)
+	hp = maxi(ceili(max_hp * ratio), 1)
+	speed = _base_speed * RuleSet.current.speed
+
 func _physics_process(delta: float) -> void:
 	_t -= delta
-	_cd -= delta
+	_cd -= delta * RuleSet.current.attack_rate
 	knock = knock.move_toward(Vector2.ZERO, 1400.0 * delta)
 	var target := Player.nearest_alive(get_tree(), global_position)
 	var to := (target.global_position - global_position) if target else Vector2.ZERO
@@ -207,15 +225,13 @@ func _draw() -> void:
 	if _state == "windup" and (kind == "lancer" or (kind == "boss" and _move == "charge")):
 		var w := 16.0 if kind == "boss" else 8.0
 		draw_line(Vector2(0, 14), Vector2(0, 14) + _dir * 520.0, Color(1, 0.2, 0.2, 0.45), w)
-	if hp < max_hp and kind != "boss":
-		draw_rect(Rect2(-20, bar_y, 40, 5), Color.BLACK)
-		draw_rect(Rect2(-19, bar_y + 1, 38.0 * hp / max_hp, 3), Color(0.9, 0.2, 0.2))
 
 ## silent = rapid multi-hit sources (Blade Storm, Arrow Barrage): no flinch knockback, shake or hit-stop,
 ## otherwise the constant hit-stop slows the whole game to a crawl.
 func take_damage(amount: int, from_pos: Vector2, silent := false) -> void:
 	if hp <= 0:
 		return
+	amount = roundi(amount * RuleSet.current.damage)
 	hp -= amount
 	if not silent and _state != "charge" and kind != "boss":
 		knock = (global_position - from_pos).normalized() * 260.0

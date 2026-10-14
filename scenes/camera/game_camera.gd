@@ -3,7 +3,7 @@ class_name GameCamera extends Camera2D
 
 const MARGIN := Vector2(360, 260)
 const MIN_ZOOM := 0.6
-const MAX_ZOOM := 1.3
+const MAX_ZOOM := 1.0
 
 var _trauma := 0.0
 

@@ -3,6 +3,7 @@ class_name Player extends CharacterBody2D
 
 signal hp_changed(hp: int, max_hp: int)
 signal downed
+signal stats_changed   ## level, skill rank or gear changed and stats were recomputed
 
 const SLOTS := ["basic", "spell1", "spell2", "signature"]
 const MAX_DASH := 3
@@ -18,6 +19,11 @@ const BUFFER_TIME := 0.15  ## a press this close to coming off cooldown is queue
 @export var speed := 260.0
 @export var spells: Array[Spell] = []
 var hero: Hero              ## set before add_child; defaults to the Wizard
+var prog: Progression       ## XP, level, skill ranks; created by init_loadout()
+var equipment := {}         ## Item.SLOTS entry -> Item
+var damage_mult := 1.0      ## level * gear; already baked into spells[i].damage by recalc_stats()
+var cooldown_mult := 1.0
+var _base_spells: Array = []  ## [damage, cooldown] per slot before any bonus
 
 var hp := 0
 var down := false
@@ -57,11 +63,8 @@ func _ready() -> void:
 	_p = "p%d_" % (player_index + 1)
 	if hero == null:
 		hero = Hero.by_id("wizard")
-	max_hp = hero.max_hp
-	speed = hero.speed
-	hp = max_hp
-	if spells.is_empty():
-		spells = hero.make_kit()
+	init_loadout()
+	RuleSet.current.changed.connect(recalc_stats)   # slot-machine rules change max HP / speed / cooldowns
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 14.0
@@ -73,7 +76,87 @@ func _ready() -> void:
 	_sprite.offset = Vector2(0, -4)  # sprite art sits slightly below frame center
 	add_child(_sprite)
 	_sprite.play("idle")
+	add_child(OverheadHpBar.new())
 	hp_changed.emit(hp, max_hp)
+
+## Builds the kit, progression and stats from the hero. Called by _ready (callable without a tree, for tests).
+func init_loadout() -> void:
+	if hero == null:
+		hero = Hero.by_id("wizard")
+	prog = Progression.new()
+	prog.changed.connect(recalc_stats)
+	prog.leveled_up.connect(_on_level_up)
+	prog.rewarded.connect(_on_reward)
+	if spells.is_empty():
+		spells = hero.make_kit()
+	_base_spells.clear()
+	for s in spells:
+		_base_spells.append([s.damage, s.cooldown])
+	max_hp = 0
+	recalc_stats()
+	hp = max_hp
+
+## Stats = hero base + level/power + gear; spell damage and cooldown also scale with skill rank.
+func recalc_stats() -> void:
+	var old_max := max_hp
+	var rules := RuleSet.current
+	max_hp = int((hero.max_hp + prog.hp_bonus() + int(_gear("max_hp"))) * rules.hp)
+	speed = hero.speed * (1.0 + prog.speed_bonus() + _gear("speed")) * rules.speed
+	damage_mult = (1.0 + prog.damage_bonus()) * (1.0 + _gear("damage"))
+	cooldown_mult = maxf(1.0 - _gear("cooldown"), 0.5) / rules.attack_rate
+	for i in mini(spells.size(), _base_spells.size()):
+		spells[i].damage = roundi(_base_spells[i][0] * damage_mult * prog.skill_damage_mult(i))
+		spells[i].cooldown = _base_spells[i][1] * cooldown_mult * prog.skill_cooldown_mult(i)
+	if not down:
+		hp = clampi(hp + maxi(max_hp - old_max, 0), 0, max_hp)  # gaining max HP heals the gain
+	hp_changed.emit(hp, max_hp)
+	stats_changed.emit()
+
+func _gear(key: String) -> float:
+	var total := 0.0
+	for it: Item in equipment.values():
+		total += it.mods.get(key, 0.0)
+	return total
+
+## Equips item if its slot is empty or it is a rarer item than the current one. Returns whether it was taken.
+func try_equip(item: Item) -> bool:
+	var cur: Item = equipment.get(item.slot)
+	if cur != null and cur.rarity >= item.rarity:
+		return false
+	equipment[item.slot] = item
+	recalc_stats()
+	float_text(item.display_name, item.color())
+	return true
+
+func _on_level_up(lv: int) -> void:
+	if not down:
+		hp = max_hp
+		hp_changed.emit(hp, max_hp)
+	float_text("LEVEL %d" % lv, Color(1.0, 0.85, 0.3))
+
+func _on_reward(kind: String) -> void:
+	if kind == "power":
+		heal(int(max_hp * 0.4))
+		float_text("POWER UP", Color(1.0, 0.5, 0.3))
+
+func float_text(text: String, color: Color) -> void:
+	if not is_inside_tree():
+		return
+	var l := Label.new()
+	l.text = text
+	l.modulate = color
+	l.z_index = 100
+	l.size = Vector2(160, 24)
+	l.position = Vector2(-80, -90)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_color_override("font_outline_color", Color.BLACK)
+	l.add_theme_constant_override("outline_size", 5)
+	add_child(l)
+	var t := create_tween().set_parallel()
+	t.tween_property(l, "position:y", -140.0, 1.2)
+	t.tween_property(l, "modulate:a", 0.0, 0.6).set_delay(0.7)
+	t.chain().tween_callback(l.queue_free)
 
 func _input(event: InputEvent) -> void:
 	if player_index != 0:
@@ -197,6 +280,7 @@ func on_dealt_damage(amount: int) -> void:
 func take_damage(amount: int, from_pos: Vector2) -> void:
 	if _iframes > 0.0 or down:
 		return
+	amount = roundi(amount * RuleSet.current.damage)
 	hp = maxi(hp - amount, 0)
 	_iframes = 0.7
 	knock = (global_position - from_pos).normalized() * 380.0
