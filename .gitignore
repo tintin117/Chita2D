@@ -4,3 +4,6 @@
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# GodotSteam updater leaves temp copies of locked DLLs
+addons/godotsteam/**/~*
