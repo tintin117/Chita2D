@@ -20,11 +20,9 @@ class Spin extends Node2D:
 		if _next <= 0.0:
 			_next = TICK
 			var pos := caster.global_position + Vector2(0, 14)
-			for e: Node2D in get_tree().get_nodes_in_group("enemies"):
+			for e in Spell.foes(caster):
 				if e.global_position.distance_to(pos) <= RADIUS + 16.0:
-					e.take_damage(dmg, pos, true)
-					if e.kind != "boss":
-						e.knock += (e.global_position - pos).normalized() * 25.0   # a gentle shove, enemies stay in the storm
+					e.take_damage(dmg, pos, true, caster)
 		if left <= 0.0:
 			queue_free()
 		queue_redraw()

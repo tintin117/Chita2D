@@ -19,8 +19,8 @@ class Barrage extends Node:
 			return
 		if _next <= 0.0:
 			_next = INTERVAL
-			var dir: Vector2 = caster.aim_dir.rotated(randf_range(-0.1, 0.1))
-			var p := Projectile.new().setup(caster.global_position + dir * 30.0 + Vector2(0, 8), dir * 1000.0, dmg, true)
+			var dir: Vector2 = caster.aim_dir.rotated(caster.rng.randf_range(-0.1, 0.1))
+			var p := Projectile.new().setup(caster.global_position + dir * 30.0 + Vector2(0, 8), dir * 1000.0, dmg, true, caster)
 			p.arrow_tex = ARROW
 			p.silent = true
 			p.pierce = 1

@@ -10,3 +10,11 @@ class_name Spell extends Resource
 ## Returns the cooldown (seconds) to apply after this cast.
 func cast(_caster: Node2D, _aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	return cooldown
+
+## Everything a cast by `caster` can hurt: the other living players (PvP). Add enemies here for PvE later.
+static func foes(caster: Node) -> Array[Node2D]:
+	var out: Array[Node2D] = []
+	for n in caster.get_tree().get_nodes_in_group("players") + caster.get_tree().get_nodes_in_group("dummies"):
+		if n != caster and not n.down:
+			out.append(n)
+	return out

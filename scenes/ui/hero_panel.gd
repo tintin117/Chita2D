@@ -52,7 +52,7 @@ func _draw() -> void:
 
 func _draw_portrait() -> void:
 	if _portrait == null:
-		_portrait = player.hero.portrait(["Blue", "Yellow"][player.player_index % 2])
+		_portrait = player.hero.portrait(Player.COLORS[player.player_index % Player.COLORS.size()])
 	var box := Rect2(6, 34, 70, 70)
 	draw_rect(box, Color(0.08, 0.09, 0.11, 0.9))
 	var tint := Color(0.45, 0.45, 0.45) if player.down else Color.WHITE
@@ -106,7 +106,7 @@ func _draw_gear_and_dash() -> void:
 		_text(Vector2(88, 118), "Skill points: %d   [Tab]" % player.prog.skill_points, 12, Color(0.5, 1, 0.5))
 
 func _draw_skills() -> void:
-	var hints: Array = Hud.HINTS[player.player_index % 2]
+	var hints: Array = Hud.HINTS[0 if player.online else player.player_index % 2]
 	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
 	for i in 4:
 		var r := Rect2(SLOT_POS + Vector2(i * (SLOT + 6.0), 0), Vector2(SLOT, SLOT))

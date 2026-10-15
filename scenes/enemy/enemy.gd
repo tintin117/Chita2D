@@ -228,7 +228,7 @@ func _draw() -> void:
 
 ## silent = rapid multi-hit sources (Blade Storm, Arrow Barrage): no flinch knockback, shake or hit-stop,
 ## otherwise the constant hit-stop slows the whole game to a crawl.
-func take_damage(amount: int, from_pos: Vector2, silent := false) -> void:
+func take_damage(amount: int, from_pos: Vector2, silent := false, _attacker: Node = null) -> void:
 	if hp <= 0:
 		return
 	amount = roundi(amount * RuleSet.current.damage)

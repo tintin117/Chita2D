@@ -49,10 +49,10 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	var scene := caster.get_tree().current_scene
 	if mode == "arc":
 		var origin := caster.global_position + Vector2(0, 8)
-		for e: Node2D in caster.get_tree().get_nodes_in_group("enemies"):
+		for e in Spell.foes(caster):
 			var off := e.global_position - origin
 			if off.length() <= radius + 16.0 and (off.length() < 24.0 or absf(aim_dir.angle_to(off)) <= arc_angle / 2.0):
-				e.take_damage(dmg, origin)
+				e.take_damage(dmg, origin, false, caster)
 				caster.on_dealt_damage(dmg)
 		var fx := Sweep.new()
 		fx.position = origin

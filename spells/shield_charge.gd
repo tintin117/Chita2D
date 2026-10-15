@@ -18,12 +18,12 @@ class Rider extends Node:
 			return
 		left -= delta
 		var pos := caster.global_position + Vector2(0, 8)
-		for e: Node2D in get_tree().get_nodes_in_group("enemies"):
+		for e in Spell.foes(caster):
 			if e in _hit or e.global_position.distance_to(pos) > 62.0:
 				continue
 			_hit.append(e)
-			e.take_damage(dmg, pos)
-			if e.kind != "boss":
+			e.take_damage(dmg, pos, false, caster)
+			if e.is_multiplayer_authority():   # only the victim's own peer moves it
 				e.knock += dir * SHOVE
 			caster.on_dealt_damage(dmg)
 		if left <= 0.0:

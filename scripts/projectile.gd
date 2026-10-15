@@ -27,7 +27,7 @@ func setup(pos: Vector2, vel: Vector2, dmg: int, player_owned: bool, src: Node =
 
 func _ready() -> void:
 	collision_layer = 8 if from_player else 16
-	collision_mask = (4 | 1) if from_player else (2 | 1)
+	collision_mask = 2 | 1   # PvP: everything player-fired or enemy-fired hits players (never its own caster, see _on_body_entered)
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = radius
@@ -57,14 +57,16 @@ func _physics_process(delta: float) -> void:
 		SheetFrames.play_once(get_parent(), global_position, PUFF, 10, 24.0, 0.7)
 
 func _on_body_entered(body: Node) -> void:
+	if body == source or ("down" in body and body.down):   # never the caster; downed players are walked through
+		return
 	if body.has_method("take_damage"):
 		if body in _hit:
 			return
 		_hit.append(body)
 		if silent and from_player:
-			body.take_damage(damage, global_position, true)
+			body.take_damage(damage, global_position, true, source)
 		else:
-			body.take_damage(damage, global_position)
+			body.take_damage(damage, global_position, false, source)
 		if source and source.has_method("on_dealt_damage"):
 			source.on_dealt_damage(damage)
 		if pierce > 0:

@@ -10,6 +10,6 @@ func _init() -> void:
 func cast(caster: Node2D, _aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var center := caster.global_position + (aim_pos - caster.global_position).limit_length(420.0)
 	for i in 8:
-		var pos := center + Vector2.from_angle(randf() * TAU) * randf_range(0.0, 170.0)
+		var pos: Vector2 = center + Vector2.from_angle(caster.rng.randf() * TAU) * caster.rng.randf_range(0.0, 170.0)
 		caster.get_tree().current_scene.add_child(Explosion.new().setup(pos, 70.0, damage, 0.4 + i * 0.22, caster))
 	return cooldown

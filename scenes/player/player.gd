@@ -4,6 +4,7 @@ class_name Player extends CharacterBody2D
 signal hp_changed(hp: int, max_hp: int)
 signal downed
 signal stats_changed   ## level, skill rank or gear changed and stats were recomputed
+signal fragged(victim: Player, killer_peer: int)   ## online: emitted on every peer when a player dies (killer_peer 0 = no player)
 
 const SLOTS := ["basic", "spell1", "spell2", "signature"]
 const MAX_DASH := 3
@@ -13,8 +14,17 @@ const DASH_TIME := 0.16
 const DASH_RECHARGE := 1.5
 const AIM_REACH := 280.0   ## aim_pos distance for stick aiming
 const BUFFER_TIME := 0.15  ## a press this close to coming off cooldown is queued, not dropped
+const COLORS := ["Blue", "Yellow", "Red", "Black"]   ## Tiny Swords unit colours, by player_index % 4
+const NAME_COLORS := [Color("5fa8ff"), Color("ffd84a"), Color("ff6a5f"), Color("b9b9c8"), Color("6fe08a"), Color("e08aff"), Color("ff9a3c"), Color("4fe3e3")]
+const RESPAWN_TIME := 3.0
+const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
 
 @export var player_index := 0
+var online := false         ## set by the match before add_child; the node's multiplayer authority is then the owning peer
+var display_name := ""
+var respawn_point := Callable()   ## online: returns a Vector2; set by the match
+var rng := RandomNumberGenerator.new()   ## reseeded from every cast so all peers roll the same AoE layout
+var net_pos := Vector2.ZERO   ## replicated; puppets ease toward it
 @export var max_hp := 100
 @export var speed := 260.0
 @export var spells: Array[Spell] = []
@@ -42,6 +52,7 @@ var _dash_speed := DASH_SPEED
 var _cast_time := 0.0
 var _queued := -1          ## buffered slot index, -1 = none
 var _queued_time := 0.0
+var _puppet := false       ## online and owned by another peer: no input, position comes from net_pos
 var _mouse_aim := true     ## P1 only: aim with the mouse until a gamepad is touched, then with the right stick
 var _swing := false        ## alternates basic-attack animations (cast / cast2) when the hero has both
 var _iframes := 0.0
@@ -60,7 +71,8 @@ func _ready() -> void:
 	add_to_group("players")
 	collision_layer = 2
 	collision_mask = 1
-	_p = "p%d_" % (player_index + 1)
+	_p = "p1_" if online else "p%d_" % (player_index + 1)
+	_puppet = online and not is_multiplayer_authority()
 	if hero == null:
 		hero = Hero.by_id("wizard")
 	init_loadout()
@@ -72,12 +84,38 @@ func _ready() -> void:
 	shape.position = Vector2(0, 14)
 	add_child(shape)
 	_sprite = AnimatedSprite2D.new()
-	_sprite.sprite_frames = hero.frames(["Blue", "Yellow"][player_index % 2])
+	_sprite.sprite_frames = hero.frames(COLORS[player_index % COLORS.size()])
 	_sprite.offset = Vector2(0, -4)  # sprite art sits slightly below frame center
 	add_child(_sprite)
 	_sprite.play("idle")
 	add_child(OverheadHpBar.new())
+	if online:
+		_setup_online()
 	hp_changed.emit(hp, max_hp)
+
+func _setup_online() -> void:
+	net_pos = position
+	var cfg := SceneReplicationConfig.new()
+	for prop in [":net_pos", ":aim_dir", ":aim_pos"]:
+		cfg.add_property(NodePath(prop))
+		cfg.property_set_replication_mode(NodePath(prop), SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
+	var sync := MultiplayerSynchronizer.new()
+	sync.name = "Sync"
+	sync.replication_config = cfg
+	sync.replication_interval = 0.033
+	sync.set_multiplayer_authority(get_multiplayer_authority())   # children added after set_multiplayer_authority do not inherit it
+	add_child(sync)
+	var label := Label.new()
+	label.text = display_name
+	label.size = Vector2(160, 20)
+	label.position = Vector2(-80, -78)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.modulate = NAME_COLORS[player_index % NAME_COLORS.size()]
+	label.z_index = 50
+	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 4)
+	add_child(label)
 
 ## Builds the kit, progression and stats from the hero. Called by _ready (callable without a tree, for tests).
 func init_loadout() -> void:
@@ -159,7 +197,7 @@ func float_text(text: String, color: Color) -> void:
 	t.chain().tween_callback(l.queue_free)
 
 func _input(event: InputEvent) -> void:
-	if player_index != 0:
+	if _puppet or (player_index != 0 and not online):
 		return
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_mouse_aim = true
@@ -167,6 +205,9 @@ func _input(event: InputEvent) -> void:
 		_mouse_aim = false
 
 func _physics_process(delta: float) -> void:
+	if _puppet:
+		_puppet_tick(delta)
+		return
 	_tick_timers(delta)
 	if down:
 		return
@@ -182,7 +223,17 @@ func _physics_process(delta: float) -> void:
 		_try_cast()
 	velocity += knock
 	move_and_slide()
+	net_pos = position
 	_animate(move)
+
+## Another peer's player: ease toward the replicated position, animate from the movement.
+func _puppet_tick(delta: float) -> void:
+	_cast_time = maxf(_cast_time - delta, 0.0)
+	if down:
+		return
+	var off := net_pos - position
+	position = net_pos if off.length() > 300.0 else position.lerp(net_pos, 1.0 - exp(-20.0 * delta))
+	_animate(off if off.length() > 3.0 else Vector2.ZERO)
 
 func _tick_timers(delta: float) -> void:
 	_iframes = maxf(_iframes - delta, 0.0)
@@ -200,7 +251,7 @@ func _tick_timers(delta: float) -> void:
 			dash_recharge = DASH_RECHARGE
 
 func _update_aim(move: Vector2) -> void:
-	if player_index == 0 and _mouse_aim:
+	if (player_index == 0 or online) and _mouse_aim:
 		aim_pos = get_global_mouse_position()
 		aim_dir = (aim_pos - global_position).normalized() if aim_pos.distance_to(global_position) > 4.0 else aim_dir
 	else:
@@ -232,6 +283,8 @@ func _start_dash(move: Vector2) -> void:
 func _firing() -> bool:
 	if _cast_time > 0.0 or _queued >= 0:
 		return true
+	if _puppet:
+		return false
 	for slot in SLOTS:
 		if Input.is_action_pressed(_p + slot):
 			return true
@@ -246,13 +299,21 @@ func _try_cast() -> void:
 		var spell: Spell = spells[i] if i < spells.size() else null
 		if spell and cooldowns[i] <= 0.0 and signature_charge >= spell.charge_cost and (_queued == i or Input.is_action_pressed(_p + SLOTS[i])):
 			signature_charge -= spell.charge_cost
-			var cd := spell.cast(self, aim_dir, aim_pos)
-			cooldowns[i] = cd
-			cooldown_max[i] = cd
-			_cast_time = clampf(cd, 0.25, 0.4)  # cover fast-attack cooldowns so tapping never unlocks movement
 			_queued = -1
-			_play_cast(i)
+			_net_cast.rpc(i, aim_dir, aim_pos, randi())
 			return
+
+## Runs on every peer (offline: just here), so every screen gets the same projectiles / sweeps / explosions.
+## Damage still only lands on the victim's own peer (see take_damage).
+@rpc("authority", "call_local", "reliable")
+func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int) -> void:
+	var spell: Spell = spells[slot]
+	rng.seed = seed_value
+	var cd := spell.cast(self, dir, pos)
+	cooldowns[slot] = cd
+	cooldown_max[slot] = cd
+	_cast_time = clampf(cd, 0.25, 0.4)  # cover fast-attack cooldowns so tapping never unlocks movement
+	_play_cast(slot)
 
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
 func _play_cast(slot: int) -> void:
@@ -277,22 +338,63 @@ func _animate(move: Vector2) -> void:
 func on_dealt_damage(amount: int) -> void:
 	signature_charge = minf(signature_charge + amount * 0.8, MAX_CHARGE)
 
-func take_damage(amount: int, from_pos: Vector2) -> void:
-	if _iframes > 0.0 or down:
+## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
+func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> void:
+	if not is_multiplayer_authority() or _iframes > 0.0 or down:
 		return
 	amount = roundi(amount * RuleSet.current.damage)
 	hp = maxi(hp - amount, 0)
-	_iframes = 0.7
-	knock = (global_position - from_pos).normalized() * 380.0
+	if not silent:   # rapid-tick hits (blade storm, arrow barrage) neither stagger nor grant i-frames
+		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
+		knock = (global_position - from_pos).normalized() * 380.0
+	_flash()
+	hp_changed.emit(hp, max_hp)
+	if not online:
+		if hp == 0:
+			_die()
+		return
+	if hp == 0:
+		_net_died.rpc(attacker.get_multiplayer_authority() if attacker is Player else 0)
+	else:
+		_net_hp.rpc(hp)
+
+func _flash() -> void:
 	_sprite.modulate = Color(1, 0.4, 0.4)
 	create_tween().tween_property(_sprite, "modulate", Color.WHITE, 0.25)
+
+func _die() -> void:
+	down = true
+	velocity = Vector2.ZERO
+	_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
+	_sprite.play("idle")
+	downed.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func _net_hp(value: int) -> void:
+	hp = value
+	_flash()
 	hp_changed.emit(hp, max_hp)
-	if hp == 0:
-		down = true
-		velocity = Vector2.ZERO
-		_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
-		_sprite.play("idle")
-		downed.emit()
+
+@rpc("authority", "call_local", "reliable")
+func _net_died(killer_peer: int) -> void:
+	hp = 0
+	hp_changed.emit(hp, max_hp)
+	_die()
+	fragged.emit(self, killer_peer)
+	if is_multiplayer_authority():
+		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_respawn)
+
+func _respawn() -> void:
+	if is_inside_tree():
+		_net_respawn.rpc(respawn_point.call() if respawn_point.is_valid() else position)
+
+@rpc("authority", "call_local", "reliable")
+func _net_respawn(pos: Vector2) -> void:
+	position = pos
+	net_pos = pos
+	knock = Vector2.ZERO
+	revive(1.0)
+	_iframes = 2.0
 
 func revive(hp_fraction := 0.5) -> void:
 	down = false

@@ -22,6 +22,10 @@ const CORRIDOR_R := 3.0                 ## half width (cells): 7 wide, 5 walkabl
 const EXTRA_LOOPS := 3                  ## corridors beyond the spanning tree
 const DECOR_BUSH := 0.03                ## per open cell
 const DECOR_ROCK := 0.012
+const ARENA_SEED := 1337                ## the fixed PvP map: every peer builds the identical arena from this
+const ARENA_HALF := Vector2(24.0, 17.0) ## cells; the plateau is a rounded rectangle (superellipse) this big
+const COVER_R := 50.0
+const GYM_HALF := Vector2(11.0, 8.0)  ## cells; the training room
 
 var seed_value := 0
 var bounds := Rect2(Vector2.ZERO, Vector2(SIZE * TILE))
@@ -30,6 +34,8 @@ var gate_pos := Vector2.ZERO            ## centre of the far-east gate chamber (
 var boss_arena := Rect2()               ## open ground around the gate
 var camps: Array[Dictionary] = []       ## {pos: Vector2, tier: int 1..3, radius: float}, one per camp chamber
 var objective_sites: Array[Vector2] = [] ## one per alcove
+var spawn_points: Array[Vector2] = []   ## arena only: respawn spots round the rim
+var cover: Array[Vector2] = []          ## arena only: solid rocks (COVER_R) to fight around
 var chambers: Array[Dictionary] = []    ## {c: Vector2 (cells), r: float, kind: spawn|gate|camp|alcove}
 
 var _land := PackedByteArray()
@@ -56,6 +62,59 @@ func generate(new_seed: int, build_visuals := true) -> void:
 	_layout()
 	_carve()
 	_pick_points()
+	_scatter_decor()
+	if build_visuals:
+		_build()
+
+## The fixed PvP arena (Overthrow-style): a rounded-rectangle plateau, 8 rim spawns, a pillar ring in the middle
+## and symmetric rock cover. Same result on every call, so all peers can build it independently.
+func generate_arena(build_visuals := true) -> void:
+	var mid := _begin_fixed(ARENA_HALF)
+	spawn_points.clear()
+	for k in 8:
+		spawn_points.append(center_of(Vector2i(mid + Vector2.from_angle(k * TAU / 8.0) * Vector2(19.0, 12.0))))
+	var offsets: Array[Vector2] = [Vector2(5, 0), Vector2(0, 4), Vector2(-5, 0), Vector2(0, -4),   # pillar ring
+		Vector2(0, 9), Vector2(0, -9)]
+	for q: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+		offsets.append(Vector2(9, 5) * q)
+		offsets.append(Vector2(11, 5) * q)
+	for o in offsets:
+		cover.append(center_of(Vector2i(mid + o)))
+	_finish_fixed(build_visuals)
+
+## Small training room: open ground, one spawn in the middle (the training dummy goes there, the hero beside it).
+func generate_gym(build_visuals := true) -> void:
+	_begin_fixed(GYM_HALF)
+	_finish_fixed(build_visuals)
+
+## Shared start of the fixed maps: reset, fill a rounded-rectangle plateau of `half` cells round the grid centre.
+func _begin_fixed(half: Vector2) -> Vector2:
+	seed_value = ARENA_SEED
+	_rng.seed = ARENA_SEED
+	_noise.seed = ARENA_SEED
+	for n in _owned:
+		n.queue_free()
+	_owned.clear()
+	chambers.clear()
+	camps.clear()
+	objective_sites.clear()
+	spawn_points.clear()
+	cover.clear()
+	_land.resize(SIZE.x * SIZE.y)
+	_land.fill(0)
+	var mid := Vector2(SIZE) / 2.0
+	for y in SIZE.y:
+		for x in SIZE.x:
+			var d := (Vector2(x + 0.5, y + 0.5) - mid).abs() / half
+			if pow(d.x, 4.0) + pow(d.y, 4.0) <= 1.0:
+				_land[y * SIZE.x + x] = 1
+	_compute_core()
+	spawn_point = center_of(Vector2i(mid))
+	gate_pos = spawn_point
+	return mid
+
+func _finish_fixed(build_visuals: bool) -> void:
+	_bfs(cell_of(spawn_point))
 	_scatter_decor()
 	if build_visuals:
 		_build()
@@ -192,6 +251,9 @@ func _carve() -> void:
 					if Vector2(x + 0.5, y + 0.5).distance_to(p) <= rc:
 						_land[y * SIZE.x + x] = 1
 	_keep_largest()
+	_compute_core()
+
+func _compute_core() -> void:
 	_core.resize(SIZE.x * SIZE.y)
 	_core.fill(0)
 	for y in SIZE.y:
@@ -294,6 +356,8 @@ func _scatter_decor() -> void:
 	_free.clear()
 	var keep_clear: Array[Vector2] = [spawn_point, gate_pos]
 	keep_clear.append_array(objective_sites)
+	keep_clear.append_array(spawn_points)
+	keep_clear.append_array(cover)
 	for k in camps:
 		keep_clear.append(k.pos)
 	for y in SIZE.y:
@@ -383,6 +447,26 @@ func _build() -> void:
 		s.position = d.pos
 		add_child(s)
 		_owned.append(s)
+	_build_cover()
+
+func _build_cover() -> void:
+	for i in cover.size():
+		var rock := StaticBody2D.new()
+		rock.collision_layer = 1
+		rock.collision_mask = 0
+		rock.position = cover[i]
+		var cs := CollisionShape2D.new()
+		var circle := CircleShape2D.new()
+		circle.radius = COVER_R
+		cs.shape = circle
+		rock.add_child(cs)
+		var s := Sprite2D.new()
+		s.texture = load(TERRAIN + "Rocks/Rock%d.png" % (1 + i % 4))
+		s.scale = Vector2.ONE * 3.2
+		s.offset.y = -0.3 * s.texture.get_height()
+		rock.add_child(s)
+		add_child(rock)
+		_owned.append(rock)
 
 func _shore_water(c: Vector2i) -> bool:
 	if is_land(c):

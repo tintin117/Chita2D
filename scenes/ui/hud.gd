@@ -5,11 +5,14 @@ const BAR_TEX := preload("res://assets/tiny_swords/ui/BigBar_Base.png")
 const FILL_TEX := preload("res://assets/tiny_swords/ui/BigBar_Fill.png")
 const HINTS := [["LMB", "RMB", "Q", "R"], ["RT", "LB", "RB", "Y"]]
 
+var with_sheet := true   ## the Tab character sheet pauses the tree, so online matches turn it off
+var online := false      ## one local player: always the P1 hints, bottom-left
+
 func add_player(p: Player) -> void:
 	var panel := HeroPanel.new()  # PlayerPanel below is the old panel, kept until its owner deletes it
 	panel.player = p
 	panel.size = Vector2(340, 140)
-	panel.mirror = p.player_index == 1
+	panel.mirror = p.player_index == 1 and not online
 	add_child(panel)
 
 var _boss_bar := BossBar.new()
@@ -17,7 +20,8 @@ var _boss_bar := BossBar.new()
 func _ready() -> void:
 	_boss_bar.size = Vector2(640, 48)
 	add_child(_boss_bar)
-	add_child(CharacterSheet.new())
+	if with_sheet:
+		add_child(CharacterSheet.new())
 
 func _process(_delta: float) -> void:
 	var vp := get_viewport().get_visible_rect().size
