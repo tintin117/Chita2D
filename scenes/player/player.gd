@@ -34,6 +34,7 @@ var equipment := {}         ## Item.SLOTS entry -> Item
 var damage_mult := 1.0      ## level * gear; already baked into spells[i].damage by recalc_stats()
 var cooldown_mult := 1.0
 var _base_spells: Array = []  ## [damage, cooldown] per slot before any bonus
+var buffs := {}             ## PvP pickup kind -> expiry in seconds (Time.get_ticks_msec); kept on every peer so hits can read the attacker's
 
 var hp := 0
 var down := false
@@ -177,6 +178,25 @@ func _on_reward(kind: String) -> void:
 		heal(int(max_hp * 0.4))
 		float_text("POWER UP", Color(1.0, 0.5, 0.3))
 
+const BUFF_TIME := 10.0
+const SPEED_BUFF := 1.5
+
+func buffed(kind: String) -> bool:
+	return buff_left(kind) > 0.0
+
+func buff_left(kind: String) -> float:
+	return maxf(buffs.get(kind, 0.0) - Time.get_ticks_msec() / 1000.0, 0.0)
+
+## A PvP pickup was taken by this player. Runs on every peer; only the owner touches its own HP.
+func apply_pickup(kind: String) -> void:
+	float_text(PvpPickup.LABELS[kind], PvpPickup.COLORS[kind])
+	if kind == "heal":
+		if is_multiplayer_authority():
+			heal(int(max_hp * 0.5))
+			_net_hp.rpc(hp)
+	else:
+		buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIME
+
 func float_text(text: String, color: Color) -> void:
 	if not is_inside_tree():
 		return
@@ -219,7 +239,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		if Input.is_action_just_pressed(_p + "dash") and dash_charges > 0:
 			_start_dash(move)
-		velocity = Vector2.ZERO if _firing() else move * speed  # hold attack = stand still, aim with move input
+		velocity = Vector2.ZERO if _firing() else move * speed * (SPEED_BUFF if buffed("speed") else 1.0)  # hold attack = stand still, aim with move input
 		_try_cast()
 	velocity += knock
 	move_and_slide()
@@ -342,6 +362,8 @@ func on_dealt_damage(amount: int) -> void:
 func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> void:
 	if not is_multiplayer_authority() or _iframes > 0.0 or down:
 		return
+	if attacker is Player and attacker.buffed("damage"):   # victim-side hit: read the attacker's copy of the buff
+		amount *= 2
 	amount = roundi(amount * RuleSet.current.damage)
 	hp = maxi(hp - amount, 0)
 	if not silent:   # rapid-tick hits (blade storm, arrow barrage) neither stagger nor grant i-frames
@@ -364,6 +386,7 @@ func _flash() -> void:
 
 func _die() -> void:
 	down = true
+	buffs.clear()
 	velocity = Vector2.ZERO
 	_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
 	_sprite.play("idle")
@@ -371,8 +394,9 @@ func _die() -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func _net_hp(value: int) -> void:
+	if value < hp:   # a heal must not flash red
+		_flash()
 	hp = value
-	_flash()
 	hp_changed.emit(hp, max_hp)
 
 @rpc("authority", "call_local", "reliable")

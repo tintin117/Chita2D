@@ -57,3 +57,24 @@ func test_dummy_is_hittable_and_never_down() -> void:
 	track(d)
 	assert_false(d.down)
 	assert_true(d.has_method("take_damage"))
+
+func test_pickups_spawn_central_and_clear() -> void:
+	var m := _arena()
+	var taken: Array[Vector2] = []
+	for i in 50:
+		var p := PvpMatch.pick_pickup_pos(m, taken)
+		assert_true(m.is_reachable(p), "pickup on open ground")
+		for s in m.spawn_points:
+			assert_gt(p.distance_to(s), PvpMatch.PICKUP_SPAWN_CLEAR - 1.0, "pickup away from spawns")
+		for c in m.cover:
+			assert_gt(p.distance_to(c), PvpMatch.PICKUP_COVER_CLEAR - 1.0, "pickup off the cover")
+		taken = [p]
+
+func test_buffs_expire() -> void:
+	var p := Player.new()
+	track(p)
+	assert_false(p.buffed("damage"))
+	p.buffs["damage"] = Time.get_ticks_msec() / 1000.0 + 5.0
+	assert_true(p.buffed("damage"))
+	p.buffs["damage"] = Time.get_ticks_msec() / 1000.0 - 1.0
+	assert_false(p.buffed("damage"))
