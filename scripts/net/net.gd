@@ -17,6 +17,8 @@ const MIN_PLAYERS := 2
 const LOBBY_PUBLIC := 2               ## Steam ELobbyType
 const LOBBY_OK := 1                   ## EResult OK / chat-room-enter success
 const PORT := 24567                   ## dev ENet only
+const BOT_ID := 1000                  ## bots are local players with made-up peer ids BOT_ID + n (a solo match has no network, so they cannot clash)
+const BOT_NAMES := ["Ann", "Bo", "Cy", "Dee", "Eli", "Fay", "Gus"]
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 const HERO_SCENE := "res://scenes/hero_pick.tscn"
 const MATCH_SCENE := "res://scenes/pvp_match.tscn"
@@ -29,6 +31,9 @@ var lobby_id := 0
 var last_status := ""
 var dev_enet := false
 var autostart := 0
+var solo := false                     ## practice against bots: no network, the roster holds the player and the bots
+var bot_skill := 0.6
+var solo_auto := false                ## dev: `-- --solo=N` skips the menu and the hero pick
 
 var _steam: Object                    ## the GodotSteam singleton, null when the extension is missing
 var _steam_ready := false
@@ -47,6 +52,9 @@ func _ready() -> void:
 			my_name = a.get_slice("=", 1)
 		elif a.begins_with("--hero="):
 			my_hero = a.get_slice("=", 1)
+		elif a.begins_with("--solo="):
+			solo_auto = true
+			start_solo.call_deferred(int(a.get_slice("=", 1)), bot_skill)
 		elif a.begins_with("--autostart="):
 			autostart = int(a.get_slice("=", 1))
 		elif a == "--enet-host":
@@ -78,6 +86,24 @@ func is_host() -> bool:
 
 func local_id() -> int:
 	return multiplayer.get_unique_id()
+
+# --- solo practice -----------------------------------------------------------------
+
+## A match against `bots` bots (skill 0..1) on the same arena. The player is peer 1; the bots are local players with made-up ids.
+func start_solo(bots: int, skill: float) -> void:
+	if not roster.is_empty() and not solo:
+		return   # a real lobby is open
+	roster.clear()
+	_add(1, my_name, my_hero)
+	var heroes := Hero.all()
+	for i in clampi(bots, 1, MAX_PLAYERS - 1):
+		roster[BOT_ID + i] = {"name": "Bot " + BOT_NAMES[i % BOT_NAMES.size()], "hero": heroes[i % heroes.size()].id, "slot": i + 1, "ready": true, "bot": true, "skill": skill}
+	solo = true
+	bot_skill = skill
+	in_match = true
+	_entering = false
+	_loaded.clear()
+	get_tree().change_scene_to_file(HERO_SCENE)
 
 # --- Steam lobby -----------------------------------------------------------------
 
@@ -291,7 +317,7 @@ func _peer_loaded() -> void:
 		_check_go()
 
 func _check_go() -> void:
-	if roster.keys().all(func(id: int) -> bool: return _loaded.has(id)):
+	if roster.keys().all(func(id: int) -> bool: return _loaded.has(id) or roster[id].get("bot", false)):
 		_loaded.clear()
 		_go.rpc()
 
@@ -319,6 +345,7 @@ func _reset(message: String) -> void:
 		_steam.leaveLobby(lobby_id)
 	lobby_id = 0
 	roster.clear()
+	solo = false
 	in_match = false
 	roster_changed.emit()
 	if multiplayer.has_multiplayer_peer():

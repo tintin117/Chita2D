@@ -24,7 +24,7 @@ class Rider extends Node:
 			_hit.append(e)
 			e.take_damage(dmg, pos, false, caster)
 			Sfx.play("hit_big", pos)
-			if e.is_multiplayer_authority():   # only the victim's own peer moves it
+			if (e.owns() if e.has_method("owns") else e.is_multiplayer_authority()):   # a bot is owned by this peer too   # only the victim's own peer moves it
 				e.knock += dir * SHOVE
 			caster.on_dealt_damage(dmg)
 		if left <= 0.0:

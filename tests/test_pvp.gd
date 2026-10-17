@@ -128,3 +128,22 @@ func test_awards_only_for_things_that_happened() -> void:
 		assert_true(t in titles, t)
 	assert_false("Chatterbox" in titles)
 	assert_true(out.size() <= 6)
+
+func test_bot_lead_aims_ahead_of_a_moving_target() -> void:
+	var from := Vector2.ZERO
+	assert_eq(BotBrain.lead(from, Vector2(400, 0), Vector2.ZERO, 640.0), Vector2(400, 0), "a still target is aimed at directly")
+	var aim := BotBrain.lead(from, Vector2(400, 0), Vector2(0, 200), 640.0)
+	assert_gt(aim.y, 50.0, "aims ahead along the target's motion")
+	assert_eq(aim.x, 400.0, "target moves only along y")
+
+func test_solo_roster_has_bots_that_need_no_loading() -> void:
+	var net: Node = Net
+	var saved: Dictionary = net.roster.duplicate(true)
+	net.roster = {1: {"name": "Me", "ready": true}, 1000: {"name": "Bot Ann", "ready": true, "bot": true}}
+	net._loaded.clear()
+	net._loaded[1] = true
+	# every human has loaded, so the bots must not hold the match back (_check_go would fire _go)
+	var humans_loaded: bool = net.roster.keys().all(func(id: int) -> bool: return net._loaded.has(id) or net.roster[id].get("bot", false))
+	assert_true(humans_loaded)
+	net._loaded.clear()
+	net.roster = saved

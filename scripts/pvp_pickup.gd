@@ -1,7 +1,7 @@
 class_name PvpPickup extends Area2D
 ## Arena power-up. Only the owning peer of the player who touches it reports it (`touched`); the host decides who got it first.
 
-signal touched(id: int)
+signal touched(id: int, peer: int)
 
 const KINDS := ["heal", "damage", "speed", "mystery", "giant", "chicken", "bomb"]
 const WEIGHTS := {"heal": 3, "damage": 2, "speed": 2, "mystery": 3, "giant": 2, "chicken": 1, "bomb": 1}   ## how often the host spawns each kind
@@ -46,8 +46,8 @@ func _ready() -> void:
 
 func _on_body(body: Node) -> void:
 	var p := body as Player
-	if p and p.is_multiplayer_authority() and not p.down:
-		touched.emit(id)
+	if p and p.owns() and not p.down:
+		touched.emit(id, p.peer_id)
 
 func _process(delta: float) -> void:
 	_t += delta * 3.0

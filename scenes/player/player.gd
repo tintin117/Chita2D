@@ -35,6 +35,8 @@ const EMOTE_COOLDOWN := 1.5
 const CHICKEN_SCALE := 0.7
 
 @export var player_index := 0
+var ai: BotBrain            ## set before add_child: this player is a bot and its input comes from here, not the keyboard
+var peer_id := 0            ## who this player is in the match (kills, pickups, bombs); the owning peer, or a made-up id for a bot
 var online := false         ## set by the match before add_child; the node's multiplayer authority is then the owning peer
 var display_name := ""
 var respawn_point := Callable()   ## online: returns a Vector2; set by the match
@@ -88,6 +90,10 @@ var _emote_until := 0
 var _shape: CircleShape2D
 var _sprite: AnimatedSprite2D
 
+## True when this peer simulates this player: it is ours, or a bot we run.
+func owns() -> bool:
+	return ai != null or is_multiplayer_authority()
+
 ## Launch speed for a hit of `amount` damage.
 static func knock_for(amount: int) -> float:
 	return minf(KNOCK_BASE + amount * KNOCK_PER_DMG, KNOCK_MAX)
@@ -106,7 +112,9 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	_p = "p1_" if online else "p%d_" % (player_index + 1)
-	_puppet = online and not is_multiplayer_authority()
+	if peer_id == 0:
+		peer_id = get_multiplayer_authority()
+	_puppet = online and not owns()
 	if hero == null:
 		hero = Hero.by_id("wizard")
 	init_loadout()
@@ -226,7 +234,7 @@ func apply_pickup(kind: String) -> void:
 	float_text(PvpPickup.LABELS[kind], PvpPickup.COLORS[kind])
 	match kind:
 		"heal":
-			if is_multiplayer_authority():
+			if owns():
 				heal(int(max_hp * 0.5))
 				_net_hp.rpc(hp)
 		"bomb":
@@ -318,6 +326,12 @@ func _try_emote() -> void:
 	_emote_cd = maxf(_emote_cd - get_physics_process_delta_time(), 0.0)
 	if _emote_cd > 0.0:
 		return
+	if ai:
+		var e := ai.take_emote()
+		if e >= 0:
+			_emote_cd = EMOTE_COOLDOWN
+			_net_emote.rpc(e)
+		return
 	for i in EMOTES.size():
 		if Input.is_action_just_pressed("emote_%d" % (i + 1)):
 			_emote_cd = EMOTE_COOLDOWN
@@ -352,7 +366,7 @@ func float_text(text: String, color: Color, font_size := 18) -> void:
 	t.chain().tween_callback(l.queue_free)
 
 func _input(event: InputEvent) -> void:
-	if _puppet or (player_index != 0 and not online):
+	if _puppet or ai != null or (player_index != 0 and not online):
 		return
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		_mouse_aim = true
@@ -367,13 +381,15 @@ func _physics_process(delta: float) -> void:
 	_tick_timers(delta)
 	if down:
 		return
-	var move := Input.get_vector(_p + "left", _p + "right", _p + "up", _p + "down")
+	if ai:
+		ai.think(delta)
+	var move := ai.move if ai else Input.get_vector(_p + "left", _p + "right", _p + "up", _p + "down")
 	_update_aim(move)
 	if _dash_time > 0.0:
 		_dash_time -= delta
 		velocity = _dash_vec * _dash_speed
 	else:
-		if Input.is_action_just_pressed(_p + "dash") and dash_charges > 0:
+		if _dash_pressed() and dash_charges > 0:
 			_start_dash(move)
 		velocity = Vector2.ZERO if _firing() else move * speed * _speed_mult()  # hold attack = stand still, aim with move input
 		_try_cast()
@@ -450,7 +466,17 @@ func _tick_timers(delta: float) -> void:
 			dash_charges += 1
 			dash_recharge = DASH_RECHARGE
 
+func _dash_pressed() -> bool:
+	return ai.take_dash() if ai else Input.is_action_just_pressed(_p + "dash")
+
+func _held(slot: int) -> bool:
+	return ai.held[slot] if ai else Input.is_action_pressed(_p + SLOTS[slot])
+
 func _update_aim(move: Vector2) -> void:
+	if ai:
+		aim_pos = ai.aim_pos
+		aim_dir = (aim_pos - global_position).normalized() if aim_pos.distance_to(global_position) > 4.0 else aim_dir
+		return
 	if (player_index == 0 or online) and _mouse_aim:
 		aim_pos = get_global_mouse_position()
 		aim_dir = (aim_pos - global_position).normalized() if aim_pos.distance_to(global_position) > 4.0 else aim_dir
@@ -486,8 +512,8 @@ func _firing() -> bool:
 		return true
 	if _puppet:
 		return false
-	for slot in SLOTS:
-		if Input.is_action_pressed(_p + slot):
+	for i in SLOTS.size():
+		if _held(i):
 			return true
 	return false
 
@@ -495,12 +521,12 @@ func _try_cast() -> void:
 	if buffed("chicken"):
 		return
 	for i in SLOTS.size():
-		if Input.is_action_just_pressed(_p + SLOTS[i]) and cooldowns[i] > 0.0:
+		if ai == null and Input.is_action_just_pressed(_p + SLOTS[i]) and cooldowns[i] > 0.0:
 			_queued = i
 			_queued_time = BUFFER_TIME
 	for i in SLOTS.size():
 		var spell: Spell = spells[i] if i < spells.size() else null
-		if spell and cooldowns[i] <= 0.0 and signature_charge >= spell.charge_cost and (_queued == i or Input.is_action_pressed(_p + SLOTS[i])):
+		if spell and cooldowns[i] <= 0.0 and signature_charge >= spell.charge_cost and (_queued == i or _held(i)):
 			signature_charge -= spell.charge_cost
 			_queued = -1
 			_net_cast.rpc(i, aim_dir, aim_pos, randi())
@@ -544,14 +570,14 @@ func on_dealt_damage(amount: int) -> void:
 
 ## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
 func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> void:
-	if not is_multiplayer_authority() or _iframes > 0.0 or down:
+	if not owns() or _iframes > 0.0 or down:
 		return
 	if attacker is Player and attacker.buffed("damage"):   # victim-side hit: read the attacker's copy of the buff
 		amount *= 2
 	amount = form_damage(roundi(amount * RuleSet.current.damage))
 	hp = maxi(hp - amount, 0)
 	if attacker is Player:
-		last_hit_peer = attacker.get_multiplayer_authority()
+		last_hit_peer = attacker.peer_id
 		last_hit_msec = Time.get_ticks_msec()
 	if not silent:   # rapid-tick hits (blade storm, arrow barrage) neither stagger nor grant i-frames
 		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
@@ -563,7 +589,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 			_die()
 		return
 	if hp == 0:
-		_net_died.rpc(attacker.get_multiplayer_authority() if attacker is Player else 0, "hit" if attacker is Player else "bomb")   # no attacker = an ownerless Explosion (the hot potato)
+		_net_died.rpc(attacker.peer_id if attacker is Player else 0, "hit" if attacker is Player else "bomb")   # no attacker = an ownerless Explosion (the hot potato)
 	else:
 		_net_hp.rpc(hp)
 
@@ -595,7 +621,7 @@ func _net_died(killer_peer: int, cause: String) -> void:
 	_sink = SINK_TIME if cause == "fall" else 0.0   # a drowned player stays under until the respawn
 	_die()
 	fragged.emit(self, killer_peer, cause)
-	if is_multiplayer_authority():
+	if owns():
 		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_respawn)
 
 func _respawn() -> void:

@@ -47,7 +47,7 @@ func _ready() -> void:
 		box.add_child(_ready_btn)
 		box.add_child(_button("Leave", Net.leave))
 		Net.roster_changed.connect(_refresh_status)
-		if Net.dev_enet:   # dev shim: no UI clicking in automated runs
+		if Net.dev_enet or Net.solo_auto:   # dev shim: no UI clicking in automated runs
 			_ready_btn.button_pressed = true
 			_on_ready_toggled()
 	else:

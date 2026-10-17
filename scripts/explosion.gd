@@ -17,6 +17,7 @@ func setup(pos: Vector2, r: float, dmg: int, wait: float, src: Node = null) -> E
 	return self
 
 func _ready() -> void:
+	add_to_group("explosions")   # bots stay out of the ring until it goes off
 	get_tree().create_timer(delay).timeout.connect(_boom)
 
 func _draw() -> void:

@@ -2,7 +2,9 @@ extends Control
 ## Main menu (the main scene). Gym Arena | Online Match -> Host a match | Join a lobby (list + lobby ID box).
 ## Once a session exists (roster not empty) the screen is the waiting room instead: lobby ID, players, Start (host).
 
-enum Screen { MAIN, ONLINE, JOIN }
+enum Screen { MAIN, ONLINE, JOIN, SOLO }
+const DIFFICULTY := [["Easy", 0.3], ["Normal", 0.6], ["Hard", 0.9]]
+var _difficulty := 1
 
 var _screen := Screen.MAIN
 var _box: VBoxContainer       ## centre column, rebuilt by _refresh()
@@ -73,11 +75,23 @@ func _refresh() -> void:
 			_online()
 		Screen.JOIN:
 			_join()
+		Screen.SOLO:
+			_solo()
 
 func _main() -> void:
 	_box.add_child(_button("Gym Arena", func() -> void: get_tree().change_scene_to_file(Net.HERO_SCENE)))
+	_box.add_child(_button("Practice vs Bots", func() -> void: _go(Screen.SOLO)))
 	_box.add_child(_button("Online Match", func() -> void: _go(Screen.ONLINE)))
 	_box.add_child(_status)
+
+func _solo() -> void:
+	_box.add_child(_label("Practice vs bots", 20))
+	_box.add_child(_button("Bot skill: %s" % DIFFICULTY[_difficulty][0], func() -> void:
+		_difficulty = (_difficulty + 1) % DIFFICULTY.size()
+		_refresh()))
+	for n in [3, 7]:
+		_box.add_child(_button("Start with %d bots" % n, func() -> void: Net.start_solo(n, DIFFICULTY[_difficulty][1])))
+	_box.add_child(_button("Back", func() -> void: _go(Screen.MAIN)))
 
 func _online() -> void:
 	var ok := Net.available()

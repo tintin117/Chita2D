@@ -26,6 +26,7 @@ func setup(pos: Vector2, vel: Vector2, dmg: int, player_owned: bool, src: Node =
 	return self
 
 func _ready() -> void:
+	add_to_group("projectiles")   # bots dodge these
 	collision_layer = 8 if from_player else 16
 	collision_mask = 2 | 1   # PvP: everything player-fired or enemy-fired hits players (never its own caster, see _on_body_entered)
 	var shape := CollisionShape2D.new()

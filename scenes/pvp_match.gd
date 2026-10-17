@@ -183,11 +183,16 @@ func _spawn(id: int, info: Dictionary) -> void:
 	p.hero = Hero.by_id(info.hero)
 	p.display_name = info.name
 	p.position = _map.spawn_points[info.slot % _map.spawn_points.size()]
-	p.set_multiplayer_authority(id)
+	p.peer_id = id
+	if info.get("bot", false):
+		p.ai = BotBrain.new()
+		p.ai.setup(p, self, info.get("skill", 0.6))   # a bot keeps the local peer's authority, so every RPC and hit runs here
+	else:
+		p.set_multiplayer_authority(id)
 	p.respawn_point = _pick_spawn.bind(id)
 	p.water_check = _map.is_water
 	p.fragged.connect(_on_fragged)
-	p.bomb_touch.connect(_on_bomb_touch)
+	p.bomb_touch.connect(_on_bomb_touch.bind(p))
 	_map.add_child(p)
 	_players[id] = p
 	_kills[id] = 0
@@ -213,7 +218,12 @@ func _on_go() -> void:
 	_say("FIGHT!   (1-4: emotes)", 1.6)
 
 func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
-	var vid := victim.get_multiplayer_authority()
+	var vid := victim.peer_id
+	if victim.ai:
+		victim.ai.on_death(cause)
+	var killer_player: Player = _players.get(killer_peer)
+	if killer_player and killer_player.ai and killer_peer != vid:
+		killer_player.ai.on_kill()
 	if multiplayer.is_server() and victim.has_bomb:
 		var killer: Player = _players.get(killer_peer)
 		if killer != null and killer != victim and not killer.down and not killer.has_bomb:
@@ -272,7 +282,7 @@ func _update_crown() -> void:
 		_say("%s took the crown!" % _name_of(_crown), 1.8)
 
 func _on_emoted(p: Player) -> void:
-	var id := p.get_multiplayer_authority()
+	var id := p.peer_id
 	if _stats.has(id):
 		_stats[id].emotes += 1
 
@@ -338,16 +348,17 @@ func _net_spawn_pickup(id: int, kind: String, pos: Vector2) -> void:
 	_next_pickup = maxi(_next_pickup, id + 1)
 	_say("%s appeared!" % PvpPickup.LABELS[kind], 1.5)
 
-func _on_pickup_touched(id: int) -> void:
-	_claim.rpc_id(1, id)
+func _on_pickup_touched(id: int, peer: int) -> void:
+	_claim.rpc_id(1, id, peer)
 
 ## The host serialises claims: the first one for an id wins, later ones find it already gone.
 @rpc("any_peer", "call_local", "reliable")
-func _claim(id: int) -> void:
+func _claim(id: int, taker: int) -> void:
 	if not multiplayer.is_server() or not _pickups.has(id):
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	var taker := sender if sender != 0 else 1
+	if sender != 0 and sender != taker and not Net.solo:
+		return   # a peer can only claim for its own player (a solo match has the one peer claiming for its bots too)
 	var outcome: String = _pickups[id].kind
 	if outcome == "mystery":
 		outcome = PvpPickup.mystery_outcome(randf())   # the host rolls it so every peer sees the same result
@@ -374,15 +385,16 @@ func _net_take(id: int, peer: int, outcome: String) -> void:
 
 # --- hot potato: touching another player passes it on; the host runs the fuse and decides when it blows
 
-func _on_bomb_touch(other: Player) -> void:
-	_bomb_pass.rpc_id(1, other.get_multiplayer_authority())
+func _on_bomb_touch(other: Player, carrier: Player) -> void:
+	_bomb_pass.rpc_id(1, carrier.peer_id, other.peer_id)
 
 @rpc("any_peer", "call_local", "reliable")
-func _bomb_pass(to_peer: int) -> void:
+func _bomb_pass(from_peer: int, to_peer: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	var from_peer := sender if sender != 0 else 1
+	if sender != 0 and sender != from_peer and not Net.solo:
+		return
 	var a: Player = _players.get(from_peer)
 	var b: Player = _players.get(to_peer)
 	if a == null or b == null or not a.has_bomb or b.has_bomb or b.down:
@@ -423,7 +435,7 @@ func _end(winner: int) -> void:
 	Sfx.play("win")
 	_set_players_active(false)
 	var who: String = Net.roster[winner].name if Net.roster.has(winner) else "nobody"
-	var hint := "Enter: back to lobby" if multiplayer.is_server() else "Waiting for the host..."
+	var hint := "Enter: play again" if Net.solo else ("Enter: back to lobby" if multiplayer.is_server() else "Waiting for the host...")
 	var names := {}
 	for id: int in _stats:
 		names[id] = _name_of(id)
@@ -438,7 +450,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		Net.leave()
 	elif _over and event.is_action_pressed("ui_accept"):
-		Net.back_to_lobby()
+		if Net.solo:
+			get_tree().reload_current_scene()
+		else:
+			Net.back_to_lobby()
 
 func _say(text: String, seconds: float) -> void:
 	_banner.text = text
