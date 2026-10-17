@@ -35,6 +35,7 @@ func _process(delta: float) -> void:
 func _boom() -> void:
 	_boomed = true
 	queue_redraw()
+	Sfx.play("explosion", global_position)
 	for n: Node2D in get_tree().get_nodes_in_group("players") + get_tree().get_nodes_in_group("dummies"):
 		if n != source and n.global_position.distance_to(global_position) <= radius + 14.0 and not ("down" in n and n.down):
 			n.take_damage(damage, global_position, false, source)

@@ -6,6 +6,7 @@ class_name Spell extends Resource
 @export var damage := 10
 @export var charge_cost := 0.0   ## signature meter needed (0 = none)
 @export var icon: Texture2D
+@export var sfx := "swing"       ## Sfx sound played on cast (see scripts/sfx.gd)
 
 ## Returns the cooldown (seconds) to apply after this cast.
 func cast(_caster: Node2D, _aim_dir: Vector2, _aim_pos: Vector2) -> float:

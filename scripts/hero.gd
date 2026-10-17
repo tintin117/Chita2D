@@ -68,6 +68,7 @@ func make_basic() -> Spell:
 		s.lunge_speed = 300.0
 	else:
 		s.mode = "bolt"
+		s.sfx = "shoot"
 		s.bolt_speed = bolt_speed
 		s.bolt_life = attack_range / bolt_speed    # travel distance == attack_range
 		s.bolt_pierce = bolt_pierce

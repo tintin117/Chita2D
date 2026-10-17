@@ -8,6 +8,7 @@ func _init() -> void:
 	display_name = "Snipe Shot"
 	cooldown = 3.0
 	damage = 45
+	sfx = "shoot"
 
 func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	var p := Projectile.new().setup(caster.global_position + aim_dir * 30.0 + Vector2(0, 8), aim_dir * SPEED, damage, true, caster)

@@ -5,6 +5,7 @@ func _init() -> void:
 	display_name = "Fire Wave"
 	cooldown = 4.0
 	damage = 14
+	sfx = "shoot"
 
 func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	for i in 5:

@@ -1,0 +1,24 @@
+Sound effects in this folder are from Kenney's "Impact Sounds" and "Interface Sounds" packs
+(https://kenney.nl/assets/impact-sounds, https://kenney.nl/assets/interface-sounds),
+released under Creative Commons Zero (CC0 1.0): http://creativecommons.org/publicdomain/zero/1.0/
+Credit is appreciated but not required.
+
+Files are renamed to the sound names used by scripts/sfx.gd. Which source clip feeds which sound:
+  swing <- scratch_001, scratch_002, scratch_003
+  shoot <- pluck_001, pluck_002
+  hit <- impactPunch_medium_000, impactPunch_medium_001, impactPunch_medium_002
+  hit_big <- impactPunch_heavy_000, impactPunch_heavy_001, impactPunch_heavy_002
+  explosion <- impactPlate_heavy_000, impactPlate_heavy_001, impactPlate_heavy_002
+  dash <- minimize_002, minimize_003
+  pickup <- confirmation_001, confirmation_002
+  kill <- bong_001
+  death <- impactSoft_heavy_000, impactSoft_heavy_001
+  respawn <- open_001
+  splash <- drop_001, drop_002, drop_003
+  bomb_tick <- tick_001, tick_002
+  bomb_boom <- impactMetal_heavy_000, impactMetal_heavy_001
+  cluck <- question_001, question_002, question_003
+  emote <- select_001, select_002, select_003
+  crown <- impactBell_heavy_004
+  fight <- impactBell_heavy_002
+  win <- confirmation_004

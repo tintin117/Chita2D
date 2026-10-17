@@ -7,6 +7,7 @@ func _init() -> void:
 	display_name = "Blast"
 	cooldown = 3.0
 	damage = 28
+	sfx = "shoot"
 
 func cast(caster: Node2D, _aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var offset := (aim_pos - caster.global_position).limit_length(MAX_RANGE)

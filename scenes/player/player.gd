@@ -4,7 +4,9 @@ class_name Player extends CharacterBody2D
 signal hp_changed(hp: int, max_hp: int)
 signal downed
 signal stats_changed   ## level, skill rank or gear changed and stats were recomputed
-signal fragged(victim: Player, killer_peer: int)   ## online: emitted on every peer when a player dies (killer_peer 0 = no player)
+signal bomb_touch(other: Player)   ## the hot-potato carrier (owner's peer only) touched `other`; the match decides the pass
+signal emoted(player: Player)
+signal fragged(victim: Player, killer_peer: int, cause: String)   ## online: emitted on every peer when a player dies (killer_peer 0 = no player; cause = "hit" | "fall" | "bomb")
 
 const SLOTS := ["basic", "spell1", "spell2", "signature"]
 const MAX_DASH := 3
@@ -18,11 +20,27 @@ const COLORS := ["Blue", "Yellow", "Red", "Black"]   ## Tiny Swords unit colours
 const NAME_COLORS := [Color("5fa8ff"), Color("ffd84a"), Color("ff6a5f"), Color("b9b9c8"), Color("6fe08a"), Color("e08aff"), Color("ff9a3c"), Color("4fe3e3")]
 const RESPAWN_TIME := 3.0
 const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
+const KNOCK_BASE := 420.0          ## launch speed of any hit; grows with damage (a 10-dmg hit slides ~140 px, a 45-dmg snipe ~500 px)
+const KNOCK_PER_DMG := 14.0
+const KNOCK_MAX := 1500.0
+const KNOCK_DECEL := 1100.0
+const SINK_TIME := 0.3             ## seconds over water before you drown
+const LAST_HIT_WINDOW := 4.0       ## a fall within this long of a hit is credited to the hitter
+const GIANT_SCALE := 1.8
+const BOMB_FUSE := 8.0
+const BOMB_GRACE := 1.2            ## after getting or passing the bomb, no passing for this long (no instant ping-pong)
+const BOMB_PASS_DIST := 56.0
+const EMOTES := ["Bonk!", "Haha", "Oops", "GG"]
+const EMOTE_COOLDOWN := 1.5
+const CHICKEN_SCALE := 0.7
 
 @export var player_index := 0
 var online := false         ## set by the match before add_child; the node's multiplayer authority is then the owning peer
 var display_name := ""
 var respawn_point := Callable()   ## online: returns a Vector2; set by the match
+var water_check := Callable()     ## online: (Vector2) -> bool, true over water; set by the match (the arena has no shore walls)
+var last_hit_peer := 0            ## peer of the last player to hurt this one (credited if they then fall in the water)
+var last_hit_msec := 0
 var rng := RandomNumberGenerator.new()   ## reseeded from every cast so all peers roll the same AoE layout
 var net_pos := Vector2.ZERO   ## replicated; puppets ease toward it
 @export var max_hp := 100
@@ -57,7 +75,22 @@ var _puppet := false       ## online and owned by another peer: no input, positi
 var _mouse_aim := true     ## P1 only: aim with the mouse until a gamepad is touched, then with the right stick
 var _swing := false        ## alternates basic-attack animations (cast / cast2) when the hero has both
 var _iframes := 0.0
+var _sink := 0.0           ## seconds spent over water
+var crowned := false: set = _set_crowned   ## wears the match crown (set by the match); drawn as a crown and a beam
+var has_bomb := false      ## carrying the hot potato; every peer ticks bomb_left, the host decides when it blows
+var bomb_left := 0.0
+var _bomb_grace := 0.0
+var _bomb_tick := 0.0
+var _cluck_at := 0
+var _emote_cd := 0.0
+var _emote_text := ""
+var _emote_until := 0
+var _shape: CircleShape2D
 var _sprite: AnimatedSprite2D
+
+## Launch speed for a hit of `amount` damage.
+static func knock_for(amount: int) -> float:
+	return minf(KNOCK_BASE + amount * KNOCK_PER_DMG, KNOCK_MAX)
 
 ## Closest living player, or null.
 static func nearest_alive(tree: SceneTree, pos: Vector2) -> Player:
@@ -81,6 +114,7 @@ func _ready() -> void:
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 14.0
+	_shape = circle
 	shape.shape = circle
 	shape.position = Vector2(0, 14)
 	add_child(shape)
@@ -190,14 +224,115 @@ func buff_left(kind: String) -> float:
 ## A PvP pickup was taken by this player. Runs on every peer; only the owner touches its own HP.
 func apply_pickup(kind: String) -> void:
 	float_text(PvpPickup.LABELS[kind], PvpPickup.COLORS[kind])
-	if kind == "heal":
-		if is_multiplayer_authority():
-			heal(int(max_hp * 0.5))
-			_net_hp.rpc(hp)
-	else:
-		buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIME
+	match kind:
+		"heal":
+			if is_multiplayer_authority():
+				heal(int(max_hp * 0.5))
+				_net_hp.rpc(hp)
+		"bomb":
+			give_bomb(BOMB_FUSE)
+		_:   # damage / speed / giant / chicken: timed forms, read from the buffs on every peer
+			buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIME
 
-func float_text(text: String, color: Color) -> void:
+func _speed_mult() -> float:
+	var m := SPEED_BUFF if buffed("speed") else 1.0
+	if buffed("giant"):
+		m *= 0.8
+	if buffed("chicken"):
+		m *= 1.8
+	return m
+
+## Damage after the victim's own form: giant takes 40% less, chicken 50% more.
+func form_damage(amount: int) -> int:
+	if buffed("giant"):
+		return roundi(amount * 0.6)
+	if buffed("chicken"):
+		return roundi(amount * 1.5)
+	return amount
+
+## Launch multiplier from the attacker's form (giant hits harder) and the victim's (giant is heavy).
+func form_knock(attacker: Node) -> float:
+	var m := 1.0
+	if attacker is Player and attacker.buffed("giant"):
+		m *= 1.6
+	if buffed("giant"):
+		m *= 0.5
+	return m
+
+# --- hot potato
+
+func give_bomb(fuse: float) -> void:
+	has_bomb = true
+	bomb_left = fuse
+	_bomb_grace = BOMB_GRACE
+	_bomb_tick = 0.0
+	queue_redraw()
+
+func clear_bomb() -> void:
+	has_bomb = false
+	bomb_left = 0.0
+	_bomb_grace = BOMB_GRACE   # the player who just passed it can't take it straight back
+	queue_redraw()
+
+func _tick_bomb(delta: float) -> void:
+	_bomb_grace = maxf(_bomb_grace - delta, 0.0)
+	if not has_bomb or down:
+		return
+	bomb_left -= delta
+	_bomb_tick -= delta
+	if _bomb_tick <= 0.0:
+		Sfx.play("bomb_tick", global_position)
+		_bomb_tick = clampf(bomb_left * 0.12, 0.12, 0.8)   # ticks faster as the fuse burns down
+	queue_redraw()
+	if _puppet or _bomb_grace > 0.0:
+		return
+	for n in get_tree().get_nodes_in_group("players"):
+		var o := n as Player
+		if o and o != self and not o.down and not o.has_bomb and o.global_position.distance_to(global_position) < BOMB_PASS_DIST:
+			_bomb_grace = BOMB_GRACE   # one request per touch; the host answers with the real pass
+			bomb_touch.emit(o)
+			return
+
+func _set_crowned(v: bool) -> void:
+	crowned = v
+	queue_redraw()
+
+func _draw() -> void:
+	if crowned and not down:
+		var beam := Color(1.0, 0.85, 0.3, 0.3)
+		draw_polygon(PackedVector2Array([Vector2(-20, 14), Vector2(20, 14), Vector2(9, -520), Vector2(-9, -520)]),
+			PackedColorArray([beam, beam, Color(beam, 0.0), Color(beam, 0.0)]))
+		var c := PackedVector2Array([Vector2(-14, -92), Vector2(-14, -108), Vector2(-7, -100), Vector2(0, -112), Vector2(7, -100), Vector2(14, -108), Vector2(14, -92)])
+		draw_colored_polygon(c, Color(1.0, 0.85, 0.3))
+		draw_polyline(c + PackedVector2Array([c[0]]), Color.BLACK, 2.0)
+	if not has_bomb or down:
+		return
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * (0.01 + 0.02 / maxf(bomb_left, 0.5)))
+	draw_arc(Vector2(0, 14), 42.0 + pulse * 6.0, 0.0, TAU, 32, Color(1.0, 0.25, 0.2, 0.9), 4.0)
+	draw_circle(Vector2(0, 14), 40.0, Color(1.0, 0.2, 0.15, 0.12 + 0.18 * pulse))
+	draw_string(ThemeDB.fallback_font, Vector2(-30, -104), "%.1f" % maxf(bomb_left, 0.0), HORIZONTAL_ALIGNMENT_CENTER, 60, 22, Color(1.0, 0.6, 0.3))
+
+# --- emotes
+
+func _try_emote() -> void:
+	_emote_cd = maxf(_emote_cd - get_physics_process_delta_time(), 0.0)
+	if _emote_cd > 0.0:
+		return
+	for i in EMOTES.size():
+		if Input.is_action_just_pressed("emote_%d" % (i + 1)):
+			_emote_cd = EMOTE_COOLDOWN
+			_net_emote.rpc(i)
+			return
+
+@rpc("authority", "call_local", "reliable")
+func _net_emote(idx: int) -> void:
+	if idx < 0 or idx >= EMOTES.size():
+		return
+	Sfx.play("emote", global_position)
+	float_text(EMOTES[idx], NAME_COLORS[player_index % NAME_COLORS.size()], 30)
+	emoted.emit(self)
+
+func float_text(text: String, color: Color, font_size := 18) -> void:
 	if not is_inside_tree():
 		return
 	var l := Label.new()
@@ -207,7 +342,7 @@ func float_text(text: String, color: Color) -> void:
 	l.size = Vector2(160, 24)
 	l.position = Vector2(-80, -90)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_outline_color", Color.BLACK)
 	l.add_theme_constant_override("outline_size", 5)
 	add_child(l)
@@ -225,6 +360,7 @@ func _input(event: InputEvent) -> void:
 		_mouse_aim = false
 
 func _physics_process(delta: float) -> void:
+	_tick_bomb(delta)
 	if _puppet:
 		_puppet_tick(delta)
 		return
@@ -239,21 +375,65 @@ func _physics_process(delta: float) -> void:
 	else:
 		if Input.is_action_just_pressed(_p + "dash") and dash_charges > 0:
 			_start_dash(move)
-		velocity = Vector2.ZERO if _firing() else move * speed * (SPEED_BUFF if buffed("speed") else 1.0)  # hold attack = stand still, aim with move input
+		velocity = Vector2.ZERO if _firing() else move * speed * _speed_mult()  # hold attack = stand still, aim with move input
 		_try_cast()
+		_try_emote()
 	velocity += knock
 	move_and_slide()
 	net_pos = position
 	_animate(move)
+	if _update_sink(delta):
+		_fall()
+	_apply_look()
 
 ## Another peer's player: ease toward the replicated position, animate from the movement.
 func _puppet_tick(delta: float) -> void:
 	_cast_time = maxf(_cast_time - delta, 0.0)
+	_update_sink(delta)   # puppets only show the sinking; the owner decides when it kills
+	_apply_look()
 	if down:
 		return
 	var off := net_pos - position
 	position = net_pos if off.length() > 300.0 else position.lerp(net_pos, 1.0 - exp(-20.0 * delta))
 	_animate(off if off.length() > 3.0 else Vector2.ZERO)
+
+## Counts time over water (shared by owner and puppets so everyone sees the sinking). True once the drowning is complete.
+func _update_sink(delta: float) -> bool:
+	if down or not water_check.is_valid():
+		return false
+	if water_check.call(global_position + Vector2(0, 14)):
+		if _sink == 0.0:
+			Sfx.play("splash", global_position)
+			SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 1.0).modulate = Color(0.55, 0.75, 1.0)
+		_sink += delta
+	else:
+		_sink = 0.0
+	return _sink >= SINK_TIME
+
+## Size, tint and wobble from the active forms (giant / chicken) and the sinking fade. self_modulate, so _flash() keeps its own tween.
+func _apply_look() -> void:
+	var s := 1.0
+	var tint := Color.WHITE
+	_sprite.rotation = 0.0
+	if buffed("giant"):
+		s = GIANT_SCALE
+	elif buffed("chicken"):
+		s = CHICKEN_SCALE
+		tint = Color(1.0, 0.95, 0.4)
+		_sprite.rotation = sin(Time.get_ticks_msec() * 0.03) * 0.15
+	if buffed("chicken") and Time.get_ticks_msec() > _cluck_at:
+		Sfx.play("cluck", global_position)
+		_cluck_at = Time.get_ticks_msec() + randi_range(900, 1500)
+	_shape.radius = 14.0 * maxf(s, 1.0)   # a giant is also harder to miss
+	var sink := clampf(_sink / SINK_TIME, 0.0, 1.0)
+	_sprite.scale = Vector2.ONE * s * (1.0 - 0.7 * sink)
+	_sprite.position = Vector2(0, -(s - 1.0) * 20.0)   # keep the feet on the ground while resizing
+	_sprite.self_modulate = Color(tint, 1.0 - sink)
+
+## Drowned: the owner announces the death, crediting the last player who hit us recently.
+func _fall() -> void:
+	var killer := last_hit_peer if Time.get_ticks_msec() - last_hit_msec < LAST_HIT_WINDOW * 1000.0 else 0
+	_net_died.rpc(killer, "fall")
 
 func _tick_timers(delta: float) -> void:
 	_iframes = maxf(_iframes - delta, 0.0)
@@ -261,7 +441,7 @@ func _tick_timers(delta: float) -> void:
 	_queued_time -= delta
 	if _queued_time <= 0.0:
 		_queued = -1
-	knock = knock.move_toward(Vector2.ZERO, 1800.0 * delta)
+	knock = knock.move_toward(Vector2.ZERO, KNOCK_DECEL * delta)
 	for i in cooldowns.size():
 		cooldowns[i] = maxf(cooldowns[i] - delta, 0.0)
 	if dash_charges < MAX_DASH:
@@ -293,6 +473,7 @@ func _start_dash(move: Vector2) -> void:
 	if dash_recharge <= 0.0:
 		dash_recharge = DASH_RECHARGE
 	_cast_time = 0.0  # dash cancels the cast lock
+	Sfx.play("dash", global_position)
 	_dash_vec = move if move != Vector2.ZERO else aim_dir
 	_dash_time = DASH_TIME
 	_dash_speed = DASH_SPEED
@@ -311,6 +492,8 @@ func _firing() -> bool:
 	return false
 
 func _try_cast() -> void:
+	if buffed("chicken"):
+		return
 	for i in SLOTS.size():
 		if Input.is_action_just_pressed(_p + SLOTS[i]) and cooldowns[i] > 0.0:
 			_queued = i
@@ -337,6 +520,7 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int) -> void:
 
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
 func _play_cast(slot: int) -> void:
+	Sfx.play(spells[slot].sfx, global_position)
 	var anim := "cast"
 	if slot == 0 and _sprite.sprite_frames.has_animation("cast2"):
 		_swing = not _swing
@@ -364,11 +548,14 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		return
 	if attacker is Player and attacker.buffed("damage"):   # victim-side hit: read the attacker's copy of the buff
 		amount *= 2
-	amount = roundi(amount * RuleSet.current.damage)
+	amount = form_damage(roundi(amount * RuleSet.current.damage))
 	hp = maxi(hp - amount, 0)
+	if attacker is Player:
+		last_hit_peer = attacker.get_multiplayer_authority()
+		last_hit_msec = Time.get_ticks_msec()
 	if not silent:   # rapid-tick hits (blade storm, arrow barrage) neither stagger nor grant i-frames
 		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
-		knock = (global_position - from_pos).normalized() * 380.0
+		knock = (global_position - from_pos).normalized() * knock_for(amount) * form_knock(attacker)
 	_flash()
 	hp_changed.emit(hp, max_hp)
 	if not online:
@@ -376,7 +563,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 			_die()
 		return
 	if hp == 0:
-		_net_died.rpc(attacker.get_multiplayer_authority() if attacker is Player else 0)
+		_net_died.rpc(attacker.get_multiplayer_authority() if attacker is Player else 0, "hit" if attacker is Player else "bomb")   # no attacker = an ownerless Explosion (the hot potato)
 	else:
 		_net_hp.rpc(hp)
 
@@ -386,6 +573,7 @@ func _flash() -> void:
 
 func _die() -> void:
 	down = true
+	queue_redraw()
 	buffs.clear()
 	velocity = Vector2.ZERO
 	_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
@@ -400,11 +588,13 @@ func _net_hp(value: int) -> void:
 	hp_changed.emit(hp, max_hp)
 
 @rpc("authority", "call_local", "reliable")
-func _net_died(killer_peer: int) -> void:
+func _net_died(killer_peer: int, cause: String) -> void:
 	hp = 0
 	hp_changed.emit(hp, max_hp)
+	Sfx.play("death", global_position)
+	_sink = SINK_TIME if cause == "fall" else 0.0   # a drowned player stays under until the respawn
 	_die()
-	fragged.emit(self, killer_peer)
+	fragged.emit(self, killer_peer, cause)
 	if is_multiplayer_authority():
 		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_respawn)
 
@@ -418,10 +608,14 @@ func _net_respawn(pos: Vector2) -> void:
 	net_pos = pos
 	knock = Vector2.ZERO
 	revive(1.0)
+	Sfx.play("respawn", pos)
 	_iframes = 2.0
 
 func revive(hp_fraction := 0.5) -> void:
 	down = false
+	queue_redraw()
+	_sink = 0.0
+	last_hit_peer = 0
 	hp = maxi(int(max_hp * hp_fraction), 1)
 	_iframes = 1.5
 	_sprite.modulate = Color.WHITE

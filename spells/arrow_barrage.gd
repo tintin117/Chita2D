@@ -33,6 +33,7 @@ func _init() -> void:
 	cooldown = 0.5
 	damage = 8
 	charge_cost = 100.0
+	sfx = "shoot"
 
 func cast(caster: Node2D, _aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	var b := Barrage.new()

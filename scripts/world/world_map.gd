@@ -36,6 +36,7 @@ var camps: Array[Dictionary] = []       ## {pos: Vector2, tier: int 1..3, radius
 var objective_sites: Array[Vector2] = [] ## one per alcove
 var spawn_points: Array[Vector2] = []   ## arena only: respawn spots round the rim
 var cover: Array[Vector2] = []          ## arena only: solid rocks (COVER_R) to fight around
+var open_shore := false                 ## arena only: no shore walls, so the water is deadly (see is_water)
 var chambers: Array[Dictionary] = []    ## {c: Vector2 (cells), r: float, kind: spawn|gate|camp|alcove}
 
 var _land := PackedByteArray()
@@ -69,6 +70,7 @@ func generate(new_seed: int, build_visuals := true) -> void:
 ## The fixed PvP arena (Overthrow-style): a rounded-rectangle plateau, 8 rim spawns, a pillar ring in the middle
 ## and symmetric rock cover. Same result on every call, so all peers can build it independently.
 func generate_arena(build_visuals := true) -> void:
+	open_shore = true
 	var mid := _begin_fixed(ARENA_HALF)
 	spawn_points.clear()
 	for k in 8:
@@ -124,6 +126,10 @@ func cell_of(pos: Vector2) -> Vector2i:
 
 func center_of(c: Vector2i) -> Vector2:
 	return (Vector2(c) + Vector2(0.5, 0.5)) * TILE
+
+## True over water (outside the plateau). Position is in world px.
+func is_water(pos: Vector2) -> bool:
+	return not is_land(cell_of(pos))
 
 func is_land(c: Vector2i) -> bool:
 	return c.x >= 0 and c.y >= 0 and c.x < SIZE.x and c.y < SIZE.y and _land[c.y * SIZE.x + c.x] == 1
@@ -420,7 +426,8 @@ func _build() -> void:
 	var walls := StaticBody2D.new()
 	walls.collision_layer = 1
 	walls.collision_mask = 0
-	ground.add_child(walls)
+	if not open_shore:
+		ground.add_child(walls)
 	for y in SIZE.y:   # water touching land, merged into horizontal runs; INSET makes the tree-line cell solid
 		var x := 0
 		while x < SIZE.x:

@@ -3,7 +3,7 @@ class_name ShieldCharge extends Spell
 
 const TIME := 0.28
 const SPEED := 780.0
-const SHOVE := 650.0
+const SHOVE := 1400.0
 
 class Rider extends Node:
 	var caster: Node2D
@@ -23,6 +23,7 @@ class Rider extends Node:
 				continue
 			_hit.append(e)
 			e.take_damage(dmg, pos, false, caster)
+			Sfx.play("hit_big", pos)
 			if e.is_multiplayer_authority():   # only the victim's own peer moves it
 				e.knock += dir * SHOVE
 			caster.on_dealt_damage(dmg)
@@ -33,6 +34,7 @@ func _init() -> void:
 	display_name = "Shield Charge"
 	cooldown = 4.0
 	damage = 22
+	sfx = "dash"
 
 func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	caster.lunge(aim_dir, TIME, SPEED)

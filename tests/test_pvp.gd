@@ -78,3 +78,53 @@ func test_buffs_expire() -> void:
 	assert_true(p.buffed("damage"))
 	p.buffs["damage"] = Time.get_ticks_msec() / 1000.0 - 1.0
 	assert_false(p.buffed("damage"))
+
+func test_knockback_grows_with_damage_and_caps() -> void:
+	assert_gt(Player.knock_for(45), Player.knock_for(10))
+	assert_gt(Player.knock_for(10), 400.0, "even a light hit launches")
+	assert_true(Player.knock_for(9999) <= Player.KNOCK_MAX)
+
+func test_arena_edge_is_water_and_the_inside_is_not() -> void:
+	var m := _arena()
+	assert_true(m.open_shore, "arena has no shore walls")
+	for s in m.spawn_points:
+		assert_false(m.is_water(s), "spawn on land")
+	assert_true(m.is_water(m.spawn_point + Vector2(6000, 0)), "far out is water")
+	var g := WorldMap.new()
+	track(g)
+	g.generate_gym(false)
+	assert_false(g.open_shore, "gym keeps its walls")
+
+func test_every_pickup_kind_is_complete() -> void:
+	for k: String in PvpPickup.KINDS:
+		assert_true(PvpPickup.LABELS.has(k) and PvpPickup.COLORS.has(k) and PvpPickup.ICONS.has(k) and PvpPickup.WEIGHTS.has(k), k)
+	for r in [0.0, 0.25, 0.5, 0.75, 0.999]:
+		assert_true(PvpPickup.roll(r) in PvpPickup.KINDS)
+		assert_true(PvpPickup.mystery_outcome(r) in PvpPickup.OUTCOMES)
+	assert_false("mystery" in PvpPickup.OUTCOMES, "a mystery box never yields another mystery box")
+
+func test_kill_lines_are_deterministic() -> void:
+	assert_eq(PvpMatch.kill_line("hit", "Ann", "Bo", 0), PvpMatch.kill_line("hit", "Ann", "Bo", 0))
+	assert_true("Ann" in PvpMatch.kill_line("hit", "Ann", "Bo", 3) and "Bo" in PvpMatch.kill_line("hit", "Ann", "Bo", 3))
+	assert_true("Bo" in PvpMatch.kill_line("fall", "", "Bo", 1))
+	assert_true("Ann" in PvpMatch.kill_line("fall", "Ann", "Bo", 1), "a push is credited in the line")
+	assert_true("Bo" in PvpMatch.kill_line("bomb", "", "Bo", 2))
+
+func test_crown_needs_a_strict_lead_and_three_kills() -> void:
+	assert_eq(PvpMatch.crown_holder({1: 2, 2: 0}), 0, "two kills is not enough")
+	assert_eq(PvpMatch.crown_holder({1: 3, 2: 1}), 1)
+	assert_eq(PvpMatch.crown_holder({1: 4, 2: 4}), 0, "a tie wears no crown")
+	assert_eq(PvpMatch.crown_holder({1: 5, 2: 4, 3: 1}), 1)
+
+func test_awards_only_for_things_that_happened() -> void:
+	var names := {1: "Ann", 2: "Bo"}
+	var st := {1: PvpMatch.new_stats(), 2: PvpMatch.new_stats()}
+	assert_eq(PvpMatch.awards(st, {1: 0, 2: 0}, {1: 0, 2: 0}, {}, names).size(), 0, "nothing happened, nothing awarded")
+	st[2].falls = 2
+	st[1].best = 4
+	var out := PvpMatch.awards(st, {1: 5, 2: 1}, {1: 0, 2: 4}, {Vector2i(1, 2): 3}, names)
+	var titles := out.map(func(a: Dictionary) -> String: return a.title)
+	for t in ["Top Fragger", "Killing Spree", "Nemesis", "Punching Bag", "Aquaman"]:
+		assert_true(t in titles, t)
+	assert_false("Chatterbox" in titles)
+	assert_true(out.size() <= 6)

@@ -63,6 +63,7 @@ func _on_body_entered(body: Node) -> void:
 		if body in _hit:
 			return
 		_hit.append(body)
+		Sfx.play("hit_big" if damage >= 30 else "hit", global_position)
 		if silent and from_player:
 			body.take_damage(damage, global_position, true, source)
 		else:
