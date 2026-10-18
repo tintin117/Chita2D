@@ -4,37 +4,79 @@ class_name HeroBasic extends Spell
 
 @export var mode := "bolt"
 @export var radius := 115.0          ## arc reach
-@export var arc_angle := 1.9
+@export var arc_angle := 2.2
+@export var windup := 0.1             ## melee: telegraph before the sweep turns live
+@export var active := 0.12            ## melee: how long the sweep keeps hitting (each foe once)
+@export var assist_angle := 0.35      ## melee/bolt aim assist: snap toward the nearest foe within this angle
 @export var lunge_speed := 0.0       ## melee: step forward with each sweep
 @export var bolt_speed := 640.0
-@export var bolt_radius := 10.0
+@export var bolt_radius := 16.0
 @export var bolt_life := 0.6
 @export var bolt_pierce := 0
 @export var finisher_spread := 1     ## extra bolt pairs on the finisher
 @export var finisher_mult := 1.0
-@export var finisher_cd_mult := 2.14 ## 0.28s -> 0.6s recovery after the finisher
+@export var finisher_cd_mult := 1.5  ## longer recovery after the finisher
 
 var _combo := 0
 var _last_msec := 0
 
 class Sweep extends Node2D:
+	## Telegraphs for `windup`, then hits every foe in the cone once during `active` (so stepping aside late still gets hit).
+	var caster: Node2D
 	var dir := Vector2.RIGHT
 	var reach := 115.0
-	var angle := 1.9
+	var angle := 2.2
+	var windup := 0.1
+	var active := 0.12
+	var dmg := 12
+	var finisher := false
+	var lunge_speed := 0.0
 	var _age := 0.0
+	var _lunged := false
+	var _landed := false
+	var _hit: Array[Node] = []
 
-	func _process(delta: float) -> void:
+	func _physics_process(delta: float) -> void:
 		_age += delta
-		if _age >= 0.22:
+		if not is_instance_valid(caster) or caster.down:
+			queue_free()
+			return
+		position = caster.global_position + Vector2(0, 8)
+		if _age < windup:
+			return
+		if not _lunged:
+			_lunged = true
+			if lunge_speed > 0.0:
+				caster.lunge(dir, 0.12 if finisher else 0.08, lunge_speed * (2.0 if finisher else 1.0))  # finisher steps in harder
+		for e in Spell.foes(caster):
+			var off := e.global_position - position
+			if e in _hit or off.length() > reach + 20.0:
+				continue
+			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0:
+				_hit.append(e)
+				e.take_damage(dmg, position, false, caster)
+				caster.on_dealt_damage(dmg)
+				if not _landed:
+					_landed = true
+					Sfx.play("hit_big" if finisher else "hit", position)
+
+	func _process(_delta: float) -> void:
+		if _age >= windup + active + 0.08:
 			queue_free()
 		queue_redraw()
 
 	func _draw() -> void:
-		var t := _age / 0.22
-		var pts := PackedVector2Array([Vector2.ZERO])
 		var base := dir.angle() - angle / 2.0
+		var pts := PackedVector2Array([Vector2.ZERO])
+		if _age < windup:   # telegraph: faint outline growing toward full reach
+			var w := _age / windup
+			for i in 13:
+				pts.append(Vector2.from_angle(base + angle * i / 12.0) * reach * (0.5 + 0.5 * w))
+			draw_polyline(pts.slice(1), Color(1, 0.8, 0.5, 0.25 + 0.4 * w), 2.0)
+			return
+		var t := clampf((_age - windup) / (active + 0.08), 0.0, 1.0)
 		for i in 13:
-			pts.append(Vector2.from_angle(base + angle * i / 12.0) * reach * (0.6 + 0.4 * minf(t * 3.0, 1.0)))
+			pts.append(Vector2.from_angle(base + angle * i / 12.0) * reach)
 		draw_colored_polygon(pts, Color(1.0, 0.5, 0.15, 0.55 * (1.0 - t)))
 		draw_polyline(pts.slice(1), Color(1, 1, 1, 0.8 * (1.0 - t)), 3.0)
 
@@ -48,27 +90,22 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	var dmg := int(damage * (finisher_mult if finisher else 1.0))
 	var scene := caster.get_tree().current_scene
 	if mode == "arc":
-		var origin := caster.global_position + Vector2(0, 8)
-		var landed := false
-		for e in Spell.foes(caster):
-			var off := e.global_position - origin
-			if off.length() <= radius + 16.0 and (off.length() < 24.0 or absf(aim_dir.angle_to(off)) <= arc_angle / 2.0):
-				e.take_damage(dmg, origin, false, caster)
-				caster.on_dealt_damage(dmg)
-				landed = true
-		if landed:
-			Sfx.play("hit_big" if finisher else "hit", origin)
 		var fx := Sweep.new()
-		fx.position = origin
-		fx.dir = aim_dir
+		fx.caster = caster
+		fx.dir = Spell.assist_dir(caster, aim_dir, assist_angle, radius + 40.0)
 		fx.reach = radius
 		fx.angle = arc_angle
+		fx.windup = windup
+		fx.active = active
+		fx.dmg = dmg
+		fx.finisher = finisher
+		fx.lunge_speed = lunge_speed
 		fx.z_index = 5
+		fx.position = caster.global_position + Vector2(0, 8)
 		scene.add_child(fx)
-		if lunge_speed > 0.0:
-			caster.lunge(aim_dir, 0.12 if finisher else 0.08, lunge_speed * (2.0 if finisher else 1.0))  # finisher steps in harder
 	else:
 		var extra := finisher_spread if finisher else 0
+		aim_dir = Spell.assist_dir(caster, aim_dir, assist_angle * 0.75, bolt_speed * bolt_life)
 		for i in extra * 2 + 1:
 			var dir := aim_dir.rotated((i - extra) * 0.22)
 			var p := Projectile.new().setup(caster.global_position + dir * 28.0 + Vector2(0, 8), dir * bolt_speed, dmg, true, caster)

@@ -16,7 +16,7 @@ func test_three_heroes_cover_melee_mid_and_long() -> void:
 func test_hero_basic_follows_attack_range() -> void:
 	for h in Hero.all():
 		var s := h.make_basic() as HeroBasic
-		assert_eq(s.cooldown, 0.28, h.id + " keeps the fast first-version pace")
+		assert_true(s.cooldown >= 0.4, h.id + " basic is a deliberate, not spammy, pace")
 		if h.attack_type == "melee":
 			assert_eq(s.mode, "arc")
 			assert_eq(s.radius, h.attack_range)

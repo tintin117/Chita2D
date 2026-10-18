@@ -19,3 +19,15 @@ static func foes(caster: Node) -> Array[Node2D]:
 		if n != caster and not n.down:
 			out.append(n)
 	return out
+
+## Aim assist: `dir` bent toward the closest foe inside `max_angle` (radians) and `max_dist`; unchanged if none.
+static func assist_dir(caster: Node2D, dir: Vector2, max_angle: float, max_dist: float) -> Vector2:
+	var best: Vector2 = dir
+	var best_off: float = max_angle
+	for e: Node2D in foes(caster):
+		var off: Vector2 = e.global_position - caster.global_position
+		var ang: float = absf(dir.angle_to(off))
+		if off.length() <= max_dist and ang <= best_off:
+			best_off = ang
+			best = off.normalized()
+	return best

@@ -35,10 +35,10 @@ static func all() -> Array[Hero]:
 				"rmb_skill": "shield_charge", "special_skill": "blade_storm"}),
 			_make({"id": "wizard", "display_name": "Wizard", "unit": "Monk", "attack_type": "ranged", "attack_range": 380.0,
 				"description": "Rapid fire bolts at mid range; every third cast fans out three.", "basic_name": "Fire Bolt",
-				"basic_damage": 10, "max_hp": 100, "speed": 260.0, "bolt_speed": 640.0, "finisher_spread": 1}),
+				"basic_damage": 10, "max_hp": 100, "speed": 260.0, "bolt_speed": 480.0, "finisher_spread": 1}),
 			_make({"id": "ranger", "display_name": "Ranger", "unit": "Archer", "attack_type": "ranged", "attack_range": 650.0,
 				"description": "Fast piercing shots from far away. Fragile, but never needs to get close.", "basic_name": "Flame Arrow",
-				"basic_damage": 9, "max_hp": 80, "speed": 275.0, "bolt_speed": 900.0, "bolt_pierce": 1, "finisher_spread": 0, "finisher_mult": 2.2,
+				"basic_damage": 9, "max_hp": 80, "speed": 275.0, "bolt_speed": 620.0, "bolt_pierce": 1, "finisher_spread": 0, "finisher_mult": 2.2,
 				"rmb_skill": "snipe_shot", "special_skill": "arrow_barrage"}),
 		]
 	return _all
@@ -55,11 +55,11 @@ static func _make(props: Dictionary) -> Hero:
 		h.set(k, props[k])
 	return h
 
-## The starting Basic: same fast 3-cast combo for every hero (0.28s casts, 0.6s after the finisher).
+## The starting Basic: same 3-cast combo for every hero (0.5s melee / 0.4s ranged casts, longer after the finisher).
 func make_basic() -> Spell:
 	var s := HeroBasic.new()
 	s.display_name = basic_name
-	s.cooldown = 0.28
+	s.cooldown = 0.5 if attack_type == "melee" else 0.4
 	s.damage = basic_damage
 	s.finisher_mult = finisher_mult
 	if attack_type == "melee":
@@ -72,7 +72,7 @@ func make_basic() -> Spell:
 		s.bolt_speed = bolt_speed
 		s.bolt_life = attack_range / bolt_speed    # travel distance == attack_range
 		s.bolt_pierce = bolt_pierce
-		s.bolt_radius = 10.0 if bolt_pierce == 0 else 8.0
+		s.bolt_radius = 16.0 if bolt_pierce == 0 else 13.0
 		s.finisher_spread = finisher_spread
 	return s
 

@@ -24,6 +24,7 @@ const KNOCK_BASE := 420.0          ## launch speed of any hit; grows with damage
 const KNOCK_PER_DMG := 14.0
 const KNOCK_MAX := 1500.0
 const KNOCK_DECEL := 1100.0
+const ATTACK_MOVE := 0.4          ## move speed multiplier while attacking
 const SINK_TIME := 0.3             ## seconds over water before you drown
 const LAST_HIT_WINDOW := 4.0       ## a fall within this long of a hit is credited to the hitter
 const GIANT_SCALE := 1.8
@@ -391,7 +392,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		if _dash_pressed() and dash_charges > 0:
 			_start_dash(move)
-		velocity = Vector2.ZERO if _firing() else move * speed * _speed_mult()  # hold attack = stand still, aim with move input
+		velocity = move * speed * _speed_mult() * (ATTACK_MOVE if _firing() else 1.0)  # attacking slows you instead of rooting you
 		_try_cast()
 		_try_emote()
 	velocity += knock
@@ -541,7 +542,7 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int) -> void:
 	var cd := spell.cast(self, dir, pos)
 	cooldowns[slot] = cd
 	cooldown_max[slot] = cd
-	_cast_time = clampf(cd, 0.25, 0.4)  # cover fast-attack cooldowns so tapping never unlocks movement
+	_cast_time = clampf(cd, 0.25, 0.5)  # cover fast-attack cooldowns so tapping never unlocks movement
 	_play_cast(slot)
 
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.

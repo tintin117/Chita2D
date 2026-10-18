@@ -137,7 +137,8 @@ func test_bot_lead_aims_ahead_of_a_moving_target() -> void:
 	assert_eq(aim.x, 400.0, "target moves only along y")
 
 func test_solo_roster_has_bots_that_need_no_loading() -> void:
-	var net: Node = Net
+	var net: Node = (load("res://scripts/net/net.gd") as GDScript).new()   # a fresh copy: inside the editor the Net autoload is only a placeholder with no script vars
+	track(net)
 	var saved: Dictionary = net.roster.duplicate(true)
 	net.roster = {1: {"name": "Me", "ready": true}, 1000: {"name": "Bot Ann", "ready": true, "bot": true}}
 	net._loaded.clear()
