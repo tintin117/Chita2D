@@ -32,6 +32,7 @@ const GIANT_SCALE := 1.8
 const BOMB_FUSE := 8.0
 const BOMB_GRACE := 1.2            ## after getting or passing the bomb, no passing for this long (no instant ping-pong)
 const BOMB_PASS_DIST := 56.0
+const SLOTS_NAME := ["LMB", "RMB"]
 const EMOTES := ["Bonk!", "Haha", "Oops", "GG"]
 const EMOTE_COOLDOWN := 1.5
 const CHICKEN_SCALE := 0.7
@@ -56,6 +57,7 @@ var equipment := {}         ## Item.SLOTS entry -> Item
 var damage_mult := 1.0      ## level * gear; already baked into spells[i].damage by recalc_stats()
 var cooldown_mult := 1.0
 var _base_spells: Array = []  ## [damage, cooldown] per slot before any bonus
+var weapons: Array = [null, null]   ## Friendslop: the FsWeapon held per slot (replaces the basic / skill while it lasts); kept on every peer
 var buffs := {}             ## PvP pickup kind -> expiry in seconds (Time.get_ticks_msec); kept on every peer so hits can read the attacker's
 
 var hp := 0
@@ -244,8 +246,41 @@ func apply_pickup(kind: String) -> void:
 				_net_hp.rpc(hp)
 		"bomb":
 			give_bomb(BOMB_FUSE)
-		_:   # damage / speed / giant / chicken: timed forms, read from the buffs on every peer
-			buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIME
+		_:
+			if PvpPickup.is_weapon(kind):
+				equip_weapon(kind)
+			else:   # damage / speed / giant / chicken: timed forms, read from the buffs on every peer
+				buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIME
+
+# --- Friendslop weapons
+
+## Takes a weapon into its slot (swapping out whatever was there). Runs on every peer.
+func equip_weapon(weapon_id: String) -> void:
+	var w := FsWeapon.make(weapon_id)
+	w.until = Time.get_ticks_msec() / 1000.0 + w.time
+	weapons[w.slot] = w
+	cooldowns[w.slot] = minf(cooldowns[w.slot], 0.2)   # usable right away
+	float_text("%s: %s x%d" % [Player.SLOTS_NAME[w.slot], w.display_name, w.uses], PvpPickup.tier_color(weapon_id), 20)
+
+## True while the slot's weapon has uses and time left.
+func weapon_active(slot: int) -> bool:
+	var w: FsWeapon = weapons[slot]
+	return w != null and w.uses > 0 and w.seconds_left() > 0.0
+
+## What a press of this slot casts right now: the weapon, else the hero's own spell.
+func spell_in(slot: int) -> Spell:
+	return weapons[slot] if weapon_active(slot) else (spells[slot] if slot < spells.size() else null)
+
+func clear_weapons() -> void:
+	weapons = [null, null]
+
+func _tick_weapons() -> void:
+	for i in weapons.size():
+		var w: FsWeapon = weapons[i]
+		# other peers allow a little slack: a cast the owner made just before its own expiry must still find the weapon
+		if w != null and (w.uses <= 0 or w.seconds_left() <= (0.0 if owns() else -0.6)):
+			weapons[i] = null
+			float_text("%s gone" % w.display_name, Color(0.8, 0.8, 0.8))
 
 func _speed_mult() -> float:
 	var m := (SPEED_BUFF if buffed("speed") else 1.0) * (_slow_mult if _slow_left > 0.0 else 1.0)
@@ -380,6 +415,7 @@ func _input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	_tick_bomb(delta)
+	_tick_weapons()
 	if _puppet:
 		_puppet_tick(delta)
 		return
@@ -603,27 +639,35 @@ func _try_cast() -> void:
 			_queued = i
 			_queued_time = BUFFER_TIME
 	for i in SLOTS.size():
-		var spell: Spell = spells[i] if i < spells.size() else null
+		var spell := spell_in(i)
 		if spell and cooldowns[i] <= 0.0 and (_queued == i or _held(i)):
 			_queued = -1
-			_net_cast.rpc(i, aim_dir, aim_pos, randi())
+			_net_cast.rpc(i + (2 if weapon_active(i) else 0), aim_dir, aim_pos, randi())   # slot 2/3 = the weapon in slot 0/1
 			return
 
 ## Runs on every peer (offline: just here), so every screen gets the same projectiles / sweeps / explosions.
 ## Damage still only lands on the victim's own peer (see take_damage).
 @rpc("authority", "call_local", "reliable")
 func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int) -> void:
-	var spell: Spell = spells[slot]
+	var weapon: FsWeapon = weapons[slot - 2] if slot >= 2 else null
+	slot %= 2
+	var spell: Spell = weapon if weapon != null else spells[slot]
 	rng.seed = seed_value
 	var cd := spell.cast(self, dir, pos)
+	if weapon != null:
+		cd *= cooldown_mult
+		weapon.uses -= 1
+		if weapon.uses <= 0:
+			weapons[slot] = null
+			float_text("%s empty" % weapon.display_name, Color(0.8, 0.8, 0.8))
 	cooldowns[slot] = cd
 	cooldown_max[slot] = cd
 	_cast_time = clampf(cd, 0.25, 0.5)  # cover fast-attack cooldowns so tapping never unlocks movement
-	_play_cast(slot)
+	_play_cast(slot, spell)
 
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
-func _play_cast(slot: int) -> void:
-	Sfx.play(spells[slot].sfx, global_position)
+func _play_cast(slot: int, spell: Spell) -> void:
+	Sfx.play(spell.sfx, global_position)
 	var anim := "cast"
 	if slot == 0 and _sprite.sprite_frames.has_animation("cast2"):
 		_swing = not _swing
@@ -674,6 +718,7 @@ func _die() -> void:
 	down = true
 	queue_redraw()
 	buffs.clear()
+	clear_weapons()
 	velocity = Vector2.ZERO
 	_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
 	_sprite.play("idle")

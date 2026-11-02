@@ -86,6 +86,9 @@ func _main() -> void:
 
 func _solo() -> void:
 	_box.add_child(_label("Practice vs bots", 20))
+	_box.add_child(_button("Mode: %s" % GameMode.title(Net.mode), func() -> void:
+		Net.set_mode(GameMode.next(Net.mode))))
+	_box.add_child(_label(GameMode.cfg(Net.mode).blurb, 14, Color(1, 1, 1, 0.6)))
 	_box.add_child(_button("Bot skill: %s" % DIFFICULTY[_difficulty][0], func() -> void:
 		_difficulty = (_difficulty + 1) % DIFFICULTY.size()
 		_refresh()))
@@ -135,6 +138,12 @@ func _room() -> void:
 		var r: Dictionary = Net.roster[id]
 		_box.add_child(_label("%s%s" % [r.name, "   (host)" if id == 1 else ""], 22, Player.NAME_COLORS[r.slot % Player.NAME_COLORS.size()]))
 	_box.add_child(_label("%d / %d players" % [Net.roster.size(), Net.MAX_PLAYERS], 14, Color(1, 1, 1, 0.6)))
+	if host:
+		_box.add_child(_button("Mode: %s   (click to change)" % GameMode.title(Net.mode), func() -> void:
+			Net.set_mode(GameMode.next(Net.mode))))
+	else:
+		_box.add_child(_label("Mode: %s" % GameMode.title(Net.mode), 18, Color(1, 0.85, 0.3)))
+	_box.add_child(_label(GameMode.cfg(Net.mode).blurb, 14, Color(1, 1, 1, 0.6)))
 	_box.add_child(_status)
 	if not host:
 		_box.add_child(_label("Waiting for the host to start...", 16))

@@ -126,4 +126,22 @@ func _draw_skills() -> void:
 				draw_circle(r.position + Vector2(SLOT - 9, 9), 8, Color(0.2, 0.6, 0.25))
 				_text(r.position + Vector2(SLOT - 17, 15), "+", 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 16.0)
 		draw_rect(r, border, false, 2.0)
+		_draw_weapon(i, r)
 		_text(r.position + Vector2(0, SLOT + 16), hints[i], 12, Color(0.9, 0.9, 0.9), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+
+## Friendslop: the weapon held in slot i covers the slot with its tier colour, icon, uses left and a time bar; its name sits above.
+func _draw_weapon(i: int, r: Rect2) -> void:
+	if not player.weapon_active(i):
+		return
+	var w: FsWeapon = player.weapons[i]
+	var col := PvpPickup.tier_color(w.id)
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+	draw_rect(r, Color(0.06, 0.06, 0.09, 0.97))
+	draw_rect(r.grow(-3), Color(PvpPickup.COLORS[w.id], 0.35))
+	_text(r.position + Vector2(0, 28), PvpPickup.ICONS[w.id], 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	_text(r.position + Vector2(0, 46), "x%d" % w.uses, 15, Color(1, 0.95, 0.6), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	var left := clampf(w.seconds_left() / w.time, 0.0, 1.0)
+	draw_rect(Rect2(r.position + Vector2(0, -7), Vector2(SLOT, 5)), Color(0, 0, 0, 0.8))
+	draw_rect(Rect2(r.position + Vector2(0, -7), Vector2(SLOT * left, 5)), Color(col, 0.7 + 0.3 * pulse) if left > 0.25 else Color(1, 0.3, 0.2, 0.6 + 0.4 * pulse))
+	draw_rect(r, Color(col, 0.7 + 0.3 * pulse), false, 3.0)
+	_text(r.position + Vector2(SLOT * 0.5 - 70.0, -12 - i * 14), "%s  %ds" % [w.display_name, ceili(w.seconds_left())], 12, col, HORIZONTAL_ALIGNMENT_CENTER, 140.0)

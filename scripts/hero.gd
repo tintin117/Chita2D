@@ -54,7 +54,22 @@ static func all() -> Array[Hero]:
 		]
 	return _all
 
+## The Friendslop hero: deliberately modest (short bonk, a shove for a skill) so the drops make the difference.
+## Not in all(): it is never offered on the hero pick screen and Classic bots never use it.
+static var _bonker: Hero
+
+static func bonker() -> Hero:
+	if _bonker == null:
+		_bonker = _make({"id": "bonker", "display_name": "Bonker", "unit": "Warrior", "attack_type": "melee", "attack_range": 95.0,
+			"description": "Everyone's the same. A short bonk and a shove: the loot decides who wins.",
+			"basic_name": "Bonk", "basic_damage": 9, "max_hp": 110, "speed": 265.0, "finisher_mult": 1.4,
+			"basic_cd": 0.5, "arc_angle": 2.0, "lunge": 140.0,
+			"rmb_skill": "shove", "rmb_text": "Slam a shockwave that launches foes away. Great near water."})
+	return _bonker
+
 static func by_id(hero_id: String) -> Hero:
+	if hero_id == "bonker":
+		return bonker()
 	for h in all():
 		if h.id == hero_id:
 			return h
@@ -94,6 +109,7 @@ static func make_skill(skill_id: String) -> Spell:
 		"shield_charge": return ShieldCharge.new()
 		"shadow_step": return ShadowStep.new()
 		"snipe_shot": return SnipeShot.new()
+		"shove": return Shove.new()
 	return EmberField.new()
 
 ## Slot order: basic (LMB), signature skill (RMB).

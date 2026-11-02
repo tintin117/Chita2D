@@ -204,7 +204,7 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 	for i: int in [1, 0]:   # the signature first, then the basic
 		if i >= _p.spells.size():
 			continue
-		var s: Spell = _p.spells[i]
+		var s: Spell = _p.spell_in(i)   # a Friendslop weapon, when one is held
 		if _p.cooldowns[i] > 0.04 or not _fits(s, dist, los, tpos):
 			continue
 		if i == 0 and not _bursting:
@@ -222,6 +222,10 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 
 ## Does this skill make sense at this range? Bolts need a clear line, blasts and arcs do not.
 func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
+	if s is FsWeapon:
+		return dist >= s.min_range and dist <= s.max_range and (los or not s.needs_los)
+	if s is Shove:
+		return dist < Shove.REACH - 25.0
 	var hb := s as HeroBasic
 	if hb:
 		if hb.mode == "arc":
@@ -274,6 +278,8 @@ func _aim_for(s: Spell, from: Vector2, tpos: Vector2) -> Vector2:
 	if s is ShadowStep:
 		return tpos
 	var speed := 0.0
+	if s is FsWeapon:
+		speed = s.lead_speed
 	var hb := s as HeroBasic
 	if hb and hb.mode == "bolt":
 		speed = hb.bolt_speed
@@ -334,6 +340,8 @@ func _best_pickup(me: Vector2, hp_frac: float) -> Dictionary:
 		return best
 	for pk: PvpPickup in _arena._pickups.values():
 		var value: float = PICKUP_VALUE.get(pk.kind, 0.0)
+		if PvpPickup.is_weapon(pk.kind):
+			value = 0.9 + 0.5 * PvpPickup.tier_of(pk.kind)
 		if pk.kind == "heal":
 			value = 0.15 if hp_frac > 0.9 else 1.0 + (1.0 - hp_frac) * 3.0
 		if value <= 0.0:
