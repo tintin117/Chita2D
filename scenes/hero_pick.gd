@@ -79,6 +79,7 @@ func _card(h: Hero, color: String, group: ButtonGroup) -> Control:
 	pic.custom_minimum_size = Vector2(180, 180)
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.modulate = h.tint
 	v.add_child(pic)
 	var b := Button.new()
 	b.text = h.display_name
@@ -90,8 +91,12 @@ func _card(h: Hero, color: String, group: ButtonGroup) -> Control:
 	v.add_child(b)
 	var desc := _label(h.description, 13, Color(1, 1, 1, 0.8))
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.custom_minimum_size = Vector2(220, 56)
+	desc.custom_minimum_size = Vector2(220, 84)
 	v.add_child(desc)
+	var rmb := _label("RMB  %s: %s" % [h.make_skill(h.rmb_skill).display_name, h.rmb_text], 12, Color(1, 0.9, 0.6))
+	rmb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rmb.custom_minimum_size = Vector2(220, 48)
+	v.add_child(rmb)
 	v.add_child(_label("HP %d    Speed %d    Range %d" % [h.max_hp, h.speed, h.attack_range], 12, Color(1, 0.85, 0.3)))
 	return v
 

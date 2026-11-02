@@ -9,7 +9,7 @@ signal changed                      ## anything a stat or the HUD cares about mo
 
 const LEVEL_CAP := 10
 const RANK_CAP := 5
-const SLOTS := 4                    ## basic, right click, Q, signature (same order as Player.SLOTS)
+const SLOTS := 2                    ## basic, right click (same order as Player.SLOTS)
 
 const HP_PER_LEVEL := 10
 const DAMAGE_PER_LEVEL := 0.04      ## fraction
@@ -26,7 +26,7 @@ var level := 1
 var xp := 0
 var skill_points := 0
 var power_stacks := 0
-var ranks: Array[int] = [1, 1, 1, 1]
+var ranks: Array[int] = [1, 1]
 
 func xp_to_next() -> int:
 	return 0 if level >= LEVEL_CAP else roundi(20.0 * pow(level, 1.4))

@@ -5,8 +5,8 @@ class_name HeroSelect extends CanvasLayer
 
 signal finished(heroes: Array)
 
-const CARD := Vector2(190, 412)
-const GAP := 12.0
+const CARD := Vector2(190, 440)   ## full size; Picker shrinks the width when several players share the screen
+const GAP := 8.0
 const INPUT_DELAY := 0.4
 const COLORS := ["Blue", "Yellow"]
 
@@ -86,7 +86,7 @@ func _process(delta: float) -> void:
 class Picker extends Control:
 	var index := 0
 	var count := 1
-	var cursor := 1          ## selected hero (starts on the Wizard)
+	var cursor := 2          ## selected hero (starts on the Mage)
 	var confirmed := false       ## keyboard / gamepad "I'm happy with this"
 	var _hover := -1
 	var _p := "p1_"
@@ -95,13 +95,19 @@ class Picker extends Control:
 	func _ready() -> void:
 		_p = "p%d_" % (index + 1)
 
+	func _card_size() -> Vector2:
+		var n := Hero.all().size()
+		var room := get_viewport_rect().size.x / count - 24.0 - (n - 1) * HeroSelect.GAP
+		return Vector2(minf(HeroSelect.CARD.x, room / n), HeroSelect.CARD.y)
+
 	## Screen rect of hero card i (shared by drawing and mouse picking).
 	func _card(i: int) -> Rect2:
 		var n := Hero.all().size()
-		var w := n * HeroSelect.CARD.x + (n - 1) * HeroSelect.GAP
+		var cs := _card_size()
+		var w := n * cs.x + (n - 1) * HeroSelect.GAP
 		var cx := get_viewport_rect().size.x * (index + 0.5) / count
-		var top := (get_viewport_rect().size.y - HeroSelect.CARD.y) / 2.0 + 20.0
-		return Rect2(Vector2(cx - w / 2.0 + i * (HeroSelect.CARD.x + HeroSelect.GAP), top), HeroSelect.CARD)
+		var top := (get_viewport_rect().size.y - cs.y) / 2.0 + 20.0
+		return Rect2(Vector2(cx - w / 2.0 + i * (cs.x + HeroSelect.GAP), top), cs)
 
 	func _select(i: int) -> void:
 		cursor = i
@@ -140,7 +146,7 @@ class Picker extends Control:
 		var font := ThemeDB.fallback_font
 		var heroes := Hero.all()
 		var first := _card(0)
-		var w := heroes.size() * HeroSelect.CARD.x + (heroes.size() - 1) * HeroSelect.GAP
+		var w := heroes.size() * _card_size().x + (heroes.size() - 1) * HeroSelect.GAP
 		var tag := "P%d  %s" % [index + 1, ("READY: " if confirmed else "Selected: ") + heroes[cursor].display_name]
 		draw_string(font, Vector2(first.position.x, first.position.y - 16), tag, HORIZONTAL_ALIGNMENT_LEFT, w, 22, Color(0.6, 1, 0.6) if confirmed else Color(1, 0.9, 0.6))
 		for i in heroes.size():
@@ -148,23 +154,24 @@ class Picker extends Control:
 			var r := _card(i)
 			var sel := i == cursor
 			var accent := Color(1.0, 0.55, 0.2) if h.attack_type == "melee" else Color(0.45, 0.75, 1.0)
+			var psize := minf(160.0, r.size.x - 20.0)
 			draw_rect(r, Color(0.08, 0.07, 0.12, 0.96) if not sel else Color(0.14, 0.12, 0.2, 0.98))
 			draw_rect(Rect2(r.position, Vector2(r.size.x, 40)), Color(accent, 0.5))
 			draw_string(font, r.position + Vector2(10, 28), h.display_name, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 24, Color.WHITE)
 			if sel:
 				draw_string(font, r.position + Vector2(0, 28), "READY" if confirmed else "SELECTED", HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 10, 13, Color(0.6, 1, 0.6) if confirmed else Color(1, 0.95, 0.5))
 			var tex := h.portrait(HeroSelect.COLORS[index % 2])
-			draw_texture_rect(tex, Rect2(r.position + Vector2(r.size.x / 2.0 - 80, 42), Vector2(160, 160)), false)
+			draw_texture_rect(tex, Rect2(r.position + Vector2(r.size.x / 2.0 - psize / 2.0, 42), Vector2(psize, psize)), false, h.tint)
 			var kind := "Melee" if h.attack_type == "melee" else ("Mid range" if h.attack_range < 500.0 else "Long range")
 			draw_string(font, r.position + Vector2(10, 220), "%s: %s" % [kind, h.basic_name], HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 13, accent.lightened(0.3))
-			_stat(r.position + Vector2(10, 232), "Range", h.attack_range / Hero.MAX_RANGE_FOR_UI, accent)
-			_stat(r.position + Vector2(10, 252), "Health", h.max_hp / 150.0, Color(0.9, 0.3, 0.3))
-			_stat(r.position + Vector2(10, 272), "Speed", h.speed / 300.0, Color(0.5, 0.9, 0.5))
-			_stat(r.position + Vector2(10, 292), "Damage", h.basic_damage / 14.0, Color(1.0, 0.8, 0.3))
-			draw_multiline_string(font, r.position + Vector2(10, 326), h.description, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 12, 3, Color(0.85, 0.85, 0.85))
+			_stat(r.position + Vector2(10, 232), "Range", h.attack_range / Hero.MAX_RANGE_FOR_UI, accent, r.size.x - 78.0)
+			_stat(r.position + Vector2(10, 252), "Health", h.max_hp / 150.0, Color(0.9, 0.3, 0.3), r.size.x - 78.0)
+			_stat(r.position + Vector2(10, 272), "Speed", h.speed / 300.0, Color(0.5, 0.9, 0.5), r.size.x - 78.0)
+			_stat(r.position + Vector2(10, 292), "Damage", h.basic_damage / 14.0, Color(1.0, 0.8, 0.3), r.size.x - 78.0)
+			draw_multiline_string(font, r.position + Vector2(10, 326), h.description, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 12, 5, Color(0.85, 0.85, 0.85))
 			var kit := h.make_kit()
-			draw_string(font, r.position + Vector2(10, 376), "Right click: " + kit[1].display_name, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 13, Color(1, 0.9, 0.6))
-			draw_string(font, r.position + Vector2(10, 396), "Special: " + kit[3].display_name, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 13, Color(1, 0.9, 0.6))
+			draw_string(font, r.position + Vector2(10, 396), "Right click: " + kit[1].display_name, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 13, Color(1, 0.9, 0.6))
+			draw_multiline_string(font, r.position + Vector2(10, 412), h.rmb_text, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 11, 2, Color(0.8, 0.8, 0.7))
 			if sel:
 				draw_rect(r, Color(0.6, 1, 0.6) if confirmed else Color(1, 0.95, 0.5), false, 5.0)
 			elif i == _hover:
@@ -172,8 +179,8 @@ class Picker extends Control:
 			else:
 				draw_rect(r, Color(accent, 0.6), false, 2.0)
 
-	func _stat(pos: Vector2, label: String, frac: float, col: Color) -> void:
+	func _stat(pos: Vector2, label: String, frac: float, col: Color, bar := 112.0) -> void:
 		var font := ThemeDB.fallback_font
 		draw_string(font, pos + Vector2(0, 11), label, HORIZONTAL_ALIGNMENT_LEFT, 56, 12, Color(0.9, 0.9, 0.9))
-		draw_rect(Rect2(pos + Vector2(58, 2), Vector2(112, 9)), Color(0, 0, 0, 0.7))
-		draw_rect(Rect2(pos + Vector2(58, 2), Vector2(112.0 * clampf(frac, 0.05, 1.0), 9)), col)
+		draw_rect(Rect2(pos + Vector2(58, 2), Vector2(bar, 9)), Color(0, 0, 0, 0.7))
+		draw_rect(Rect2(pos + Vector2(58, 2), Vector2(bar * clampf(frac, 0.05, 1.0), 9)), col)

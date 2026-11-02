@@ -45,7 +45,7 @@ func _ready() -> void:
 	add_child(layer)
 
 	var walls := StaticBody2D.new()
-	walls.collision_layer = 1
+	walls.collision_layer = 1 | Player.WALL_MASK   # a dash passes rocks but never the room walls
 	walls.collision_mask = 0
 	var inner := Rect2(Vector2.ZERO, px).grow(-INSET)
 	var t := 200.0

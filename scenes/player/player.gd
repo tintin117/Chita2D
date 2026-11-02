@@ -1,5 +1,5 @@
 class_name Player extends CharacterBody2D
-## Wizard: move, aim, dash (charges), 4 spell slots. Input actions are prefixed p1_ / p2_.
+## A hero: move, aim, dash (charges, passes through rocks), and two skills: basic (LMB) and one signature skill (RMB). Input actions are prefixed p1_ / p2_.
 
 signal hp_changed(hp: int, max_hp: int)
 signal downed
@@ -8,9 +8,10 @@ signal bomb_touch(other: Player)   ## the hot-potato carrier (owner's peer only)
 signal emoted(player: Player)
 signal fragged(victim: Player, killer_peer: int, cause: String)   ## online: emitted on every peer when a player dies (killer_peer 0 = no player; cause = "hit" | "fall" | "bomb")
 
-const SLOTS := ["basic", "spell1", "spell2", "signature"]
+const SLOTS := ["basic", "skill"]   ## input action suffixes; slot 0 = LMB basic, slot 1 = RMB skill
+const SOLID_MASK := 1    ## collision layer of rocks and the dummy
+const WALL_MASK := 32    ## collision layer of the hard room walls (rocks are not on it): a dash never passes these
 const MAX_DASH := 3
-const MAX_CHARGE := 100.0
 const DASH_SPEED := 1500.0
 const DASH_TIME := 0.16
 const DASH_RECHARGE := 1.5
@@ -61,16 +62,19 @@ var hp := 0
 var down := false
 var aim_dir := Vector2.RIGHT
 var aim_pos := Vector2.ZERO
-var cooldowns: Array[float] = [0.0, 0.0, 0.0, 0.0]
-var cooldown_max: Array[float] = [1.0, 1.0, 1.0, 1.0]  ## last applied cooldown, for HUD
+var cooldowns: Array[float] = [0.0, 0.0]
+var cooldown_max: Array[float] = [1.0, 1.0]  ## last applied cooldown, for HUD
 var dash_charges := MAX_DASH
 var dash_recharge := 0.0
-var signature_charge := 0.0
 var knock := Vector2.ZERO
 var _p := "p1_"
 var _dash_time := 0.0
 var _dash_vec := Vector2.RIGHT
 var _dash_speed := DASH_SPEED
+var _ghost := false        ## mid-dash: rocks do not block, only the hard walls
+var _slow_mult := 1.0      ## movement slow from a field / aiming; lasts while _slow_left > 0
+var _slow_left := 0.0
+var _phase_left := 0.0     ## Shadow Step: untargetable and see-through
 var _cast_time := 0.0
 var _queued := -1          ## buffered slot index, -1 = none
 var _queued_time := 0.0
@@ -111,7 +115,7 @@ static func nearest_alive(tree: SceneTree, pos: Vector2) -> Player:
 func _ready() -> void:
 	add_to_group("players")
 	collision_layer = 2
-	collision_mask = 1
+	collision_mask = SOLID_MASK | WALL_MASK
 	_p = "p1_" if online else "p%d_" % (player_index + 1)
 	if peer_id == 0:
 		peer_id = get_multiplayer_authority()
@@ -244,7 +248,7 @@ func apply_pickup(kind: String) -> void:
 			buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIME
 
 func _speed_mult() -> float:
-	var m := SPEED_BUFF if buffed("speed") else 1.0
+	var m := (SPEED_BUFF if buffed("speed") else 1.0) * (_slow_mult if _slow_left > 0.0 else 1.0)
 	if buffed("giant"):
 		m *= 0.8
 	if buffed("chicken"):
@@ -397,6 +401,8 @@ func _physics_process(delta: float) -> void:
 		_try_emote()
 	velocity += knock
 	move_and_slide()
+	if _ghost and _dash_time <= 0.0:
+		_end_ghost()
 	net_pos = position
 	_animate(move)
 	if _update_sink(delta):
@@ -406,6 +412,7 @@ func _physics_process(delta: float) -> void:
 ## Another peer's player: ease toward the replicated position, animate from the movement.
 func _puppet_tick(delta: float) -> void:
 	_cast_time = maxf(_cast_time - delta, 0.0)
+	_phase_left = maxf(_phase_left - delta, 0.0)
 	_update_sink(delta)   # puppets only show the sinking; the owner decides when it kills
 	_apply_look()
 	if down:
@@ -430,13 +437,13 @@ func _update_sink(delta: float) -> bool:
 ## Size, tint and wobble from the active forms (giant / chicken) and the sinking fade. self_modulate, so _flash() keeps its own tween.
 func _apply_look() -> void:
 	var s := 1.0
-	var tint := Color.WHITE
+	var tint := hero.tint
 	_sprite.rotation = 0.0
 	if buffed("giant"):
 		s = GIANT_SCALE
 	elif buffed("chicken"):
 		s = CHICKEN_SCALE
-		tint = Color(1.0, 0.95, 0.4)
+		tint = hero.tint * Color(1.0, 0.95, 0.4)
 		_sprite.rotation = sin(Time.get_ticks_msec() * 0.03) * 0.15
 	if buffed("chicken") and Time.get_ticks_msec() > _cluck_at:
 		Sfx.play("cluck", global_position)
@@ -445,7 +452,7 @@ func _apply_look() -> void:
 	var sink := clampf(_sink / SINK_TIME, 0.0, 1.0)
 	_sprite.scale = Vector2.ONE * s * (1.0 - 0.7 * sink)
 	_sprite.position = Vector2(0, -(s - 1.0) * 20.0)   # keep the feet on the ground while resizing
-	_sprite.self_modulate = Color(tint, 1.0 - sink)
+	_sprite.self_modulate = Color(tint, (1.0 - sink) * (0.35 if _phase_left > 0.0 else 1.0))
 
 ## Drowned: the owner announces the death, crediting the last player who hit us recently.
 func _fall() -> void:
@@ -455,6 +462,8 @@ func _fall() -> void:
 func _tick_timers(delta: float) -> void:
 	_iframes = maxf(_iframes - delta, 0.0)
 	_cast_time = maxf(_cast_time - delta, 0.0)
+	_slow_left = maxf(_slow_left - delta, 0.0)
+	_phase_left = maxf(_phase_left - delta, 0.0)
 	_queued_time -= delta
 	if _queued_time <= 0.0:
 		_queued = -1
@@ -495,6 +504,72 @@ func lunge(vec: Vector2, time: float, spd: float) -> void:
 	_dash_time = time
 	_dash_speed = spd
 
+## Slows movement to `mult` for `secs` (refreshing, not stacking). Only the owner simulates movement, so only it needs this.
+func apply_slow(mult: float, secs: float) -> void:
+	_slow_mult = mult
+	_slow_left = maxf(_slow_left, secs)
+
+## Untargetable and see-through for `secs` (Shadow Step).
+func phase(secs: float) -> void:
+	_phase_left = secs
+	_iframes = maxf(_iframes, secs)
+
+## The dash is over: the rocks are solid again, so make sure we are not standing inside one.
+func _end_ghost() -> void:
+	_ghost = false
+	collision_mask = SOLID_MASK | WALL_MASK
+	position = free_spot(position)
+
+## Mid Shadow Step: attacks and projectiles pass through.
+func phased() -> bool:
+	return _phase_left > 0.0
+
+## True if a solid (rock, wall, dummy) overlaps the body when its origin is at `pos` (a local position).
+func _blocked_at(pos: Vector2) -> bool:
+	if not is_inside_tree():
+		return false
+	var q := PhysicsShapeQueryParameters2D.new()
+	q.shape = _shape
+	q.transform = Transform2D(0.0, to_global(pos - position) + Vector2(0, 14))
+	q.collision_mask = SOLID_MASK | WALL_MASK
+	q.exclude = [get_rid()]
+	return not get_world_2d().direct_space_state.intersect_shape(q, 1).is_empty()
+
+func _over_water(pos: Vector2) -> bool:
+	return water_check.is_valid() and water_check.call(to_global(pos - position) + Vector2(0, 14))
+
+## The closest spot to `pos` (searched in rings, always in the same order) that is not inside a solid. Never trades dry land
+## for water: a spot over water is only taken if `pos` itself was already over water. Returns `pos` if it is already free.
+func free_spot(pos: Vector2) -> Vector2:
+	if not _blocked_at(pos):
+		return pos
+	var wet := _over_water(pos)
+	for ring in range(1, 17):
+		var r := ring * 12.0
+		for k in 16:
+			var c := pos + Vector2.from_angle(k * TAU / 16.0 + ring * 0.4) * r
+			if not _blocked_at(c) and (wet or not _over_water(c)):
+				return c
+	return pos
+
+## Teleports toward `dest` (Shadow Step): stops at a hard wall on the way, never lands in a rock, and prefers dry ground.
+func blink_to(dest: Vector2) -> void:
+	var target := dest
+	if is_inside_tree():
+		var q := PhysicsRayQueryParameters2D.create(global_position, dest, WALL_MASK)
+		var hit := get_world_2d().direct_space_state.intersect_ray(q)
+		if not hit.is_empty():
+			target = hit.position - (dest - global_position).normalized() * 24.0
+	var back := (position - target).normalized() * 16.0   # over water but we started on land: walk back toward where we were
+	var tries := 0
+	while _over_water(target) and not _over_water(position) and tries < 40 and target.distance_to(position) > 16.0:
+		target += back
+		tries += 1
+	position = free_spot(target)
+	net_pos = position
+	velocity = Vector2.ZERO
+	knock = Vector2.ZERO
+
 func _start_dash(move: Vector2) -> void:
 	dash_charges -= 1
 	if dash_recharge <= 0.0:
@@ -504,6 +579,8 @@ func _start_dash(move: Vector2) -> void:
 	_dash_vec = move if move != Vector2.ZERO else aim_dir
 	_dash_time = DASH_TIME
 	_dash_speed = DASH_SPEED
+	_ghost = true
+	collision_mask = WALL_MASK   # rocks are passable for the dash; the room walls still hold
 	_iframes = maxf(_iframes, DASH_TIME + 0.05)
 	SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 0.8)
 
@@ -527,8 +604,7 @@ func _try_cast() -> void:
 			_queued_time = BUFFER_TIME
 	for i in SLOTS.size():
 		var spell: Spell = spells[i] if i < spells.size() else null
-		if spell and cooldowns[i] <= 0.0 and signature_charge >= spell.charge_cost and (_queued == i or _held(i)):
-			signature_charge -= spell.charge_cost
+		if spell and cooldowns[i] <= 0.0 and (_queued == i or _held(i)):
 			_queued = -1
 			_net_cast.rpc(i, aim_dir, aim_pos, randi())
 			return
@@ -565,10 +641,6 @@ func _animate(move: Vector2) -> void:
 	if _sprite.animation != anim:
 		_sprite.play(anim)
 
-## Called by projectiles/explosions when this player's attack lands: fills the signature meter.
-func on_dealt_damage(amount: int) -> void:
-	signature_charge = minf(signature_charge + amount * 0.8, MAX_CHARGE)
-
 ## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
 func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> void:
 	if not owns() or _iframes > 0.0 or down:
@@ -580,7 +652,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 	if attacker is Player:
 		last_hit_peer = attacker.peer_id
 		last_hit_msec = Time.get_ticks_msec()
-	if not silent:   # rapid-tick hits (blade storm, arrow barrage) neither stagger nor grant i-frames
+	if not silent:   # rapid-tick hits (an ember field's burn) neither stagger nor grant i-frames
 		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
 		knock = (global_position - from_pos).normalized() * knock_for(amount) * form_knock(attacker)
 	_flash()
@@ -634,6 +706,11 @@ func _net_respawn(pos: Vector2) -> void:
 	position = pos
 	net_pos = pos
 	knock = Vector2.ZERO
+	_dash_time = 0.0
+	_slow_left = 0.0
+	_phase_left = 0.0
+	if _ghost:
+		_end_ghost()
 	revive(1.0)
 	Sfx.play("respawn", pos)
 	_iframes = 2.0

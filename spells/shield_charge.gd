@@ -1,9 +1,12 @@
 class_name ShieldCharge extends Spell
 ## Knight right click: rush forward behind the shield, shoving everything in the way. Brief invulnerability.
+## A foe shoved straight into a rock or wall takes PIN_BONUS extra damage; one shoved toward the water just goes swimming.
 
 const TIME := 0.28
 const SPEED := 780.0
 const SHOVE := 1400.0
+const PIN_BONUS := 1.6
+const PIN_REACH := 130.0
 
 class Rider extends Node:
 	var caster: Node2D
@@ -22,17 +25,18 @@ class Rider extends Node:
 			if e in _hit or e.global_position.distance_to(pos) > 62.0:
 				continue
 			_hit.append(e)
-			e.take_damage(dmg, pos, false, caster)
+			var pinned := Spell.solid_ahead(caster, e.global_position + Vector2(0, 14), dir, PIN_REACH)
+			e.take_damage(roundi(dmg * PIN_BONUS) if pinned else dmg, pos, false, caster)
 			Sfx.play("hit_big", pos)
-			if (e.owns() if e.has_method("owns") else e.is_multiplayer_authority()):   # a bot is owned by this peer too   # only the victim's own peer moves it
-				e.knock += dir * SHOVE
-			caster.on_dealt_damage(dmg)
+			if pinned and e.has_method("float_text"):
+				e.float_text("PINNED!", Color(1.0, 0.7, 0.2), 22)
+			Spell.shove(e, dir * SHOVE)   # only the victim's own peer moves it
 		if left <= 0.0:
 			queue_free()
 
 func _init() -> void:
 	display_name = "Shield Charge"
-	cooldown = 4.0
+	cooldown = 6.0
 	damage = 22
 	sfx = "dash"
 
