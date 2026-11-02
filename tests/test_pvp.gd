@@ -162,3 +162,38 @@ func test_dash_ignores_rocks_but_not_room_walls() -> void:
 	p._end_ghost()   # nothing to push out of without a physics space, but the rocks must be solid again
 	assert_eq(p.collision_mask, Player.SOLID_MASK | Player.WALL_MASK)
 	assert_false(p._ghost)
+
+func test_pickup_tiers() -> void:
+	for k: String in PvpPickup.KINDS:
+		assert_true(PvpPickup.KIND_TIER.has(k), "%s has a tier" % k)
+		assert_true(PvpPickup.tier_of(k) in [PvpPickup.Tier.COMMON, PvpPickup.Tier.RARE, PvpPickup.Tier.EPIC])
+	assert_eq(PvpPickup.tier_of("heal"), PvpPickup.Tier.COMMON)
+	assert_eq(PvpPickup.tier_of("damage"), PvpPickup.Tier.RARE)
+	assert_eq(PvpPickup.tier_of("giant"), PvpPickup.Tier.EPIC)
+	assert_eq(PvpPickup.tier_name("bomb"), "Epic")
+	assert_eq(PvpPickup.TIER_LOOK.size(), 3)
+	assert_true(PvpPickup.TIER_LOOK[0].rings < PvpPickup.TIER_LOOK[2].rings, "epics have more rings (shape cue)")
+
+func test_epics_are_rare_in_the_roll() -> void:
+	var n := 2000
+	var epics := 0
+	for i in n:
+		if PvpPickup.tier_of(PvpPickup.roll(float(i) / n)) == PvpPickup.Tier.EPIC:
+			epics += 1
+	var share := float(epics) / n
+	assert_gt(share, 0.03, "epics still show up")
+	assert_true(share < 0.15, "epics are rare")
+
+func test_drop_arrow_helpers() -> void:
+	var view := Vector2(1000, 600)
+	var inside := DropArrows.clamp_to_edge(Vector2(500, 300), view, 50.0)
+	assert_true(inside.inside)
+	var out := DropArrows.clamp_to_edge(Vector2(3000, 300), view, 50.0)
+	assert_false(out.inside)
+	assert_eq(out.pos, Vector2(950, 300))
+	var corner := DropArrows.clamp_to_edge(Vector2(-4000, -4000), view, 50.0)
+	assert_true(corner.pos.x >= 50.0 - 0.01 and corner.pos.y >= 50.0 - 0.01)
+	var ranked := DropArrows.rank([
+		{"dist": 500.0, "tier": 0}, {"dist": 900.0, "tier": 2}, {"dist": 300.0, "tier": 0}, {"dist": 2000.0, "tier": 0}], 2)
+	assert_eq(ranked.size(), 2)
+	assert_eq(ranked[0].tier, 2, "a far epic outranks a near common")

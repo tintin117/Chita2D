@@ -157,6 +157,9 @@ func _ready() -> void:
 	var radar := Radar.new()
 	radar.arena = self
 	ui.add_child(radar)
+	var arrows := DropArrows.new()
+	arrows.player = me
+	ui.add_child(arrows)
 	_feed = KillFeed.new()
 	ui.add_child(_feed)
 	_banner = Label.new()
@@ -346,7 +349,10 @@ func _net_spawn_pickup(id: int, kind: String, pos: Vector2) -> void:
 	_map.add_child(pk)
 	_pickups[id] = pk
 	_next_pickup = maxi(_next_pickup, id + 1)
-	_say("%s appeared!" % PvpPickup.LABELS[kind], 1.5)
+	if PvpPickup.tier_of(kind) == PvpPickup.Tier.EPIC:
+		_say("EPIC DROP!  %s" % PvpPickup.LABELS[kind], 2.2)
+	else:
+		_say("%s appeared!" % PvpPickup.LABELS[kind], 1.5)
 
 func _on_pickup_touched(id: int, peer: int) -> void:
 	_claim.rpc_id(1, id, peer)
@@ -574,9 +580,15 @@ class Radar extends Control:
 		for pk: PvpPickup in arena._pickups.values():
 			var p := _to_radar(pk.position)
 			var col: Color = PvpPickup.COLORS[pk.kind]
-			var pts := PackedVector2Array([p + Vector2(0, -6), p + Vector2(6, 0), p + Vector2(0, 6), p + Vector2(-6, 0)])
+			var tier := PvpPickup.tier_of(pk.kind)
+			var r := 5.0 + tier * 2.5   # bigger = rarer; epics also get a gold ring
+			var pts := PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0)])
 			draw_colored_polygon(pts, col)
 			draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color.BLACK, 1.5)
+			if tier >= PvpPickup.Tier.RARE:
+				draw_arc(p, r + 3.0, 0.0, TAU, 20, PvpPickup.TIER_COLORS[tier], 1.5)
+			if tier == PvpPickup.Tier.EPIC:
+				draw_arc(p, r + 6.0, 0.0, TAU, 24, PvpPickup.TIER_COLORS[tier], 1.5)
 		var me_id := Net.local_id()
 		for id: int in arena._players:
 			var pl: Player = arena._players[id]
