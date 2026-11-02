@@ -108,3 +108,10 @@ func test_cooldown_reduction_is_capped() -> void:
 	p.try_equip(Item.by_id("sunfire_edge"))
 	assert_true(p.cooldown_mult >= 0.5)
 	assert_true(p.cooldown_mult < 1.0)
+
+func test_only_two_skill_slots_can_rank() -> void:
+	var pr := Progression.new()
+	pr.add_xp(1_000_000)
+	assert_true(pr.can_rank_up(1))
+	assert_false(pr.can_rank_up(2), "no Q slot any more")
+	assert_eq(pr.ranks.size(), 2)

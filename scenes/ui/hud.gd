@@ -1,15 +1,15 @@
 class_name Hud extends CanvasLayer
-## Per-player panel: HP bar (Tiny Swords bar art), dash pips, 4 spell slots with cooldown overlay, signature meter.
+## Creates one HeroPanel per player (HP, gear, dash pips, the two skill slots) and the boss bar.
 
 const BAR_TEX := preload("res://assets/tiny_swords/ui/BigBar_Base.png")
 const FILL_TEX := preload("res://assets/tiny_swords/ui/BigBar_Fill.png")
-const HINTS := [["LMB", "RMB", "Q", "R"], ["RT", "LB", "RB", "Y"]]
+const HINTS := [["LMB", "RMB"], ["RT", "B"]]
 
 var with_sheet := true   ## the Tab character sheet pauses the tree, so online matches turn it off
 var online := false      ## one local player: always the P1 hints, bottom-left
 
 func add_player(p: Player) -> void:
-	var panel := HeroPanel.new()  # PlayerPanel below is the old panel, kept until its owner deletes it
+	var panel := HeroPanel.new()
 	panel.player = p
 	panel.size = Vector2(340, 140)
 	panel.mirror = p.player_index == 1 and not online
@@ -26,9 +26,6 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var vp := get_viewport().get_visible_rect().size
 	_boss_bar.position = Vector2((vp.x - _boss_bar.size.x) / 2.0, 24)
-	for c in get_children():
-		if c is PlayerPanel:
-			c.position = Vector2(vp.x - c.size.x - 20 if c.mirror else 20.0, vp.y - c.size.y - 16)
 
 ## 3-slice bar from the Tiny Swords sheet (left cap / middle / right cap with gaps in the source).
 static func draw_bar(c: CanvasItem, w: float, ratio: float) -> void:
@@ -52,68 +49,3 @@ class BossBar extends Control:
 			return
 		Hud.draw_bar(self, size.x, float(boss.hp) / boss.max_hp)
 		draw_string(ThemeDB.fallback_font, Vector2(0, 40), "BLACK LANCER", HORIZONTAL_ALIGNMENT_CENTER, size.x, 18, Color.WHITE)
-
-class PlayerPanel extends Control:
-	var player: Player
-	var mirror := false
-
-	func _process(_delta: float) -> void:
-		queue_redraw()
-
-	func _draw() -> void:
-		if not is_instance_valid(player) or player.prog == null:
-			return
-		var font := ThemeDB.fallback_font
-		# HP bar: 3-slice base (left cap / middle / right cap) with gaps in the source sheet
-		Hud.draw_bar(self, 300.0, float(player.hp) / player.max_hp)
-		draw_string(font, Vector2(24, 31), "P%d  Lv%d  %d/%d" % [player.player_index + 1, player.prog.level, player.hp, player.max_hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
-		if player.down:
-			draw_string(font, Vector2(210, 31), "DOWN", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.4, 0.4))
-		# Dash pips
-		for i in Player.MAX_DASH:
-			var c := Vector2(12 + i * 22, 64)
-			draw_circle(c, 8, Color(0, 0, 0, 0.6))
-			if i < player.dash_charges:
-				draw_circle(c, 6, Color(0.5, 0.85, 1.0))
-		# Spell slots
-		var hints: Array = Hud.HINTS[player.player_index % 2]
-		for i in 4:
-			var r := Rect2(90 + i * 56, 50, 50, 50)
-			draw_rect(r, Color(0, 0, 0, 0.6))
-			var spell: Spell = player.spells[i] if i < player.spells.size() else null
-			if spell:
-				var name_short := spell.display_name.substr(0, 1)
-				draw_string(font, r.position + Vector2(0, 32), name_short, HORIZONTAL_ALIGNMENT_CENTER, 50, 26, Color(1, 0.8, 0.4))
-				var cd := player.cooldowns[i]
-				if cd > 0.0:
-					var frac := clampf(cd / maxf(player.cooldown_max[i], 0.01), 0.0, 1.0)
-					draw_rect(Rect2(r.position, Vector2(50, 50 * frac)), Color(0, 0, 0, 0.65))
-				if spell.charge_cost > player.signature_charge:
-					draw_rect(r, Color(0, 0, 0, 0.5))
-			draw_rect(r, Color(0.9, 0.75, 0.4), false, 2.0)
-			draw_string(font, r.position + Vector2(0, 62), hints[i], HORIZONTAL_ALIGNMENT_CENTER, 50, 12, Color(0.9, 0.9, 0.9))
-			for k in player.prog.ranks[i]:  # skill rank pips
-				draw_rect(Rect2(r.position + Vector2(6 + k * 8, 42), Vector2(6, 4)), Color(1, 0.8, 0.4))
-			if player.prog.can_rank_up(i):
-				draw_string(font, r.position + Vector2(34, 16), "+", HORIZONTAL_ALIGNMENT_CENTER, 14, 18, Color(0.5, 1, 0.5))
-		# Gear slots + unspent skill points
-		for i in Item.SLOTS.size():
-			var g := Rect2(6 + i * 28, 84, 24, 24)
-			var it: Item = player.equipment.get(Item.SLOTS[i])
-			var col := it.color() if it else Color(0.5, 0.5, 0.5)
-			draw_rect(g, Color(0, 0, 0, 0.6))
-			draw_rect(g, col, false, 2.0)
-			draw_string(font, g.position + Vector2(0, 17), (it.display_name if it else Item.SLOTS[i]).substr(0, 1).to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 24, 14, col)
-		if player.prog.skill_points > 0:
-			draw_string(font, Vector2(6, 126), "SP %d [Tab]" % player.prog.skill_points, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.5, 1, 0.5))
-		# XP bar
-		var xr := Rect2(0, 132, 300, 6)
-		var need := player.prog.xp_to_next()
-		draw_rect(xr, Color(0, 0, 0, 0.6))
-		draw_rect(Rect2(xr.position, Vector2(xr.size.x * (float(player.prog.xp) / need if need > 0 else 1.0), xr.size.y)), Color(0.45, 0.7, 1.0))
-		# Signature meter
-		var m := Rect2(90, 114, 218, 8)
-		draw_rect(m, Color(0, 0, 0, 0.6))
-		var full := player.signature_charge >= Player.MAX_CHARGE
-		draw_rect(Rect2(m.position, Vector2(m.size.x * player.signature_charge / Player.MAX_CHARGE, m.size.y)),
-			Color(1.0, 0.85, 0.3) if full else Color(0.9, 0.45, 0.15))

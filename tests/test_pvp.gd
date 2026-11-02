@@ -148,3 +148,17 @@ func test_solo_roster_has_bots_that_need_no_loading() -> void:
 	assert_true(humans_loaded)
 	net._loaded.clear()
 	net.roster = saved
+
+func test_dash_ignores_rocks_but_not_room_walls() -> void:
+	var parent := Node2D.new()
+	track(parent)
+	var p := Player.new()
+	parent.add_child(p)   # out of the tree: _ready has not run, so the mask is still the default
+	p._start_dash(Vector2.RIGHT)
+	assert_eq(p.collision_mask, Player.WALL_MASK, "only the hard walls stop a dash")
+	assert_eq(p.collision_mask & Player.SOLID_MASK, 0)
+	assert_true(p._ghost)
+	p._dash_time = 0.0
+	p._end_ghost()   # nothing to push out of without a physics space, but the rocks must be solid again
+	assert_eq(p.collision_mask, Player.SOLID_MASK | Player.WALL_MASK)
+	assert_false(p._ghost)
