@@ -10,7 +10,16 @@ enum Tier { COMMON, RARE, EPIC }
 const TIER_NAMES := ["Common", "Rare", "Epic"]
 const TIER_COLORS := [Color(0.85, 0.95, 0.85), Color(0.4, 0.7, 1.0), Color(1.0, 0.72, 0.2)]
 const KIND_TIER := {"heal": Tier.COMMON, "speed": Tier.COMMON, "damage": Tier.RARE, "mystery": Tier.RARE,
-	"giant": Tier.EPIC, "chicken": Tier.EPIC, "bomb": Tier.EPIC}
+	"giant": Tier.EPIC, "chicken": Tier.EPIC, "bomb": Tier.EPIC,
+	"slingshot": Tier.COMMON, "firecracker": Tier.COMMON, "hammer": Tier.RARE, "frost_gun": Tier.RARE, "boomerang": Tier.RARE,
+	"bomb_launcher": Tier.RARE, "rocket": Tier.EPIC, "meteor": Tier.EPIC, "gatling": Tier.EPIC}
+## Friendslop weapon pickups (the gameplay lives in FsWeapon.DEFS; a test keeps the two lists in step).
+const FS_WEAPONS := ["slingshot", "firecracker", "hammer", "frost_gun", "boomerang", "bomb_launcher", "rocket", "meteor", "gatling"]
+## Friendslop drop table: the classic kinds plus the weapons. Epics are ~13% of drops, rares and commons ~43% each.
+const FS_WEIGHTS := {"heal": 5.0, "speed": 3.0, "slingshot": 5.0, "firecracker": 4.0,
+	"damage": 2.0, "mystery": 3.0, "hammer": 3.0, "frost_gun": 3.0, "boomerang": 3.0, "bomb_launcher": 3.0,
+	"giant": 0.8, "chicken": 0.5, "bomb": 0.5, "rocket": 1.1, "meteor": 1.0, "gatling": 1.1}
+const CATCHUP_TIER_GAIN := [-0.4, 0.5, 1.2]   ## per tier: weight change at full catch-up boost (commons thin out, epics get likelier)
 ## Per tier: beam height, beam half-width, ground rings, orbiting sparkles, badge corner count (0 = circle), badge radius.
 ## Shape and size differ per tier too, so the tiers read without colour.
 const TIER_LOOK := [
@@ -20,10 +29,17 @@ const TIER_LOOK := [
 ]
 const OUTCOMES := ["heal", "damage", "speed", "giant", "chicken", "bomb"]   ## what a mystery box can turn into
 const COLORS := {"heal": Color(0.35, 1.0, 0.45), "damage": Color(1.0, 0.3, 0.25), "speed": Color(0.3, 0.9, 1.0),
-	"mystery": Color(0.75, 0.45, 1.0), "giant": Color(1.0, 0.65, 0.2), "chicken": Color(1.0, 0.95, 0.3), "bomb": Color(0.95, 0.25, 0.55)}
+	"mystery": Color(0.75, 0.45, 1.0), "giant": Color(1.0, 0.65, 0.2), "chicken": Color(1.0, 0.95, 0.3), "bomb": Color(0.95, 0.25, 0.55),
+	"slingshot": Color(0.8, 0.65, 0.4), "firecracker": Color(1.0, 0.55, 0.3), "hammer": Color(0.7, 0.72, 0.85), "frost_gun": Color(0.5, 0.85, 1.0),
+	"boomerang": Color(0.4, 0.9, 0.5), "bomb_launcher": Color(0.9, 0.4, 0.2), "rocket": Color(1.0, 0.35, 0.3), "meteor": Color(1.0, 0.5, 0.15),
+	"gatling": Color(1.0, 0.9, 0.4)}
 const LABELS := {"heal": "Heal", "damage": "Double damage", "speed": "Speed boost", "mystery": "Mystery box",
-	"giant": "GIANT!", "chicken": "Chicken curse", "bomb": "Hot potato!"}
-const ICONS := {"heal": "+", "damage": "x2", "speed": ">>", "mystery": "?", "giant": "XL", "chicken": "bk", "bomb": "!!"}
+	"giant": "GIANT!", "chicken": "Chicken curse", "bomb": "Hot potato!",
+	"slingshot": "Slingshot", "firecracker": "Firecracker", "hammer": "War Hammer", "frost_gun": "Frost Gun", "boomerang": "Boomerang",
+	"bomb_launcher": "Bomb Launcher", "rocket": "ROCKET LAUNCHER", "meteor": "METEOR STORM", "gatling": "GATLING GUN"}
+const ICONS := {"heal": "+", "damage": "x2", "speed": ">>", "mystery": "?", "giant": "XL", "chicken": "bk", "bomb": "!!",
+	"slingshot": "sl", "firecracker": "fc", "hammer": "HM", "frost_gun": "ice", "boomerang": "bm", "bomb_launcher": "BL",
+	"rocket": "RK", "meteor": "MT", "gatling": "GT"}
 const FALL_TIME := 0.55   ## spawn-in: the badge drops from the sky this long
 const FALL_HEIGHT := 600.0
 
@@ -49,9 +65,28 @@ static func roll(r: float) -> String:
 			return k
 	return KINDS[0]
 
-## What a mystery box becomes; r in [0, 1).
-static func mystery_outcome(r: float) -> String:
-	return OUTCOMES[clampi(int(r * OUTCOMES.size()), 0, OUTCOMES.size() - 1)]
+## A Friendslop drop. `boost` (0..1) is the catch-up bias for a trailing player: it shifts weight from commons to rares and epics.
+static func roll_fs(r: float, boost := 0.0) -> String:
+	var total := 0.0
+	for k: String in FS_WEIGHTS:
+		total += fs_weight(k, boost)
+	var x := r * total
+	for k: String in FS_WEIGHTS:
+		x -= fs_weight(k, boost)
+		if x < 0.0:
+			return k
+	return "heal"
+
+static func fs_weight(k: String, boost: float) -> float:
+	return FS_WEIGHTS[k] * (1.0 + CATCHUP_TIER_GAIN[tier_of(k)] * clampf(boost, 0.0, 1.0))
+
+static func is_weapon(k: String) -> bool:
+	return k in FS_WEAPONS
+
+## What a mystery box becomes; r in [0, 1). In Friendslop the weapons are in the box too.
+static func mystery_outcome(r: float, with_weapons := false) -> String:
+	var pool: Array = OUTCOMES + FS_WEAPONS if with_weapons else OUTCOMES
+	return pool[clampi(int(r * pool.size()), 0, pool.size() - 1)]
 
 var id := 0
 var kind := "heal"

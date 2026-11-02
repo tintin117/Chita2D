@@ -33,6 +33,7 @@ var dev_enet := false
 var autostart := 0
 var solo := false                     ## practice against bots: no network, the roster holds the player and the bots
 var bot_skill := 0.6
+var mode := GameMode.CLASSIC          ## the match mode: the host's lobby choice (synced to every peer), or the solo menu choice
 var solo_auto := false                ## dev: `-- --solo=N` skips the menu and the hero pick
 
 var _steam: Object                    ## the GodotSteam singleton, null when the extension is missing
@@ -47,6 +48,9 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(func() -> void: _reset("Could not connect to the host"))
 	multiplayer.server_disconnected.connect(func() -> void: _reset("The host left"))
 	var args := OS.get_cmdline_user_args()
+	for a in args:
+		if a.begins_with("--mode=") and GameMode.valid(a.get_slice("=", 1)):
+			mode = a.get_slice("=", 1)   # dev: before --solo (start_solo is deferred, but --autostart / --enet need it too)
 	for a in args:
 		if a.begins_with("--name="):
 			my_name = a.get_slice("=", 1)
@@ -103,7 +107,36 @@ func start_solo(bots: int, skill: float) -> void:
 	in_match = true
 	_entering = false
 	_loaded.clear()
-	get_tree().change_scene_to_file(HERO_SCENE)
+	_lock_heroes()
+	get_tree().change_scene_to_file(_first_scene())
+
+# --- match mode --------------------------------------------------------------------
+
+## Friendslop: everyone plays the mode's hero, so the pick screen is skipped. Classic keeps the roster's own picks.
+func _lock_heroes() -> void:
+	var forced: String = GameMode.cfg(mode).hero
+	if forced != "":
+		for r: Dictionary in roster.values():
+			r.hero = forced
+			r.ready = true
+
+func _first_scene() -> String:
+	return HERO_SCENE if GameMode.cfg(mode).hero_pick else MATCH_SCENE
+
+## Host only: choose the mode in the lobby; every peer follows.
+func set_mode(m: String) -> void:
+	if not GameMode.valid(m):
+		return
+	mode = m
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		mode_sync.rpc(m)
+	roster_changed.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func mode_sync(m: String) -> void:
+	if GameMode.valid(m):
+		mode = m
+		roster_changed.emit()
 
 # --- Steam lobby -----------------------------------------------------------------
 
@@ -222,6 +255,7 @@ func _add(id: int, pname: String, hero: String) -> void:
 func _broadcast() -> void:
 	roster_changed.emit()
 	roster_sync.rpc(roster)
+	mode_sync.rpc(mode)
 
 @rpc("any_peer", "reliable")
 func register(pname: String, hero: String) -> void:
@@ -264,15 +298,17 @@ func start_match() -> void:
 		_steam.setLobbyJoinable(lobby_id, false)
 	for r: Dictionary in roster.values():
 		r.ready = false
-	_begin_match.rpc(roster)
+	_lock_heroes()
+	_begin_match.rpc(roster, mode)
 
 @rpc("authority", "call_local", "reliable")
-func _begin_match(r: Dictionary) -> void:
+func _begin_match(r: Dictionary, match_mode: String) -> void:
 	roster = r
+	mode = match_mode if GameMode.valid(match_mode) else GameMode.CLASSIC
 	in_match = true
 	_loaded.clear()
 	_entering = false
-	get_tree().change_scene_to_file(HERO_SCENE)
+	get_tree().change_scene_to_file(_first_scene())
 
 ## Hero-pick phase: everyone picks a hero (set_hero) and presses ready; the host then sends everyone into the arena.
 func set_ready(value: bool) -> void:
