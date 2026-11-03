@@ -97,6 +97,8 @@ func local_id() -> int:
 func start_solo(bots: int, skill: float) -> void:
 	if not roster.is_empty() and not solo:
 		return   # a real lobby is open
+	if not multiplayer.has_multiplayer_peer():
+		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()   # leave() drops the peer; without one this peer is no host and the match waits forever
 	roster.clear()
 	_add(1, my_name, my_hero)
 	var heroes := Hero.all()
