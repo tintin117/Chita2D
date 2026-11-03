@@ -2,6 +2,8 @@ class_name HeroBasic extends Spell
 ## Fast 3-cast combo basic. mode "arc": instant cone sweep (melee). mode "bolt": projectile(s) (ranged).
 ## The 3rd cast is the finisher: bigger damage, and extra bolts for spread heroes. Built by Hero.make_basic().
 
+const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~240 px slide with its own knockback)
+
 @export var mode := "bolt"
 @export var radius := 115.0          ## arc reach
 @export var arc_angle := 2.2
@@ -62,6 +64,8 @@ class Sweep extends Node2D:
 					if e.has_method("float_text"):
 						e.float_text("BACKSTAB", Color(1.0, 0.45, 0.9), 22)
 				e.take_damage(hit, position, false, caster)
+				if finisher:
+					Spell.shove(e, dir * FINISHER_SHOVE)   # the 3rd hit launches; hits 1-2 only flinch, so the combo keeps landing
 				if not _landed:
 					_landed = true
 					Sfx.play("hit_big" if finisher else "hit", position)

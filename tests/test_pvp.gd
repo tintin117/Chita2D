@@ -81,7 +81,9 @@ func test_buffs_expire() -> void:
 
 func test_knockback_grows_with_damage_and_caps() -> void:
 	assert_gt(Player.knock_for(45), Player.knock_for(10))
-	assert_gt(Player.knock_for(10), 400.0, "even a light hit launches")
+	assert_eq(Player.knock_for(10), Player.knock_for(12), "light hits all flinch the same")
+	assert_true(Player.knock_for(10) * Player.knock_for(10) / (2.0 * Player.KNOCK_DECEL) < 60.0, "a light hit slides well inside melee reach")
+	assert_gt(Player.knock_for(10, 0.1), Player.knock_for(10, 1.0), "hurt victims fly further")
 	assert_true(Player.knock_for(9999) <= Player.KNOCK_MAX)
 
 func test_arena_edge_is_water_and_the_inside_is_not() -> void:

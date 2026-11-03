@@ -21,8 +21,10 @@ const COLORS := ["Blue", "Yellow", "Red", "Black"]   ## Tiny Swords unit colours
 const NAME_COLORS := [Color("5fa8ff"), Color("ffd84a"), Color("ff6a5f"), Color("b9b9c8"), Color("6fe08a"), Color("e08aff"), Color("ff9a3c"), Color("4fe3e3")]
 const RESPAWN_TIME := 3.0
 const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
-const KNOCK_BASE := 420.0          ## launch speed of any hit; grows with damage (a 10-dmg hit slides ~140 px, a 45-dmg snipe ~500 px)
-const KNOCK_PER_DMG := 14.0
+const KNOCK_BASE := 300.0          ## launch speed of a light hit: a flinch (~40 px) so basic combos keep connecting
+const KNOCK_LIGHT_DMG := 12        ## hits up to this damage are light; only heavier ones (finishers, skills) launch
+const KNOCK_PER_DMG := 20.0        ## extra launch speed per damage above KNOCK_LIGHT_DMG (a 45-dmg snipe slides ~420 px)
+const KNOCK_LOW_HP := 0.6          ## launch bonus at 0 HP: knockback grows as the victim's health drops (Smash-style), so ring-outs come late in a fight
 const KNOCK_MAX := 1500.0
 const KNOCK_DECEL := 1100.0
 const ATTACK_MOVE := 0.4          ## move speed multiplier while attacking
@@ -102,8 +104,9 @@ func owns() -> bool:
 	return ai != null or is_multiplayer_authority()
 
 ## Launch speed for a hit of `amount` damage.
-static func knock_for(amount: int) -> float:
-	return minf(KNOCK_BASE + amount * KNOCK_PER_DMG, KNOCK_MAX)
+static func knock_for(amount: int, hp_left := 1.0) -> float:
+	var v := KNOCK_BASE + maxi(amount - KNOCK_LIGHT_DMG, 0) * KNOCK_PER_DMG
+	return minf(v * (1.0 + KNOCK_LOW_HP * (1.0 - clampf(hp_left, 0.0, 1.0))), KNOCK_MAX)
 
 ## Closest living player, or null.
 static func nearest_alive(tree: SceneTree, pos: Vector2) -> Player:
@@ -698,7 +701,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		last_hit_msec = Time.get_ticks_msec()
 	if not silent:   # rapid-tick hits (an ember field's burn) neither stagger nor grant i-frames
 		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
-		knock = (global_position - from_pos).normalized() * knock_for(amount) * form_knock(attacker)
+		knock = (global_position - from_pos).normalized() * knock_for(amount, float(hp) / max_hp) * form_knock(attacker)
 	_flash()
 	hp_changed.emit(hp, max_hp)
 	if not online:
