@@ -279,7 +279,7 @@ func _foes() -> Array[Player]:
 	var out: Array[Player] = []
 	for n in _p.get_tree().get_nodes_in_group("players"):
 		var f := n as Player
-		if f and f != _p and not f.down:
+		if f and f != _p and not f.down and not (_p.team >= 0 and f.team == _p.team):
 			out.append(f)
 	return out
 

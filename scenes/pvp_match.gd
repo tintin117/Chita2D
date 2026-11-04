@@ -2,8 +2,6 @@ extends Node2D
 ## One online deathmatch on the fixed arena. Every peer builds the same scene from Net.roster; each owns its own Player.
 ## Kills are counted on every peer from the same reliable Player.fragged events; only the host decides when the match ends.
 
-const KILL_LIMIT := 15
-const TIME_LIMIT := 300.0
 const CAM_ZOOM := 0.65            ## <1 = camera higher; 1.0 showed only ~1/3 of the arena
 const PICKUP_EVERY := 12.0
 const MAX_PICKUPS := 3
@@ -23,7 +21,10 @@ var _pickup_timer := PICKUP_EVERY / 2.0
 var _players := {}          ## peer_id -> Player
 var _kills := {}
 var _deaths := {}
-var _time_left := TIME_LIMIT
+var _time_left := INF       ## seconds left, INF when the lobby turned the time limit off
+var _tdm := false           ## team deathmatch (Net.settings.mode)
+var _teams := {}            ## peer -> 0/1, only filled in a team match
+var _team_seen := [0, 0]    ## players placed per team so far; picks each one's spawn point
 var _running := false
 var _over := false
 var _winner := 0
@@ -34,6 +35,31 @@ var _crown := 0             ## peer wearing the crown, 0 = nobody
 var _kill_count := 0        ## every death so far; picks the kill-feed wording the same way on every peer
 var _stats := {}            ## peer -> {streak, best, falls, bombs, pickups, emotes, crown}
 var _killed_by := {}        ## Vector2i(killer, victim) -> times
+
+## Kills per team from the per-peer kills; `teams` is peer -> 0/1.
+static func team_totals(values: Dictionary, teams: Dictionary) -> Array[int]:
+	var out: Array[int] = [0, 0]
+	for id: int in values:
+		if teams.has(id):
+			out[teams[id]] += values[id]
+	return out
+
+## The winning team (0/1) by kills, then fewer deaths; -1 on a full tie.
+static func leading_team(kills: Dictionary, deaths: Dictionary, teams: Dictionary) -> int:
+	var k := team_totals(kills, teams)
+	if k[0] != k[1]:
+		return 0 if k[0] > k[1] else 1
+	var d := team_totals(deaths, teams)
+	if d[0] != d[1]:
+		return 0 if d[0] < d[1] else 1
+	return -1
+
+## Spawn points a team uses: the ring split in two halves (all of them when there are no teams).
+static func team_points(points: Array[Vector2], team: int) -> Array[Vector2]:
+	if team < 0:
+		return points
+	var half := points.size() / 2
+	return points.slice(0, half) if team == 0 else points.slice(half)
 
 ## The spawn point that is farthest from every living opponent (respawns land away from the fight).
 static func farthest_spawn(points: Array[Vector2], others: Array[Vector2]) -> Vector2:
@@ -130,6 +156,9 @@ func _ready() -> void:
 	_map.name = "Arena"   # fixed names: RPC and replication paths must match on every peer
 	add_child(_map)
 	_map.generate_arena()
+	_tdm = Net.is_team_mode()
+	if Net.settings.time_limit > 0:
+		_time_left = float(Net.settings.time_limit)
 
 	var ids := Net.roster.keys()
 	ids.sort_custom(func(a: int, b: int) -> bool: return Net.roster[a].slot < Net.roster[b].slot)
@@ -182,7 +211,15 @@ func _spawn(id: int, info: Dictionary) -> void:
 	p.player_index = info.slot
 	p.hero = Hero.by_id(info.hero)
 	p.display_name = info.name
-	p.position = _map.spawn_points[info.slot % _map.spawn_points.size()]
+	if _tdm:
+		p.team = int(info.get("team", 0))
+		p.friendly_fire = Net.settings.friendly_fire
+		_teams[id] = p.team
+		var pts := team_points(_map.spawn_points, p.team)
+		p.position = pts[_team_seen[p.team] % pts.size()]
+		_team_seen[p.team] += 1
+	else:
+		p.position = _map.spawn_points[info.slot % _map.spawn_points.size()]
 	p.peer_id = id
 	if info.get("bot", false):
 		p.ai = BotBrain.new()
@@ -203,9 +240,11 @@ func _spawn(id: int, info: Dictionary) -> void:
 func _pick_spawn(id: int) -> Vector2:
 	var others: Array[Vector2] = []
 	for k: int in _players:
-		if k != id and not _players[k].down:
+		if k != id and not _players[k].down and not (_tdm and _teams.get(k) == _teams.get(id)):
 			others.append(_players[k].global_position)
-	return farthest_spawn(_map.spawn_points, others) if not others.is_empty() else _map.spawn_points[0]
+	var team: int = _teams.get(id, -1)
+	var pts := team_points(_map.spawn_points, team)
+	return farthest_spawn(pts, others) if not others.is_empty() else pts[0]
 
 func _set_players_active(on: bool) -> void:
 	for p: Player in _players.values():
@@ -252,8 +291,14 @@ func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
 		if reign:
 			line += "   (+%d bounty!)" % BOUNTY
 			_say("%s ended %s's reign!" % [killer_name, _name_of(vid)], 1.8)
-		if multiplayer.is_server() and _kills[killer_peer] >= KILL_LIMIT:
-			_end.rpc(killer_peer)
+		var limit: int = Net.settings.kill_limit
+		if multiplayer.is_server() and limit > 0 and not _over:
+			if _tdm:
+				var totals := team_totals(_kills, _teams)
+				if totals[0] >= limit or totals[1] >= limit:
+					_end.rpc(killer_peer, 0 if totals[0] >= limit else 1)
+			elif _kills[killer_peer] >= limit:
+				_end.rpc(killer_peer, -1)
 	_feed.add(line, _color_of(killer_peer if credited else vid))
 	_update_crown()
 
@@ -263,6 +308,8 @@ func _name_of(id: int) -> String:
 
 func _color_of(id: int) -> Color:
 	var p: Player = _players.get(id)
+	if p and p.team >= 0:
+		return Player.TEAM_COLORS[p.team]
 	return Player.NAME_COLORS[p.player_index % Player.NAME_COLORS.size()] if p else Color.WHITE
 
 ## Recomputed from the replicated kill counts, so every peer agrees without extra messages.
@@ -293,8 +340,16 @@ func _on_player_left(id: int) -> void:
 			_net_bomb_boom.rpc(id)
 		p.queue_free()
 		_players.erase(id)
-	if multiplayer.is_server() and _players.size() < 2 and not _over:
-		_end.rpc(_players.keys()[0] if not _players.is_empty() else 0)
+	if not multiplayer.is_server() or _over:
+		return
+	if _tdm:
+		var alive := [0, 0]
+		for k: int in _players:
+			alive[_teams[k]] += 1
+		if alive[0] == 0 or alive[1] == 0:
+			_end.rpc(0, -1 if alive[0] == alive[1] else (0 if alive[1] == 0 else 1))
+	elif _players.size() < 2:
+		_end.rpc(_players.keys()[0] if not _players.is_empty() else 0, -1)
 
 func _process(delta: float) -> void:
 	if _running and not _over:
@@ -302,7 +357,10 @@ func _process(delta: float) -> void:
 		if _crown != 0 and _stats.has(_crown):
 			_stats[_crown].crown += delta
 		if _time_left <= 0.0 and multiplayer.is_server():
-			_end.rpc(_leader())
+			if _tdm:
+				_end.rpc(0, leading_team(_kills, _deaths, _teams))
+			else:
+				_end.rpc(_leader(), -1)
 		if multiplayer.is_server():
 			for id: int in _players:
 				var carrier: Player = _players[id]
@@ -429,7 +487,7 @@ func _leader() -> int:
 	return best
 
 @rpc("authority", "call_local", "reliable")
-func _end(winner: int) -> void:
+func _end(winner: int, win_team: int) -> void:
 	_over = true
 	_winner = winner
 	Sfx.play("win")
@@ -441,6 +499,8 @@ func _end(winner: int) -> void:
 		names[id] = _name_of(id)
 	var results := Results.new()
 	results.title = "%s wins!" % who
+	if _tdm:
+		results.title = "%s team wins!" % Net.TEAM_NAMES[win_team] if win_team >= 0 else "Draw!"
 	results.rows = awards(_stats, _kills, _deaths, _killed_by, names)
 	results.hint = "%s     Esc: leave" % hint
 	_banner.get_parent().add_child(results)
@@ -474,8 +534,16 @@ class Board extends Control:
 	func _draw() -> void:
 		var font := ThemeDB.fallback_font
 		var w := get_viewport_rect().size.x
-		var t := int(ceil(arena._time_left))
-		draw_string(font, Vector2(0, 30), "%d:%02d    first to %d" % [t / 60, t % 60, KILL_LIMIT], HORIZONTAL_ALIGNMENT_CENTER, w, 22, Color.WHITE)
+		var limit: int = Net.settings.kill_limit
+		var clock := "--:--"
+		if arena._time_left != INF:
+			var t := int(ceil(arena._time_left))
+			clock = "%d:%02d" % [t / 60, t % 60]
+		var head := clock + ("    first to %d" % limit if limit > 0 else "")
+		if arena._tdm:
+			var tt: Array[int] = arena.team_totals(arena._kills, arena._teams)
+			head += "     Red %d - %d Blue" % [tt[0], tt[1]]
+		draw_string(font, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, w, 22, Color.WHITE)
 		var me: Player = arena._players.get(Net.local_id())
 		if me:
 			var line := ""
@@ -488,7 +556,7 @@ class Board extends Control:
 		for i in ids.size():
 			var id: int = ids[i]
 			var p: Player = arena._players[id]
-			var col: Color = Player.NAME_COLORS[p.player_index % Player.NAME_COLORS.size()]
+			var col: Color = Player.TEAM_COLORS[p.team] if p.team >= 0 else Player.NAME_COLORS[p.player_index % Player.NAME_COLORS.size()]
 			var y := 24.0 + i * 22.0
 			draw_string(font, Vector2(w - 260, y), p.display_name, HORIZONTAL_ALIGNMENT_LEFT, 150, 16, col)
 			draw_string(font, Vector2(w - 100, y), "%d / %d" % [arena._kills[id], arena._deaths[id]], HORIZONTAL_ALIGNMENT_RIGHT, 80, 16, Color.WHITE)
@@ -587,6 +655,8 @@ class Radar extends Control:
 				draw_arc(p, 5.0, 0.0, TAU, 20, Color.BLACK, 3.5)
 				draw_arc(p, 5.0, 0.0, TAU, 20, Color.WHITE, 1.8)
 			else:
-				draw_circle(p, 3.5, Color(1.0, 0.25, 0.2))
+				var mine: Player = arena._players.get(me_id)
+				var ally: bool = mine != null and mine.team >= 0 and pl.team == mine.team
+				draw_circle(p, 3.5, Color(0.35, 0.8, 1.0) if ally else Color(1.0, 0.25, 0.2))
 			if id == arena._crown:
 				draw_arc(p, 8.0, 0.0, TAU, 24, Color(1.0, 0.85, 0.3), 2.5)

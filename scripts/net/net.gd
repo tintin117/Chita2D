@@ -1,12 +1,13 @@
 extends Node
 ## Autoload "Net": the online session. Steam lobbies carry the connection (SteamMultiplayerPeer from GodotSteam);
 ## everything after that is plain Godot high-level multiplayer. The host (peer 1) owns the roster and starts matches.
-## Dev shim: `-- --enet-host` / `-- --enet-join=127.0.0.1` (plus --name=, --hero=, --autostart=N) skip Steam so two local
+## Dev shim (host also takes --mode=ffa|tdm, --time=SECONDS, --kills=N): `-- --enet-host` / `-- --enet-join=127.0.0.1` (plus --name=, --hero=, --autostart=N) skip Steam so two local
 ## instances can test gameplay. Steam has to be running for the real path.
 
 signal status(text: String)
 signal lobby_list(lobbies: Array)     ## [{id, name, members}]
 signal roster_changed
+signal settings_changed
 signal player_left(peer_id: int)
 signal match_go                       ## every peer has finished loading the match scene
 
@@ -23,7 +24,11 @@ const MENU_SCENE := "res://scenes/main_menu.tscn"
 const HERO_SCENE := "res://scenes/hero_pick.tscn"
 const MATCH_SCENE := "res://scenes/pvp_match.tscn"
 
-var roster := {}                      ## peer_id -> {name: String, hero: String, slot: int}
+const DEFAULT_SETTINGS := {"mode": "ffa", "time_limit": 300, "kill_limit": 15, "friendly_fire": false}   ## time/kill limit 0 = off
+const TEAM_NAMES := ["Red", "Blue"]
+
+var settings := DEFAULT_SETTINGS.duplicate()   ## host-owned, synced with the roster
+var roster := {}                      ## peer_id -> {name: String, hero: String, slot: int, team: int}
 var my_name := "Player"
 var my_hero := "wizard"
 var in_match := false
@@ -55,6 +60,12 @@ func _ready() -> void:
 		elif a.begins_with("--solo="):
 			solo_auto = true
 			start_solo.call_deferred(int(a.get_slice("=", 1)), bot_skill)
+		elif a.begins_with("--mode="):
+			settings.mode = a.get_slice("=", 1)
+		elif a.begins_with("--time="):
+			settings.time_limit = int(a.get_slice("=", 1))
+		elif a.begins_with("--kills="):
+			settings.kill_limit = int(a.get_slice("=", 1))
 		elif a.begins_with("--autostart="):
 			autostart = int(a.get_slice("=", 1))
 		elif a == "--enet-host":
@@ -94,6 +105,7 @@ func start_solo(bots: int, skill: float) -> void:
 	if not roster.is_empty() and not solo:
 		return   # a real lobby is open
 	roster.clear()
+	settings = DEFAULT_SETTINGS.duplicate()
 	_add(1, my_name, my_hero)
 	var heroes := Hero.all()
 	for i in clampi(bots, 1, MAX_PLAYERS - 1):
@@ -214,14 +226,58 @@ func _add(id: int, pname: String, hero: String) -> void:
 	var slot := 0
 	while slot in taken:
 		slot += 1
-	roster[id] = {"name": pname, "hero": hero, "slot": slot, "ready": false}
+	roster[id] = {"name": pname, "hero": hero, "slot": slot, "ready": false, "team": smaller_team()}
 	roster_changed.emit()
 	if multiplayer.is_server() and autostart > 0 and roster.size() >= autostart and not in_match:
 		start_match.call_deferred()
 
 func _broadcast() -> void:
 	roster_changed.emit()
-	roster_sync.rpc(roster)
+	settings_changed.emit()
+	roster_sync.rpc(roster, settings)
+
+## The team (0/1) with fewer players, for auto-balancing new joiners.
+func smaller_team() -> int:
+	var n := [0, 0]
+	for r: Dictionary in roster.values():
+		n[int(r.get("team", 0))] += 1
+	return 0 if n[0] <= n[1] else 1
+
+func is_team_mode() -> bool:
+	return settings.mode == "tdm"
+
+## Host only: change a lobby setting (mode, time_limit, kill_limit, friendly_fire).
+func set_setting(key: String, value: Variant) -> void:
+	if not multiplayer.is_server() or in_match or not settings.has(key):
+		return
+	settings[key] = value
+	if key == "mode":
+		_rebalance()
+	_broadcast()
+
+func _rebalance() -> void:
+	var ids := roster.keys()
+	ids.sort_custom(func(a: int, b: int) -> bool: return roster[a].slot < roster[b].slot)
+	for i in ids.size():
+		roster[ids[i]].team = i % 2
+
+## Move `id` to the other team. A client may only move itself; the host may move anyone.
+func switch_team(id: int) -> void:
+	if multiplayer.is_server():
+		_switch_team(id)
+	else:
+		_request_team.rpc_id(1, id)
+
+@rpc("any_peer", "reliable")
+func _request_team(id: int) -> void:
+	if multiplayer.is_server() and multiplayer.get_remote_sender_id() == id:
+		_switch_team(id)
+
+func _switch_team(id: int) -> void:
+	if in_match or not roster.has(id) or roster[id].get("bot", false):
+		return
+	roster[id].team = 1 - int(roster[id].get("team", 0))
+	_broadcast()
 
 @rpc("any_peer", "reliable")
 func register(pname: String, hero: String) -> void:
@@ -251,9 +307,11 @@ func _set_hero(hero: String) -> void:
 		_broadcast()
 
 @rpc("authority", "reliable")
-func roster_sync(r: Dictionary) -> void:
+func roster_sync(r: Dictionary, s: Dictionary) -> void:
 	roster = r
+	settings = s
 	roster_changed.emit()
+	settings_changed.emit()
 
 # --- match flow ------------------------------------------------------------------
 
@@ -264,11 +322,12 @@ func start_match() -> void:
 		_steam.setLobbyJoinable(lobby_id, false)
 	for r: Dictionary in roster.values():
 		r.ready = false
-	_begin_match.rpc(roster)
+	_begin_match.rpc(roster, settings)
 
 @rpc("authority", "call_local", "reliable")
-func _begin_match(r: Dictionary) -> void:
+func _begin_match(r: Dictionary, s: Dictionary) -> void:
 	roster = r
+	settings = s
 	in_match = true
 	_loaded.clear()
 	_entering = false
@@ -345,6 +404,7 @@ func _reset(message: String) -> void:
 		_steam.leaveLobby(lobby_id)
 	lobby_id = 0
 	roster.clear()
+	settings = DEFAULT_SETTINGS.duplicate()
 	solo = false
 	in_match = false
 	roster_changed.emit()

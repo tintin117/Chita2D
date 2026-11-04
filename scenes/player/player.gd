@@ -17,6 +17,8 @@ const DASH_RECHARGE := 1.5
 const AIM_REACH := 280.0   ## aim_pos distance for stick aiming
 const BUFFER_TIME := 0.15  ## a press this close to coming off cooldown is queued, not dropped
 const COLORS := ["Blue", "Yellow", "Red", "Black"]   ## Tiny Swords unit colours, by player_index % 4
+const TEAM_SPRITES := ["Red", "Blue"]
+const TEAM_COLORS := [Color("ff6a5f"), Color("5fa8ff")]
 const NAME_COLORS := [Color("5fa8ff"), Color("ffd84a"), Color("ff6a5f"), Color("b9b9c8"), Color("6fe08a"), Color("e08aff"), Color("ff9a3c"), Color("4fe3e3")]
 const RESPAWN_TIME := 3.0
 const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
@@ -37,6 +39,8 @@ const CHICKEN_SCALE := 0.7
 
 @export var player_index := 0
 var ai: BotBrain            ## set before add_child: this player is a bot and its input comes from here, not the keyboard
+var team := -1              ## 0/1 in a team match (Red/Blue), -1 = free-for-all
+var friendly_fire := true   ## false: hits from a teammate do nothing
 var peer_id := 0            ## who this player is in the match (kills, pickups, bombs); the owning peer, or a made-up id for a bot
 var online := false         ## set by the match before add_child; the node's multiplayer authority is then the owning peer
 var display_name := ""
@@ -128,7 +132,7 @@ func _ready() -> void:
 	shape.position = Vector2(0, 14)
 	add_child(shape)
 	_sprite = AnimatedSprite2D.new()
-	_sprite.sprite_frames = hero.frames(COLORS[player_index % COLORS.size()])
+	_sprite.sprite_frames = hero.frames(TEAM_SPRITES[team] if team >= 0 else COLORS[player_index % COLORS.size()])
 	_sprite.offset = Vector2(0, -4)  # sprite art sits slightly below frame center
 	add_child(_sprite)
 	_sprite.play("idle")
@@ -154,7 +158,7 @@ func _setup_online() -> void:
 	label.size = Vector2(160, 20)
 	label.position = Vector2(-80, -78)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.modulate = NAME_COLORS[player_index % NAME_COLORS.size()]
+	label.modulate = TEAM_COLORS[team] if team >= 0 else NAME_COLORS[player_index % NAME_COLORS.size()]
 	label.z_index = 50
 	label.add_theme_font_size_override("font_size", 14)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -572,6 +576,8 @@ func on_dealt_damage(amount: int) -> void:
 ## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
 func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> void:
 	if not owns() or _iframes > 0.0 or down:
+		return
+	if attacker is Player and attacker != self and team >= 0 and attacker.team == team and not friendly_fire:
 		return
 	if attacker is Player and attacker.buffed("damage"):   # victim-side hit: read the attacker's copy of the buff
 		amount *= 2

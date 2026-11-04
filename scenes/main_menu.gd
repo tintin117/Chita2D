@@ -5,6 +5,9 @@ extends Control
 enum Screen { MAIN, ONLINE, JOIN, SOLO }
 const DIFFICULTY := [["Easy", 0.3], ["Normal", 0.6], ["Hard", 0.9]]
 var _difficulty := 1
+const TEAM_COLORS := [Color(1, 0.4, 0.35), Color(0.4, 0.65, 1.0)]
+const TIME_OPTIONS := [[180, "3 min"], [300, "5 min"], [480, "8 min"], [0, "No limit"]]
+const KILL_OPTIONS := [[10, "10"], [15, "15"], [25, "25"], [0, "No limit"]]
 
 var _screen := Screen.MAIN
 var _box: VBoxContainer       ## centre column, rebuilt by _refresh()
@@ -129,11 +132,18 @@ func _room() -> void:
 		row.add_child(_label("Lobby ID: %d" % Net.lobby_id, 16, Color(0.7, 0.85, 1.0)))
 		row.add_child(_button("Copy", func() -> void: DisplayServer.clipboard_set(str(Net.lobby_id))))
 		_box.add_child(row)
+	_settings_rows(host)
 	var ids := Net.roster.keys()
 	ids.sort_custom(func(a: int, b: int) -> bool: return Net.roster[a].slot < Net.roster[b].slot)
-	for id: int in ids:
-		var r: Dictionary = Net.roster[id]
-		_box.add_child(_label("%s%s" % [r.name, "   (host)" if id == 1 else ""], 22, Player.NAME_COLORS[r.slot % Player.NAME_COLORS.size()]))
+	if Net.is_team_mode():
+		for t in 2:
+			_box.add_child(_label("%s team" % Net.TEAM_NAMES[t], 18, TEAM_COLORS[t]))
+			for id: int in ids:
+				if int(Net.roster[id].get("team", 0)) == t:
+					_player_row(id, host)
+	else:
+		for id: int in ids:
+			_player_row(id, false)
 	_box.add_child(_label("%d / %d players" % [Net.roster.size(), Net.MAX_PLAYERS], 14, Color(1, 1, 1, 0.6)))
 	_box.add_child(_status)
 	if not host:
@@ -153,3 +163,42 @@ func _room() -> void:
 		start.tooltip_text = "Needs at least %d players" % Net.MIN_PLAYERS
 		_corner.add_child(start)
 		add_child(_corner)
+
+## Host-editable match rules (cycle buttons); everyone else sees them read-only.
+func _settings_rows(host: bool) -> void:
+	var st: Dictionary = Net.settings
+	var mode := "Team Deathmatch" if Net.is_team_mode() else "Free-for-all"
+	var lines := [
+		["Mode: " + mode, func() -> void: Net.set_setting("mode", "ffa" if Net.is_team_mode() else "tdm")],
+		["Time limit: " + _opt_name(TIME_OPTIONS, st.time_limit), func() -> void: Net.set_setting("time_limit", _opt_next(TIME_OPTIONS, st.time_limit))],
+		["Kill limit: " + _opt_name(KILL_OPTIONS, st.kill_limit), func() -> void: Net.set_setting("kill_limit", _opt_next(KILL_OPTIONS, st.kill_limit))],
+	]
+	if Net.is_team_mode():
+		lines.append(["Friendly fire: " + ("On" if st.friendly_fire else "Off"), func() -> void: Net.set_setting("friendly_fire", not st.friendly_fire)])
+	for l in lines:
+		if host:
+			_box.add_child(_button(l[0], l[1]))
+		else:
+			_box.add_child(_label(l[0], 15, Color(1, 1, 1, 0.75)))
+
+func _opt_name(opts: Array, value: int) -> String:
+	for o in opts:
+		if o[0] == value:
+			return o[1]
+	return str(value)
+
+func _opt_next(opts: Array, value: int) -> int:
+	for i in opts.size():
+		if opts[i][0] == value:
+			return opts[(i + 1) % opts.size()][0]
+	return opts[0][0]
+
+func _player_row(id: int, host: bool) -> void:
+	var r: Dictionary = Net.roster[id]
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var color: Color = TEAM_COLORS[int(r.get("team", 0))] if Net.is_team_mode() else Player.NAME_COLORS[r.slot % Player.NAME_COLORS.size()]
+	row.add_child(_label("%s%s" % [r.name, "   (host)" if id == 1 else ""], 22, color))
+	if Net.is_team_mode() and (host or id == multiplayer.get_unique_id()):
+		row.add_child(_button("Switch team", Net.switch_team.bind(id)))
+	_box.add_child(row)

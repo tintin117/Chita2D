@@ -148,3 +148,19 @@ func test_solo_roster_has_bots_that_need_no_loading() -> void:
 	assert_true(humans_loaded)
 	net._loaded.clear()
 	net.roster = saved
+
+func test_team_totals_and_leader() -> void:
+	var teams := {1: 0, 2: 0, 3: 1, 4: 1}
+	var kills := {1: 3, 2: 2, 3: 4, 4: 0}
+	assert_eq(PvpMatch.team_totals(kills, teams), [5, 4] as Array[int])
+	assert_eq(PvpMatch.leading_team(kills, {1: 0, 2: 0, 3: 0, 4: 0}, teams), 0)
+	kills = {1: 2, 2: 2, 3: 4, 4: 0}
+	assert_eq(PvpMatch.leading_team(kills, {1: 5, 2: 0, 3: 1, 4: 1}, teams), 1, "tie on kills: fewer deaths wins")
+	assert_eq(PvpMatch.leading_team(kills, {1: 1, 2: 1, 3: 1, 4: 1}, teams), -1, "full tie")
+
+func test_team_spawn_halves() -> void:
+	var m := _arena()
+	var a := PvpMatch.team_points(m.spawn_points, 0)
+	var b := PvpMatch.team_points(m.spawn_points, 1)
+	assert_eq(a.size() + b.size(), m.spawn_points.size())
+	assert_eq(PvpMatch.team_points(m.spawn_points, -1), m.spawn_points)
