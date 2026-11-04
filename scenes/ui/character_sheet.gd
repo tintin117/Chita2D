@@ -1,8 +1,8 @@
 class_name CharacterSheet extends CanvasLayer
 ## Tab (or gamepad Back) pauses and shows every hero's level, stats, skills and gear.
-## Spend skill points while it is open: P1 with keys 1-4, P2 with 5-8. Created by Hud.
+## Spend skill points while it is open: P1 with keys 1-2, P2 with 5-6. Created by Hud.
 
-const SPEND_KEYS := [[KEY_1, KEY_2, KEY_3, KEY_4], [KEY_5, KEY_6, KEY_7, KEY_8]]
+const SPEND_KEYS := [[KEY_1, KEY_2], [KEY_5, KEY_6]]
 const COL_W := 400.0
 
 var _view := View.new()
@@ -55,7 +55,7 @@ class View extends Control:
 		_text(o + Vector2(0, 90), "HP %d    Speed %d    Damage x%.2f    Cooldowns x%.2f" % [p.max_hp, p.speed, p.damage_mult, p.cooldown_mult], 16)
 		_text(o + Vector2(0, 126), "Skills", 20, Color(1, 0.85, 0.4))
 		var keys: Array = CharacterSheet.SPEND_KEYS[p.player_index % 2]
-		for i in mini(4, p.spells.size()):
+		for i in mini(Progression.SLOTS, p.spells.size()):
 			var y := 154.0 + i * 30.0
 			var sp := p.spells[i]
 			var can := prog.can_rank_up(i)

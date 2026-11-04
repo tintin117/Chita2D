@@ -1,8 +1,8 @@
 class_name HeroPanel extends Control
-## Per-hero HUD: portrait + level badge, XP, HP bar with damage tail, gear, dash pips and a 4-slot skill bar.
+## Per-hero HUD: portrait + level badge, XP, HP bar with damage tail, gear, dash pips and the two skill slots (LMB basic, RMB signature).
 ## Positions itself (bottom-left, or bottom-right when mirror). Hud.add_player creates one per player.
 
-const SIZE_PX := Vector2(584, 124)
+const SIZE_PX := Vector2(480, 124)
 const GOLD := Color(0.9, 0.75, 0.4)
 const BAR := Rect2(88, 38, 250, 26)
 const SLOT := 52.0
@@ -55,7 +55,7 @@ func _draw_portrait() -> void:
 		_portrait = player.hero.portrait(Player.COLORS[player.player_index % Player.COLORS.size()])
 	var box := Rect2(6, 34, 70, 70)
 	draw_rect(box, Color(0.08, 0.09, 0.11, 0.9))
-	var tint := Color(0.45, 0.45, 0.45) if player.down else Color.WHITE
+	var tint := Color(0.45, 0.45, 0.45) if player.down else player.hero.tint
 	if _portrait is AtlasTexture:   # crop the empty margin around the sprite
 		var r := (_portrait as AtlasTexture).region
 		draw_texture_rect_region((_portrait as AtlasTexture).atlas, box, Rect2(r.position + r.size * 0.2, r.size * 0.6), tint)
@@ -107,19 +107,12 @@ func _draw_gear_and_dash() -> void:
 
 func _draw_skills() -> void:
 	var hints: Array = Hud.HINTS[0 if player.online else player.player_index % 2]
-	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
-	for i in 4:
+	for i in 2:
 		var r := Rect2(SLOT_POS + Vector2(i * (SLOT + 6.0), 0), Vector2(SLOT, SLOT))
 		draw_rect(r, Color(0.07, 0.07, 0.09, 0.92))
 		var spell: Spell = player.spells[i] if i < player.spells.size() else null
 		var border := GOLD
 		if spell:
-			if i == 3:   # signature slot doubles as the charge meter
-				var full := player.signature_charge >= Player.MAX_CHARGE
-				var h := SLOT * clampf(player.signature_charge / Player.MAX_CHARGE, 0.0, 1.0)
-				draw_rect(Rect2(r.position.x, r.end.y - h, SLOT, h), Color(1.0, 0.8, 0.25, 0.55 + 0.3 * pulse) if full else Color(0.9, 0.45, 0.15, 0.5))
-				if full:
-					border = Color(1.0, 0.95, 0.5).lerp(GOLD, 1.0 - pulse)
 			_text(r.position + Vector2(0, 33), spell.display_name.substr(0, 1), 26, Color(1, 0.85, 0.5), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 			var cd := player.cooldowns[i]
 			if cd > 0.0:
@@ -127,12 +120,28 @@ func _draw_skills() -> void:
 				draw_rect(Rect2(r.position, Vector2(SLOT, SLOT * frac)), Color(0, 0, 0, 0.7))
 				if player.cooldown_max[i] >= 2.0:
 					_text(r.position + Vector2(0, 33), str(ceili(cd)) if cd >= 1.0 else "%.1f" % cd, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
-			if spell.charge_cost > player.signature_charge:
-				draw_rect(r, Color(0, 0, 0, 0.45))
 			for k in player.prog.ranks[i]:   # rank pips
 				draw_rect(Rect2(r.position + Vector2(5 + k * 8, SLOT - 8), Vector2(6, 4)), GOLD)
 			if player.prog.can_rank_up(i):
 				draw_circle(r.position + Vector2(SLOT - 9, 9), 8, Color(0.2, 0.6, 0.25))
 				_text(r.position + Vector2(SLOT - 17, 15), "+", 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 16.0)
 		draw_rect(r, border, false, 2.0)
+		_draw_weapon(i, r)
 		_text(r.position + Vector2(0, SLOT + 16), hints[i], 12, Color(0.9, 0.9, 0.9), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+
+## Friendslop: the weapon held in slot i covers the slot with its tier colour, icon, uses left and a time bar; its name sits above.
+func _draw_weapon(i: int, r: Rect2) -> void:
+	if not player.weapon_active(i):
+		return
+	var w: FsWeapon = player.weapons[i]
+	var col := PvpPickup.tier_color(w.id)
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+	draw_rect(r, Color(0.06, 0.06, 0.09, 0.97))
+	draw_rect(r.grow(-3), Color(PvpPickup.COLORS[w.id], 0.35))
+	_text(r.position + Vector2(0, 28), PvpPickup.ICONS[w.id], 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	_text(r.position + Vector2(0, 46), "x%d" % w.uses, 15, Color(1, 0.95, 0.6), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	var left := clampf(w.seconds_left() / w.time, 0.0, 1.0)
+	draw_rect(Rect2(r.position + Vector2(0, -7), Vector2(SLOT, 5)), Color(0, 0, 0, 0.8))
+	draw_rect(Rect2(r.position + Vector2(0, -7), Vector2(SLOT * left, 5)), Color(col, 0.7 + 0.3 * pulse) if left > 0.25 else Color(1, 0.3, 0.2, 0.6 + 0.4 * pulse))
+	draw_rect(r, Color(col, 0.7 + 0.3 * pulse), false, 3.0)
+	_text(r.position + Vector2(SLOT * 0.5 - 70.0, -12 - i * 14), "%s  %ds" % [w.display_name, ceili(w.seconds_left())], 12, col, HORIZONTAL_ALIGNMENT_CENTER, 140.0)

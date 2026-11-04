@@ -9,11 +9,18 @@ const PICKUP_SPAWN_CLEAR := 600.0 ## pickups never appear this close to a player
 const PICKUP_COVER_CLEAR := 120.0
 const PICKUP_APART := 400.0
 const CROWN_MIN_KILLS := 3        ## the kill leader wears the crown from here on (needs a strict lead)
+const CATCHUP_GAP := 6.0          ## Friendslop: kills behind the leader for the full catch-up bias
+const CATCHUP_NEAR_CHANCE := 0.45 ## chance (at full bias) that a drop falls near the trailing player
+const CATCHUP_MIN := 450.0
+const CATCHUP_MAX := 900.0
 const BOUNTY := 2                 ## kills toward the limit for killing the crown holder
 const VERBS_HIT := ["bonked", "deleted", "humbled", "launched", "clapped", "sent to the shadow realm"]
 const LINES_FALL := ["%s took a swim", "%s forgot how to walk", "%s tried to fly", "%s found the water"]
 const LINES_BOMB := ["%s was blown up by the potato", "%s got the hot potato", "%s went out with a bang"]
 
+var _cfg := GameMode.cfg(GameMode.CLASSIC)   ## the mode's row (set in _ready from Net.mode)
+var _kill_limit := 15
+var _fs := false                            ## Friendslop
 var _map: WorldMap
 var _pickups := {}          ## id -> PvpPickup
 var _next_pickup := 1
@@ -152,6 +159,10 @@ static func awards(stats: Dictionary, kills: Dictionary, deaths: Dictionary, kil
 	return top
 
 func _ready() -> void:
+	_cfg = GameMode.cfg(Net.mode)
+	_fs = GameMode.is_friendslop(Net.mode)
+	_kill_limit = Net.settings.kill_limit   # the lobby's limits rule in every mode
+	_pickup_timer = _cfg.first_pickup
 	_map = WorldMap.new()
 	_map.name = "Arena"   # fixed names: RPC and replication paths must match on every peer
 	add_child(_map)
@@ -186,6 +197,9 @@ func _ready() -> void:
 	var radar := Radar.new()
 	radar.arena = self
 	ui.add_child(radar)
+	var arrows := DropArrows.new()
+	arrows.player = me
+	ui.add_child(arrows)
 	_feed = KillFeed.new()
 	ui.add_child(_feed)
 	_banner = Label.new()
@@ -209,7 +223,7 @@ func _spawn(id: int, info: Dictionary) -> void:
 	p.name = str(id)
 	p.online = true
 	p.player_index = info.slot
-	p.hero = Hero.by_id(info.hero)
+	p.hero = Hero.by_id(_cfg.hero if _cfg.hero != "" else info.hero)
 	p.display_name = info.name
 	if _tdm:
 		p.team = int(info.get("team", 0))
@@ -254,7 +268,7 @@ func _on_go() -> void:
 	_running = true
 	_set_players_active(true)
 	Sfx.play("fight")
-	_say("FIGHT!   (1-4: emotes)", 1.6)
+	_say("FIGHT!   grab the drops!" if _fs else "FIGHT!   (1-4: emotes)", 1.6)
 
 func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
 	var vid := victim.peer_id
@@ -368,24 +382,70 @@ func _process(delta: float) -> void:
 					_net_bomb_boom.rpc(id)
 			_pickup_timer -= delta
 			if _pickup_timer <= 0.0:
-				_pickup_timer = PICKUP_EVERY
-				if _pickups.size() < MAX_PICKUPS:
-					_net_spawn_pickup.rpc(_next_pickup, PvpPickup.roll(randf()), _pickup_pos())
+				_pickup_timer = _cfg.pickup_every
+				if _pickups.size() < _cfg.max_pickups:
+					_host_drop()
 
-## A spot on open ground near the middle: away from every player spawn, the cover and other pickups.
-## Only the host calls this; the result travels in the spawn RPC, so peers never touch the map's RNG.
-func _pickup_pos() -> Vector2:
+## Host only: rolls and places the next drop. Classic: a classic kind somewhere central. Friendslop: any kind anywhere, and a
+## drop sometimes falls near whoever is trailing with a slightly better tier (the catch-up; never announced, just a nudge).
+## The kind and the position travel in the spawn RPC, so peers never touch the map's RNG or the dice.
+func _host_drop() -> void:
 	var taken: Array[Vector2] = []
 	for pk: PvpPickup in _pickups.values():
 		taken.append(pk.position)
-	return pick_pickup_pos(_map, taken)
+	var kind: String
+	var pos: Vector2
+	if _fs:
+		var cu := catchup(_living_kills())
+		var trailer: Player = _players.get(cu.peer)
+		if trailer != null and not trailer.down and randf() < CATCHUP_NEAR_CHANCE * cu.boost:
+			kind = PvpPickup.roll_fs(randf(), cu.boost)
+			pos = pick_pickup_pos_near(_map, taken, trailer.global_position, _cfg.spawn_clear, _cfg.apart)
+		else:
+			kind = PvpPickup.roll_fs(randf())
+			pos = pick_pickup_pos(_map, taken, _cfg.spawn_clear, _cfg.apart)
+	else:
+		kind = PvpPickup.roll(randf())
+		pos = pick_pickup_pos(_map, taken)
+	_net_spawn_pickup.rpc(_next_pickup, kind, pos)
 
-static func pick_pickup_pos(map: WorldMap, taken: Array[Vector2]) -> Vector2:
+func _living_kills() -> Dictionary:
+	var out := {}
+	for id: int in _kills:
+		if _players.has(id):
+			out[id] = _kills[id]
+	return out
+
+## The player who trails the leader: {peer, boost}. boost grows 0..1 with the kill gap (full at CATCHUP_GAP kills) and is 0
+## when nobody is behind, with fewer than two players, or when the lowest score is shared. Ties for last: lowest peer id.
+static func catchup(kills: Dictionary) -> Dictionary:
+	if kills.size() < 2:
+		return {"peer": 0, "boost": 0.0}
+	var lo := 0
+	var hi_k := -1
+	for id: int in kills:
+		hi_k = maxi(hi_k, kills[id])
+		if lo == 0 or kills[id] < kills[lo] or (kills[id] == kills[lo] and id < lo):
+			lo = id
+	var gap: int = hi_k - kills[lo]
+	return {"peer": lo if gap > 0 else 0, "boost": clampf(float(gap) / CATCHUP_GAP, 0.0, 1.0)}
+
+## A spot on open ground: away from every player spawn, the cover and other pickups. Classic keeps the defaults (central drops).
+static func pick_pickup_pos(map: WorldMap, taken: Array[Vector2], spawn_clear := PICKUP_SPAWN_CLEAR, apart := PICKUP_APART) -> Vector2:
 	for i in 150:
 		var p := map.random_open_point()
-		if _clear_of(p, map.spawn_points, PICKUP_SPAWN_CLEAR) and _clear_of(p, map.cover, PICKUP_COVER_CLEAR) and _clear_of(p, taken, PICKUP_APART):
+		if _clear_of(p, map.spawn_points, spawn_clear) and _clear_of(p, map.cover, PICKUP_COVER_CLEAR) and _clear_of(p, taken, apart):
 			return p
 	return map.spawn_point   # arena centre
+
+## Like pick_pickup_pos, but between CATCHUP_MIN and CATCHUP_MAX px from `near` (falls back to any valid spot).
+static func pick_pickup_pos_near(map: WorldMap, taken: Array[Vector2], near: Vector2, spawn_clear := PICKUP_SPAWN_CLEAR, apart := PICKUP_APART) -> Vector2:
+	for i in 100:
+		var p := map.random_open_point()
+		var d := p.distance_to(near)
+		if d >= CATCHUP_MIN and d <= CATCHUP_MAX and _clear_of(p, map.spawn_points, spawn_clear) and _clear_of(p, map.cover, PICKUP_COVER_CLEAR) and _clear_of(p, taken, apart):
+			return p
+	return pick_pickup_pos(map, taken, spawn_clear, apart)
 
 static func _clear_of(p: Vector2, points: Array[Vector2], dist: float) -> bool:
 	for q in points:
@@ -404,7 +464,10 @@ func _net_spawn_pickup(id: int, kind: String, pos: Vector2) -> void:
 	_map.add_child(pk)
 	_pickups[id] = pk
 	_next_pickup = maxi(_next_pickup, id + 1)
-	_say("%s appeared!" % PvpPickup.LABELS[kind], 1.5)
+	if PvpPickup.tier_of(kind) == PvpPickup.Tier.EPIC:
+		_say("EPIC DROP!  %s" % PvpPickup.LABELS[kind], 2.2)
+	else:
+		_say("%s appeared!" % PvpPickup.LABELS[kind], 1.5)
 
 func _on_pickup_touched(id: int, peer: int) -> void:
 	_claim.rpc_id(1, id, peer)
@@ -419,7 +482,7 @@ func _claim(id: int, taker: int) -> void:
 		return   # a peer can only claim for its own player (a solo match has the one peer claiming for its bots too)
 	var outcome: String = _pickups[id].kind
 	if outcome == "mystery":
-		outcome = PvpPickup.mystery_outcome(randf())   # the host rolls it so every peer sees the same result
+		outcome = PvpPickup.mystery_outcome(randf(), _fs)   # the host rolls it so every peer sees the same result
 	var p: Player = _players.get(taker)
 	if outcome == "bomb" and (p == null or p.has_bomb):
 		outcome = "damage"   # one potato per player
@@ -543,7 +606,7 @@ class Board extends Control:
 		if arena._tdm:
 			var tt: Array[int] = arena.team_totals(arena._kills, arena._teams)
 			head += "     Red %d - %d Blue" % [tt[0], tt[1]]
-		draw_string(font, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, w, 22, Color.WHITE)
+		draw_string(font, Vector2(0, 30), ("FRIENDSLOP   " if arena._fs else "") + head, HORIZONTAL_ALIGNMENT_CENTER, w, 22, Color.WHITE)
 		var me: Player = arena._players.get(Net.local_id())
 		if me:
 			var line := ""
@@ -642,9 +705,15 @@ class Radar extends Control:
 		for pk: PvpPickup in arena._pickups.values():
 			var p := _to_radar(pk.position)
 			var col: Color = PvpPickup.COLORS[pk.kind]
-			var pts := PackedVector2Array([p + Vector2(0, -6), p + Vector2(6, 0), p + Vector2(0, 6), p + Vector2(-6, 0)])
+			var tier := PvpPickup.tier_of(pk.kind)
+			var r := 5.0 + tier * 2.5   # bigger = rarer; epics also get a gold ring
+			var pts := PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0)])
 			draw_colored_polygon(pts, col)
 			draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color.BLACK, 1.5)
+			if tier >= PvpPickup.Tier.RARE:
+				draw_arc(p, r + 3.0, 0.0, TAU, 20, PvpPickup.TIER_COLORS[tier], 1.5)
+			if tier == PvpPickup.Tier.EPIC:
+				draw_arc(p, r + 6.0, 0.0, TAU, 24, PvpPickup.TIER_COLORS[tier], 1.5)
 		var me_id := Net.local_id()
 		for id: int in arena._players:
 			var pl: Player = arena._players[id]

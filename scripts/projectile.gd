@@ -12,6 +12,7 @@ var radius := 10.0
 var from_player := true
 var source: Node
 var silent := false          ## rapid-fire hits: no knockback / shake / hit-stop on enemies
+var shove := 0.0             ## extra launch speed along the flight line, on top of the hit's own knockback
 var arrow_tex := ""
 var color := Color(1.0, 0.55, 0.15)
 var _hit: Array[Node] = []
@@ -60,6 +61,8 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if body == source or ("down" in body and body.down):   # never the caster; downed players are walked through
 		return
+	if body.has_method("phased") and body.phased():   # a Shadow Step is untargetable
+		return
 	if body.has_method("take_damage"):
 		if body in _hit:
 			return
@@ -69,8 +72,8 @@ func _on_body_entered(body: Node) -> void:
 			body.take_damage(damage, global_position, true, source)
 		else:
 			body.take_damage(damage, global_position, false, source)
-		if source and source.has_method("on_dealt_damage"):
-			source.on_dealt_damage(damage)
+		if shove > 0.0:
+			Spell.shove(body, velocity.normalized() * shove)
 		if pierce > 0:
 			pierce -= 1
 			return

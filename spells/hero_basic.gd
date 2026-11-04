@@ -2,6 +2,8 @@ class_name HeroBasic extends Spell
 ## Fast 3-cast combo basic. mode "arc": instant cone sweep (melee). mode "bolt": projectile(s) (ranged).
 ## The 3rd cast is the finisher: bigger damage, and extra bolts for spread heroes. Built by Hero.make_basic().
 
+const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~240 px slide with its own knockback)
+
 @export var mode := "bolt"
 @export var radius := 115.0          ## arc reach
 @export var arc_angle := 2.2
@@ -9,6 +11,7 @@ class_name HeroBasic extends Spell
 @export var active := 0.12            ## melee: how long the sweep keeps hitting (each foe once)
 @export var assist_angle := 0.35      ## melee/bolt aim assist: snap toward the nearest foe within this angle
 @export var lunge_speed := 0.0       ## melee: step forward with each sweep
+@export var back_mult := 1.0         ## melee: damage multiplier on a victim that is facing away from the sweep
 @export var bolt_speed := 640.0
 @export var bolt_radius := 16.0
 @export var bolt_life := 0.6
@@ -31,6 +34,7 @@ class Sweep extends Node2D:
 	var dmg := 12
 	var finisher := false
 	var lunge_speed := 0.0
+	var back_mult := 1.0
 	var _age := 0.0
 	var _lunged := false
 	var _landed := false
@@ -54,11 +58,23 @@ class Sweep extends Node2D:
 				continue
 			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0:
 				_hit.append(e)
-				e.take_damage(dmg, position, false, caster)
-				caster.on_dealt_damage(dmg)
+				var hit := dmg
+				if back_mult > 1.0 and Sweep.from_behind(e, position):
+					hit = roundi(dmg * back_mult)
+					if e.has_method("float_text"):
+						e.float_text("BACKSTAB", Color(1.0, 0.45, 0.9), 22)
+				e.take_damage(hit, position, false, caster)
+				if finisher:
+					Spell.shove(e, dir * FINISHER_SHOVE)   # the 3rd hit launches; hits 1-2 only flinch, so the combo keeps landing
 				if not _landed:
 					_landed = true
 					Sfx.play("hit_big" if finisher else "hit", position)
+
+	## True when `pos` is behind the victim: it is looking away from the attacker.
+	static func from_behind(victim: Node2D, pos: Vector2) -> bool:
+		if not ("aim_dir" in victim):
+			return false
+		return victim.aim_dir.dot((pos - victim.global_position).normalized()) < -0.1
 
 	func _process(_delta: float) -> void:
 		if _age >= windup + active + 0.08:
@@ -100,6 +116,7 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		fx.dmg = dmg
 		fx.finisher = finisher
 		fx.lunge_speed = lunge_speed
+		fx.back_mult = back_mult
 		fx.z_index = 5
 		fx.position = caster.global_position + Vector2(0, 8)
 		scene.add_child(fx)

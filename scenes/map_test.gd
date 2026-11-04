@@ -94,7 +94,7 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
-	if event.keycode == KEY_F2:   # not R: that's the signature skill
+	if event.keycode == KEY_F2:
 		Engine.set_meta("map_seed", randi())
 		get_tree().reload_current_scene()
 	elif event.keycode == KEY_F4:   # debug

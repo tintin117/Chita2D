@@ -1,6 +1,6 @@
 class_name BotBrain extends RefCounted
 ## The "keyboard" of a bot. A Player with `ai` set asks think() every physics frame and reads the same four things a human
-## gives it: move, aim_pos, which skill slots are held, a dash press (plus an emote). Everything else (cooldowns, casting,
+## gives it: move, aim_pos, which of the two skill slots (basic, signature) are held, a dash press (plus an emote). Everything else (cooldowns, casting,
 ## damage) is the normal Player code, so a bot plays by exactly the same rules.
 ##
 ## What it does, in priority order:
@@ -9,7 +9,8 @@ class_name BotBrain extends RefCounted
 ##  3. Hot potato: when carrying it, run at the nearest victim and dash in to hand it over.
 ##  4. Pickups: go for healing when hurt and for power-ups when they are close; avoid the chicken and potato pickups.
 ##  5. Fight: pick a target (wounded, close, crowned, not a giant), hold the spacing the hero is built for (melee closes in,
-##     ranged keeps back and strafes), lead its shots, and fire only through clear lines (cover blocks bolts).
+##     ranged keeps back and strafes; the rogue circles to its back and hit-and-runs), lead its shots, fire only through clear lines
+##     (cover blocks bolts), and use the hero's signature the way it is meant: charge to pin, blink behind, zone a pickup, snipe.
 ## `skill` (0..1) scales reaction time, aim error and how often it dodges. Rocks are steered around, and a bot that stops
 ## making progress backs off sideways and dashes.
 
@@ -23,7 +24,7 @@ const PICKUP_VALUE := {"heal": 1.0, "damage": 1.6, "speed": 0.9, "mystery": 1.1,
 # --- what Player reads
 var move := Vector2.ZERO
 var aim_pos := Vector2.ZERO
-var held: Array[bool] = [false, false, false, false]
+var held: Array[bool] = [false, false]
 var skill := 0.6
 
 var _dash := false
@@ -89,7 +90,7 @@ func on_death(cause: String) -> void:
 func think(delta: float) -> void:
 	if _p.down:
 		move = Vector2.ZERO
-		held = [false, false, false, false]
+		held = [false, false]
 		_dash = false
 		return
 	_emote_age += delta
@@ -168,6 +169,8 @@ func _decide() -> void:
 ## The spacing the hero is built for: melee closes in, ranged keeps back and circles.
 func _spacing(me: Vector2, tpos: Vector2, dist: float) -> Vector2:
 	var to := _dir(me, tpos)
+	if _p.hero.id == "rogue":
+		return _flank(me, tpos, dist, to)
 	var ideal := 70.0
 	if _p.hero.attack_type == "ranged":
 		ideal = _p.hero.attack_range * 0.62
@@ -180,68 +183,106 @@ func _spacing(me: Vector2, tpos: Vector2, dist: float) -> Vector2:
 		_try_dash(to, 0.5)   # close the gap
 	return to * radial + tangent
 
+## The rogue: slip round to the target's back and stab, then peel away between bursts instead of trading blows.
+func _flank(me: Vector2, tpos: Vector2, dist: float, to: Vector2) -> Vector2:
+	if not _bursting and dist < 220.0:
+		_try_dash(-to + to.orthogonal() * _orbit, 0.5)
+		return -to * 0.8 + to.orthogonal() * _orbit * 0.6
+	var back := tpos - _target.aim_dir * 55.0
+	if dist < 130.0:   # close already: swing round behind rather than straight in
+		return _dir(me, back) * 0.8 + to.orthogonal() * _orbit * 0.35 * (1.0 if _target.aim_dir.dot(to) > 0.0 else 0.0)
+	return _dir(me, back)
+
 func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
-	for i in 4:
+	for i in held.size():
 		held[i] = false
 	var aim_from := me + Vector2(0, 8)
 	_aim_goal = tpos if _target else me + (_steer if _steer.length() > 0.1 else Vector2.RIGHT) * 200.0
 	if _target == null or _p.buffed("chicken") or _p.has_bomb or edge.length() > 0.6:
 		return
 	var los := _los_clear(aim_from, tpos)
-	for i: int in [3, 1, 2, 0]:
+	for i: int in [1, 0]:   # the signature first, then the basic
 		if i >= _p.spells.size():
 			continue
-		var s: Spell = _p.spells[i]
-		if _p.cooldowns[i] > 0.04 or _p.signature_charge < s.charge_cost or not _fits(s, dist, los):
+		var s: Spell = _p.spell_in(i)   # a Friendslop weapon, when one is held
+		if _p.cooldowns[i] > 0.04 or not _fits(s, dist, los, tpos):
 			continue
 		if i == 0 and not _bursting:
 			continue
 		held[i] = true
 		_aim_goal = _aim_for(s, aim_from, tpos)
 		break
+	if not holding() and _p.spells.size() > 1 and _p.cooldowns[1] <= 0.04 and _p.spells[1] is EmberField:
+		var deny := _contested_pickup(me)   # the mage zones a pickup a foe is about to take
+		if deny != Vector2.INF:
+			held[1] = true
+			_aim_goal = deny
 	var err := randfn(0.0, lerpf(0.14, 0.015, skill))
 	_aim_goal = aim_from + (_aim_goal - aim_from).rotated(err)
 
 ## Does this skill make sense at this range? Bolts need a clear line, blasts and arcs do not.
-func _fits(s: Spell, dist: float, los: bool) -> bool:
+func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
+	if s is FsWeapon:
+		return dist >= s.min_range and dist <= s.max_range and (los or not s.needs_los)
+	if s is Shove:
+		return dist < Shove.REACH - 25.0
 	var hb := s as HeroBasic
 	if hb:
 		if hb.mode == "arc":
 			return dist < hb.radius + 6.0
 		return dist < hb.bolt_speed * hb.bolt_life * 0.92 and los
-	if s is FireWave:
-		return dist > 90.0 and dist < 340.0 and los
-	if s is Blast:
-		return dist < Blast.MAX_RANGE - 20.0
+	if s is EmberField:
+		return dist < EmberField.MAX_RANGE - 20.0 and (dist > 70.0 or _p.hp < _p.max_hp)
 	if s is SnipeShot:
 		return dist > 260.0 and dist < 1000.0 and los
 	if s is ShieldCharge:
-		return dist > 110.0 and dist < 215.0 and los
-	if s is BladeStorm:
-		return dist < 140.0
-	if s is ArrowBarrage:
-		return dist < 640.0 and los
-	if s is MeteorBarrage:
-		return dist < 400.0
+		# close the gap, or (better) shove a foe that stands with water or a rock behind it
+		return dist > 110.0 and dist < (330.0 if _backed_by_edge(tpos, _dir(_p.global_position, tpos)) else 215.0) and los
+	if s is ShadowStep:
+		return dist > 170.0 and dist < ShadowStep.MAX_RANGE - 30.0
 	return false
+
+## Water or a rock within a launch's reach behind `pos`, seen from `dir`.
+func _backed_by_edge(pos: Vector2, dir: Vector2) -> bool:
+	if pos == Vector2.INF:
+		return false
+	for reach in [140.0, 280.0, 420.0]:
+		if _map.is_water(pos + Vector2(0, 14) + dir * reach):
+			return true
+	return not _los_clear(pos, pos + dir * 140.0)
+
+## A pickup a foe is closer to than we are, but still within reach of an Ember Field. INF if none.
+func _contested_pickup(me: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := INF
+	for pk: PvpPickup in _arena._pickups.values():
+		if pk.kind == "chicken" or pk.kind == "bomb":
+			continue
+		var d := me.distance_to(pk.global_position)
+		if d > EmberField.MAX_RANGE - 30.0 or d >= best_d:
+			continue
+		for f in _foes():
+			if f.global_position.distance_to(pk.global_position) < 230.0 and f.global_position.distance_to(pk.global_position) < d:
+				best = pk.global_position
+				best_d = d
+				break
+	return best
 
 ## Where to aim: ahead of a moving target for slow shots, and at where it will be for delayed blasts.
 func _aim_for(s: Spell, from: Vector2, tpos: Vector2) -> Vector2:
 	var vel := _target.velocity if skill > 0.35 else Vector2.ZERO
-	if s is Blast:
-		return tpos + (vel * 0.45).limit_length(160.0)
-	if s is MeteorBarrage:
-		return tpos + (vel * 0.5).limit_length(160.0)
+	if s is EmberField:
+		return tpos + (vel * 0.6).limit_length(170.0)   # lands after the 0.6s telegraph
+	if s is SnipeShot:
+		return tpos + (vel * (SnipeShot.CHARGE + 0.1)).limit_length(300.0)   # the line is locked when the charge starts
+	if s is ShadowStep:
+		return tpos
 	var speed := 0.0
+	if s is FsWeapon:
+		speed = s.lead_speed
 	var hb := s as HeroBasic
 	if hb and hb.mode == "bolt":
 		speed = hb.bolt_speed
-	elif s is FireWave:
-		speed = 520.0
-	elif s is SnipeShot:
-		speed = SnipeShot.SPEED
-	elif s is ArrowBarrage:
-		speed = 1000.0
 	if speed <= 0.0:
 		return tpos
 	return lead(from, tpos, vel, speed)
@@ -299,6 +340,8 @@ func _best_pickup(me: Vector2, hp_frac: float) -> Dictionary:
 		return best
 	for pk: PvpPickup in _arena._pickups.values():
 		var value: float = PICKUP_VALUE.get(pk.kind, 0.0)
+		if PvpPickup.is_weapon(pk.kind):
+			value = 0.9 + 0.5 * PvpPickup.tier_of(pk.kind)
 		if pk.kind == "heal":
 			value = 0.15 if hp_frac > 0.9 else 1.0 + (1.0 - hp_frac) * 3.0
 		if value <= 0.0:
@@ -330,6 +373,10 @@ func _repulsion(me: Vector2, foes: Array[Player], _pickup: Dictionary) -> Vector
 			var left := e.delay - e._age
 			if left < 0.3 and me.distance_to(e.global_position) < e.radius:
 				_try_dash(_dir(e.global_position, me), 0.9)
+	for n in _p.get_tree().get_nodes_in_group("zones"):
+		var z := n as Node2D
+		if z and z.get("caster") != _p and me.distance_to(z.global_position) < EmberField.RADIUS + 50.0:
+			push += _dir(z.global_position, me) * 2.0
 	return push
 
 ## Which way to sidestep the soonest projectile that will hit (zero = none), dashing if it is nearly on us.
@@ -430,7 +477,7 @@ func _safety(_delta: float) -> void:
 	if not danger:
 		_rescue_ok = randf() < lerpf(0.6, 1.0, skill)   # decided once per scare: an easy bot sometimes freezes
 		return
-	for i in 4:
+	for i in held.size():
 		held[i] = false
 	if _rescue_ok:
 		move = to_centre

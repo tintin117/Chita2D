@@ -424,7 +424,7 @@ func _build() -> void:
 	ground.add_child(layer)
 
 	var walls := StaticBody2D.new()
-	walls.collision_layer = 1
+	walls.collision_layer = 1 | Player.WALL_MASK   # walls also sit on the wall layer: a dash passes rocks but never these
 	walls.collision_mask = 0
 	if not open_shore:
 		ground.add_child(walls)
