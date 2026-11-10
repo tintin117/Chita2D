@@ -34,10 +34,11 @@ class Sweep extends Node2D:
 	var dmg := 12
 	var finisher := false
 	var lunge_speed := 0.0
+	var lunge_time := 0.08
+	var lock: Node2D      ## lock-on: the swing turns to this foe when it goes live
 	var back_mult := 1.0
 	var _age := 0.0
 	var _lunged := false
-	var _landed := false
 	var _hit: Array[Node] = []
 
 	func _physics_process(delta: float) -> void:
@@ -50,8 +51,10 @@ class Sweep extends Node2D:
 			return
 		if not _lunged:
 			_lunged = true
+			if is_instance_valid(lock) and not lock.down:
+				dir = (lock.global_position - caster.global_position).normalized()   # it moved during the windup
 			if lunge_speed > 0.0:
-				caster.lunge(dir, 0.12 if finisher else 0.08, lunge_speed * (2.0 if finisher else 1.0))  # finisher steps in harder
+				caster.lunge(dir, lunge_time, lunge_speed)
 		for e in Spell.foes(caster):
 			var off := e.global_position - position
 			if e in _hit or off.length() > reach + 20.0:
@@ -63,12 +66,9 @@ class Sweep extends Node2D:
 					hit = roundi(dmg * back_mult)
 					if e.has_method("float_text"):
 						e.float_text("BACKSTAB", Color(1.0, 0.45, 0.9), 22)
-				e.take_damage(hit, position, false, caster)
+				e.take_damage(hit, position, false, caster)   # the hit sound plays from take_damage, only when the hit lands
 				if finisher:
 					Spell.shove(e, dir * FINISHER_SHOVE)   # the 3rd hit launches; hits 1-2 only flinch, so the combo keeps landing
-				if not _landed:
-					_landed = true
-					Sfx.play("hit_big" if finisher else "hit", position)
 
 	## True when `pos` is behind the victim: it is looking away from the attacker.
 	static func from_behind(victim: Node2D, pos: Vector2) -> bool:
@@ -96,8 +96,21 @@ class Sweep extends Node2D:
 		draw_colored_polygon(pts, Color(1.0, 0.5, 0.15, 0.55 * (1.0 - t)))
 		draw_polyline(pts.slice(1), Color(1, 1, 1, 0.8 * (1.0 - t)), 3.0)
 
-## Melee snaps to the nearest foe in reach. Bolts soft-lock: aim near a foe and the shot leads it (bots do their own
-## leading by skill, so they only get the plain snap).
+const LOCK_RADIUS := 110.0   ## a foe this close to the cursor is the target
+const LOCK_STEP := 250.0     ## melee: a locked swing reaches this far beyond the blade by stepping in
+const LOCK_LUNGE := 1000.0   ## step-in speed of a locked swing (px/s), so the gap closes inside ~0.27 s
+
+func reach() -> float:
+	return radius + LOCK_STEP if mode == "arc" else bolt_speed * bolt_life
+
+## Lock-on (point and click): the foe under the cursor, or failing that the one in the aim cone. A locked bolt homes
+## and a locked swing steps in to reach; a dash or a phase shakes it off. Bots aim for themselves: no lock.
+func target(caster: Node2D, aim_pos: Vector2, dir: Vector2) -> Node2D:
+	if caster.get("ai"):
+		return null
+	return Spell.pick_foe(caster, aim_pos, dir, LOCK_RADIUS, assist_angle, reach())
+
+## Free-aimed casts (no lock): melee snaps to the nearest foe in reach, bolts lead a foe near the aim line.
 func aim(caster: Node2D, dir: Vector2) -> Vector2:
 	if mode == "arc":
 		return Spell.assist_dir(caster, dir, assist_angle, radius + 40.0)
@@ -109,6 +122,8 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		_combo = 0
 	_last_msec = now
 	var finisher := _combo == 2
+	cast_pitch = 0.8 if finisher else 0.95 + 0.1 * _combo   # the swing sound climbs 1-2-3, then the finisher lands deep and loud
+	cast_vol = 3.0 if finisher else 0.0
 	_combo = 0 if finisher else _combo + 1
 	var dmg := int(damage * (finisher_mult if finisher else 1.0))
 	var scene := caster.get_tree().current_scene
@@ -122,7 +137,17 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		fx.active = active
 		fx.dmg = dmg
 		fx.finisher = finisher
-		fx.lunge_speed = lunge_speed
+		fx.lunge_speed = lunge_speed * (2.0 if finisher else 1.0)   # finisher steps in harder
+		fx.lunge_time = 0.12 if finisher else 0.08
+		fx.lock = lock
+		if lock and fx.lunge_speed > 0.0:   # step in far enough to put the target inside the blade (up to ~LOCK_STEP)
+			var gap := caster.global_position.distance_to(lock.global_position) - radius * 0.8
+			if gap < 12.0:
+				fx.lunge_speed = 0.0   # already inside the blade: no step-in (players do not collide, so it would run through the target)
+			else:
+				fx.lunge_speed = maxf(fx.lunge_speed, LOCK_LUNGE)
+				fx.lunge_time = clampf(gap / fx.lunge_speed, 0.03, 0.3)
+				fx.active = maxf(active, fx.lunge_time + 0.05)
 		fx.back_mult = back_mult
 		fx.z_index = 5
 		fx.position = caster.global_position + Vector2(0, 8)
@@ -135,5 +160,8 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 			p.radius = bolt_radius
 			p.life = bolt_life
 			p.pierce = bolt_pierce
+			if lock and i == extra:   # only the middle bolt of a fan homes
+				p.target = lock
+				p.life = bolt_life * 1.5   # room to catch a target that is running away
 			scene.add_child(p)
 	return cooldown * (finisher_cd_mult if finisher else 1.0)

@@ -1,12 +1,15 @@
 class_name SnipeShot extends Spell
 ## Ranger right click: take aim for CHARGE seconds (slowed, with a laser showing the line), then loose one heavy arrow.
-## The line is locked when you press, so it can be sidestepped; anything it hits is launched, which is how you ring foes out.
+## The line is locked when you press, so it can be sidestepped. Whoever it hits is stunned, longer the farther the arrow
+## flew (STUN_NEAR at point blank up to STUN_FAR at full LENGTH), so the long shot is the one worth lining up.
 
 const ARROW := "res://assets/tiny_swords/units/Blue/Archer/Arrow.png"
 const SPEED := 1700.0
 const CHARGE := 0.6
 const LENGTH := 1100.0
-const SHOVE := 1100.0
+const SHOVE := 250.0
+const STUN_NEAR := 0.4
+const STUN_FAR := 1.8
 const SLOW := 0.3
 
 class Aim extends Node2D:
@@ -30,6 +33,9 @@ class Aim extends Node2D:
 			p.life = LENGTH / SPEED
 			p.radius = 12.0
 			p.shove = SHOVE
+			p.stun = STUN_NEAR
+			p.stun_far = STUN_FAR
+			p.stun_dist = LENGTH
 			caster.get_tree().current_scene.add_child(p)
 			Sfx.play("shoot", position)
 			queue_free()

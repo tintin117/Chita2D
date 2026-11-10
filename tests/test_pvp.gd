@@ -79,6 +79,27 @@ func test_buffs_expire() -> void:
 	p.buffs["damage"] = Time.get_ticks_msec() / 1000.0 - 1.0
 	assert_false(p.buffed("damage"))
 
+func test_stun_holds_then_expires() -> void:
+	var p := Player.new()
+	track(p)
+	assert_false(p.stunned())
+	p.stun(0.5)
+	assert_true(p.stunned())
+	p.stun(0.2)   # a shorter stun never cuts a longer one
+	p._tick_timers(0.3)
+	assert_true(p.stunned())
+	p._tick_timers(0.3)
+	assert_false(p.stunned())
+
+func test_basic_reach_drives_lock_on_and_chase() -> void:
+	for id in ["knight", "rogue", "wizard", "ranger"]:
+		var h := Hero.by_id(id)
+		var s := h.make_basic()
+		assert_gt(s.reach(), h.attack_range * 0.99, id + " reaches at least its attack range")
+		if h.attack_type == "melee":
+			assert_gt(s.reach(), h.attack_range + 200.0, id + " steps in beyond the blade")
+	assert_eq(Hero.by_id("bonker").make_kit()[1].reach(), 0.0, "skills are not lock-on attacks")
+
 func test_knockback_grows_with_damage_and_caps() -> void:
 	assert_gt(Player.knock_for(45), Player.knock_for(10))
 	assert_eq(Player.knock_for(10), Player.knock_for(12), "light hits all flinch the same")

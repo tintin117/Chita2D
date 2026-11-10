@@ -34,8 +34,8 @@ func test_bonker_is_modest_and_hidden_from_the_pick() -> void:
 		assert_true(b.max_hp <= Hero.by_id("knight").max_hp, "nor tankier")
 	var kit := b.make_kit()
 	assert_eq(kit.size(), 2)
-	assert_true(kit[0] is HeroBasic and kit[1] is Shove)
-	assert_true(kit[1].damage < 8, "the shove is for launching, not damage")
+	assert_true(kit[0] is HeroBasic and kit[1] is Hook)
+	assert_true(kit[1].damage < 8, "the hook is for catching, not damage")
 
 func test_weapon_tables_agree() -> void:
 	var ids := FsWeapon.ids()
@@ -153,7 +153,7 @@ func test_weapon_expires_by_uses_and_time_and_death() -> void:
 	w.uses = 1
 	w.uses -= 1
 	assert_false(p.weapon_active(1), "no uses left")
-	assert_true(p.spell_in(1) is Shove, "back to the hero's skill")
+	assert_true(p.spell_in(1) is Hook, "back to the hero's skill")
 	p.apply_pickup("slingshot")
 	assert_true(p.weapon_active(0))
 	p.weapons[0].until = Time.get_ticks_msec() / 1000.0 - 0.1

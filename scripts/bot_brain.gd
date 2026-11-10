@@ -224,8 +224,8 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
 	if s is FsWeapon:
 		return dist >= s.min_range and dist <= s.max_range and (los or not s.needs_los)
-	if s is Shove:
-		return dist < Shove.REACH - 25.0
+	if s is Hook:
+		return dist > 130.0 and dist < Hook.RANGE - 40.0 and los   # drag in whoever is out of bonk reach
 	var hb := s as HeroBasic
 	if hb:
 		if hb.mode == "arc":
@@ -236,7 +236,7 @@ func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
 	if s is SnipeShot:
 		return dist > 260.0 and dist < 1000.0 and los
 	if s is ShieldCharge:
-		# close the gap, or (better) shove a foe that stands with water or a rock behind it
+		# close the gap and stun, or (better) pin a foe that stands with a rock behind it
 		return dist > 110.0 and dist < (330.0 if _backed_by_edge(tpos, _dir(_p.global_position, tpos)) else 215.0) and los
 	if s is ShadowStep:
 		return dist > 170.0 and dist < ShadowStep.MAX_RANGE - 30.0
@@ -277,7 +277,7 @@ func _aim_for(s: Spell, from: Vector2, tpos: Vector2) -> Vector2:
 		return tpos + (vel * (SnipeShot.CHARGE + 0.1)).limit_length(300.0)   # the line is locked when the charge starts
 	if s is ShadowStep:
 		return tpos
-	var speed := 0.0
+	var speed := Hook.SPEED if s is Hook else 0.0
 	if s is FsWeapon:
 		speed = s.lead_speed
 	var hb := s as HeroBasic

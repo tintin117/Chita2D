@@ -11,7 +11,14 @@ class_name Spell extends Resource
 func cast(_caster: Node2D, _aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	return cooldown
 
-var lock: Node2D   ## the foe this one cast is locked onto (see target()); set by the Player around cast(), null otherwise
+var cast_pitch := 1.0   ## pitch / extra dB of the cast sound; a spell may change them per cast (HeroBasic: rising combo pitch)
+var cast_vol := 0.0
+
+## How far a basic attack of this spell can reach a locked foe; 0 = not a lock-on attack (no hold-to-chase).
+func reach() -> float:
+	return 0.0
+
+var lock: Node2D  ## the foe this one cast is locked onto (see target()); set by the Player around cast(), null otherwise
 
 ## Lock-on: the foe a cast aimed at `aim_pos` / `dir` should go for, or null for a free-aimed cast. Asked once by the
 ## caster's owner; the answer travels with the cast and reaches cast() as `lock` on every peer.
@@ -75,6 +82,17 @@ static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius
 			cone_off = ang
 			cone = e
 	return near if near else cone
+
+## The foe closest to the caster within `max_dist`, ignoring where the cursor points; null if none.
+static func nearest_foe(caster: Node2D, max_dist: float) -> Node2D:
+	var best: Node2D = null
+	var best_d := max_dist
+	for e: Node2D in foes(caster):
+		var d := e.global_position.distance_to(caster.global_position)
+		if d <= best_d:
+			best_d = d
+			best = e
+	return best
 
 ## Stuns a foe that can be stunned (players; the dummy ignores it). Called on every peer so every screen shows it;
 ## only the victim's own peer actually stops moving. Call it only for a hit that landed (take_damage returned true).

@@ -11,10 +11,10 @@ signal fragged(victim: Player, killer_peer: int, cause: String)   ## online: emi
 const SLOTS := ["basic", "skill"]   ## input action suffixes; slot 0 = LMB basic, slot 1 = RMB skill
 const SOLID_MASK := 1    ## collision layer of rocks and the dummy
 const WALL_MASK := 32    ## collision layer of the hard room walls (rocks are not on it): a dash never passes these
-const MAX_DASH := 3
+const MAX_DASH := 2         ## the dash is what shakes off a lock-on, so it is scarce: one escape, one spare
 const DASH_SPEED := 1500.0
 const DASH_TIME := 0.16
-const DASH_RECHARGE := 1.5
+const DASH_RECHARGE := 2.5
 const AIM_REACH := 280.0   ## aim_pos distance for stick aiming
 const BUFFER_TIME := 0.15  ## a press this close to coming off cooldown is queued, not dropped
 const COLORS := ["Blue", "Yellow", "Red", "Black"]   ## Tiny Swords unit colours, by player_index % 4
@@ -28,7 +28,7 @@ const KNOCK_LIGHT_DMG := 12        ## hits up to this damage are light; only hea
 const KNOCK_PER_DMG := 20.0        ## extra launch speed per damage above KNOCK_LIGHT_DMG (skills add their own Spell.shove on top)
 const KNOCK_LOW_HP := 0.6          ## launch bonus at 0 HP: knockback grows as the victim's health drops (Smash-style), so ring-outs come late in a fight
 const KNOCK_MAX := 1500.0
-const KNOCK_DECEL := 2200.0        ## slide = v^2 / (2 * this): a Shove (~1470 px/s) carries ~490 px, short enough to follow up
+const KNOCK_DECEL := 2200.0        ## slide = v^2 / (2 * this): a 1470 px/s launch carries ~490 px. The Hook sizes its pull from this
 const ATTACK_MOVE := 0.75          ## move speed multiplier during the cast lock (not while merely holding the button)
 const HIT_SLOW_LIGHT := [0.3, 0.3] ## [speed multiplier, seconds] on the victim of a light hit: this is what lets a chaser stay on them
 const HIT_SLOW_HEAVY := [0.5, 0.6]
@@ -94,6 +94,8 @@ var _swing := false        ## alternates basic-attack animations (cast / cast2) 
 var _iframes := 0.0
 var _stun_left := 0.0      ## stunned: no moving, casting or dashing. Kept on every peer; only the owner's copy stops input, the rest show it
 var _hover: Node2D         ## local human only: the foe the basic attack would lock onto right now (drawn as a ring)
+var _chase: Node2D         ## local human only: the foe a held basic attack is walking toward (see _tick_chase)
+var hit_sound_msec := 0    ## when this player's last hit sound played on this peer
 var _punch := 0.0         ## 1 -> 0 squash on being hit (see _apply_look)
 var _sink := 0.0          ## seconds spent over water
 var crowned := false: set = _set_crowned   ## wears the match crown (set by the match); drawn as a crown and a beam
@@ -135,6 +137,15 @@ static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false) -> 
 		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
 		if heavy or killed:   # light hits come several a second: freezing on each one made attacking feel slow
 			cam.hit_stop(0.16 if killed else 0.1)
+	hit_sound(victim, amount)
+
+## The impact sound of a hit that landed: heavier hits are louder and lower. Played here and nowhere else, so a hit the
+## victim's dash dodged is silent. `victim.hit_sound_msec` stops the observer path in _net_hp from doubling it.
+static func hit_sound(victim: Node2D, amount: int) -> void:
+	if victim is Player:
+		victim.hit_sound_msec = Time.get_ticks_msec()
+	var weight := clampf(amount / 45.0, 0.0, 1.0)
+	Sfx.play("hit_big" if amount > KNOCK_LIGHT_DMG else "hit", victim.global_position, lerpf(-4.0, 3.0, weight), lerpf(1.1, 0.8, weight))
 
 ## Closest living player, or null.
 static func nearest_alive(tree: SceneTree, pos: Vector2) -> Player:
@@ -385,7 +396,8 @@ func _draw() -> void:
 		draw_colored_polygon(c, Color(1.0, 0.85, 0.3))
 		draw_polyline(c + PackedVector2Array([c[0]]), Color.BLACK, 2.0)
 	if is_instance_valid(_hover) and not down:   # lock-on marker: this is who the next basic attack goes for
-		draw_arc(to_local(_hover.global_position) + Vector2(0, 14), 30.0, 0.0, TAU, 28, Color(1.0, 0.3, 0.25, 0.9), 3.0)
+		var chasing := _hover == _chase   # orange while a held attack is walking to it
+		draw_arc(to_local(_hover.global_position) + Vector2(0, 14), 30.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.15, 0.95) if chasing else Color(1.0, 0.3, 0.25, 0.9), 4.0 if chasing else 3.0)
 	if not has_bomb or down:
 		return
 	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * (0.01 + 0.02 / maxf(bomb_left, 0.5)))
@@ -459,8 +471,14 @@ func _physics_process(delta: float) -> void:
 		ai.think(delta)
 	var move := ai.move if ai else Input.get_vector(_p + "left", _p + "right", _p + "up", _p + "down")
 	_update_aim(move)
-	if ai == null and (_hover != null or not spells.is_empty()):
-		var seen := spell_in(0).target(self, aim_pos, aim_dir) if _stun_left <= 0.0 else null
+	var chase := Vector2.ZERO
+	if ai == null and not spells.is_empty():
+		chase = _tick_chase(move)
+		var seen: Node2D = null
+		if _stun_left <= 0.0:
+			seen = spell_in(0).target(self, aim_pos, aim_dir)
+			if seen == null and is_instance_valid(_chase):
+				seen = _chase
 		if seen != _hover or seen != null:   # redraw while a ring is up: it follows the target
 			_hover = seen
 			queue_redraw()
@@ -472,7 +490,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		if _dash_pressed() and dash_charges > 0:
 			_start_dash(move)
-		velocity = move * speed * _speed_mult() * (ATTACK_MOVE if _cast_time > 0.0 else 1.0)  # a swing slows you a little instead of rooting you
+		velocity = (move + chase) * speed * _speed_mult() * (ATTACK_MOVE if _cast_time > 0.0 else 1.0)  # a swing slows you a little instead of rooting you (move or chase is zero)
 		_try_cast()
 		_try_emote()
 	velocity += knock
@@ -480,10 +498,38 @@ func _physics_process(delta: float) -> void:
 	if _ghost and _dash_time <= 0.0:
 		_end_ghost()
 	net_pos = position
-	_animate(move)
+	_animate(move + chase)
 	if _update_sink(delta):
 		_fall()
 	_apply_look()
+
+const CHASE_MAX := 1100.0   ## a held attack gives up on a foe this far away
+const SHORE_LOOK := 56.0    ## hold-to-chase never steps toward water closer than this
+
+## Hold-to-chase (the Dota "attack-move"): while the basic attack is held and a foe is out of its reach, walk toward that
+## foe until it is in reach, then the normal lock-on attack takes over. The foe is the one under the cursor when the
+## button goes down; it stays chased until the button is released, it dies, or it gets away (CHASE_MAX). Any movement
+## key wins over the chase, a stun or a dash interrupts it, and it never walks you into water. Returns the move vector.
+func _tick_chase(move: Vector2) -> Vector2:
+	var spell := spell_in(0)
+	if not _held(0) or spell.reach() <= 0.0 or buffed("chicken"):
+		_chase = null
+		return Vector2.ZERO
+	if not is_instance_valid(_chase) or _chase.down or _chase.global_position.distance_to(global_position) > CHASE_MAX:
+		_chase = null
+		if spell.target(self, aim_pos, aim_dir) == null:   # nobody lockable in reach already: pick the foe under the cursor
+			_chase = Spell.pick_foe(self, aim_pos, aim_dir, HeroBasic.LOCK_RADIUS, 0.0, CHASE_MAX)
+			if _chase:
+				Sfx.play("emote", Vector2.INF, -6.0, 1.5)   # a small "target acquired" click
+	if _chase == null or move != Vector2.ZERO or _stun_left > 0.0 or _dash_time > 0.0:
+		return Vector2.ZERO
+	var off := _chase.global_position - global_position
+	aim_dir = off.normalized()
+	if off.length() <= spell.reach() * 0.9:
+		return Vector2.ZERO
+	if _over_water(position + aim_dir * SHORE_LOOK):
+		return Vector2.ZERO
+	return aim_dir
 
 ## Another peer's player: ease toward the replicated position, animate from the movement.
 func _puppet_tick(delta: float) -> void:
@@ -601,6 +647,8 @@ func stun(secs: float) -> void:
 		return
 	if _stun_left <= 0.0:
 		float_text("STUNNED", Color(1.0, 0.95, 0.4), 18)
+		if is_inside_tree():
+			Sfx.play("crown", global_position, -8.0, 1.6)   # the bell clip, high and quiet: a stun "ding"
 	_stun_left = maxf(_stun_left, secs)
 
 func stunned() -> bool:
@@ -694,11 +742,22 @@ func _firing() -> bool:
 	if _puppet:
 		return false
 	for i in SLOTS.size():
-		if _held(i):
+		if _held(i) and not (i == 0 and (_chase_pending() or _no_target)):
 			return true
 	return false
 
+## True while a held basic attack is still walking toward a foe it cannot reach yet. Like Dota's attack order, nothing
+## is swung or fired until the foe is in reach (a foe already lockable by the cursor or aim cone still counts as in reach).
+func _chase_pending() -> bool:
+	if not is_instance_valid(_chase) or _chase.down:
+		return false
+	return global_position.distance_to(_chase.global_position) > spell_in(0).reach()
+
+var _no_target := false     ## the held basic attack has nobody to hit (so it is not "firing": you keep the run animation)
+var _no_target_msec := 0
+
 func _try_cast() -> void:
+	_no_target = false
 	if buffed("chicken"):
 		return
 	for i in SLOTS.size():
@@ -708,8 +767,24 @@ func _try_cast() -> void:
 	for i in SLOTS.size():
 		var spell := spell_in(i)
 		if spell and cooldowns[i] <= 0.0 and (_queued == i or _held(i)):
+			var foe := spell.target(self, aim_pos, aim_dir)   # lock-on: the cast goes for this foe on every peer
+			if foe == null and i == 0 and is_instance_valid(_chase) and not _chase.down:
+				if _chase_pending():
+					continue   # still walking up to it: no swing, no shot until it is in reach
+				foe = _chase   # the foe a held attack walked up to, even if the cursor has left it
+			if foe == null and i == 0 and ai == null and spell.reach() > 0.0:
+				# A hero basic needs a target (Dota: no attacking the ground): the nearest foe in reach, else nothing.
+				# Weapon drops (reach 0) and skills keep free aim; bots aim for themselves.
+				foe = Spell.nearest_foe(self, spell.reach())
+				if foe == null:
+					_no_target = true
+					if Time.get_ticks_msec() - _no_target_msec > 400:
+						_no_target_msec = Time.get_ticks_msec()
+						Sfx.play("emote", Vector2.INF, -10.0, 0.6)   # a dull tick, so the button does not feel dead
+					continue
 			_queued = -1
-			_net_cast.rpc(i + (2 if weapon_active(i) else 0), spell.aim(self, aim_dir), aim_pos, randi())   # slot 2/3 = the weapon in slot 0/1
+			var dir := (foe.global_position - global_position).normalized() if foe else spell.aim(self, aim_dir)
+			_net_cast.rpc(i + (2 if weapon_active(i) else 0), dir, aim_pos, randi(), foe.get_path() if foe else NodePath())   # slot 2/3 = the weapon in slot 0/1
 			return
 
 ## Runs on every peer (offline: just here), so every screen gets the same projectiles / sweeps / explosions.
@@ -740,7 +815,7 @@ const SWING_TIME := 0.3
 
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
 func _play_cast(slot: int, spell: Spell) -> void:
-	Sfx.play(spell.sfx, global_position)
+	Sfx.play(spell.sfx, global_position, spell.cast_vol, spell.cast_pitch)
 	var anim := "cast"
 	if slot == 0 and _sprite.sprite_frames.has_animation("cast2"):
 		_swing = not _swing
@@ -826,6 +901,8 @@ func _net_hp(value: int) -> void:
 	if value < hp:   # a heal must not flash red
 		_flash()
 		_hit_number(hp - value)
+		if Time.get_ticks_msec() - hit_sound_msec > 500:   # a bystander's peer: nothing predicted this hit, so the sound is due now
+			hit_sound(self, hp - value)
 	hp = value
 	hp_changed.emit(hp, max_hp)
 

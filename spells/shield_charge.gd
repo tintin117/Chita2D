@@ -1,10 +1,13 @@
 class_name ShieldCharge extends Spell
-## Knight right click: rush forward behind the shield, shoving everything in the way. Brief invulnerability.
-## A foe shoved straight into a rock or wall takes PIN_BONUS extra damage; one shoved toward the water just goes swimming.
+## Knight right click: rush forward behind the shield and bash everything in the way: a short shove and a stun, so the
+## Knight arrives next to a foe that cannot answer. Brief invulnerability.
+## A foe bashed straight into a rock or wall is pinned: PIN_BONUS extra damage and a much longer stun.
 
 const TIME := 0.28
 const SPEED := 780.0
-const SHOVE := 1400.0
+const SHOVE := 450.0       ## with the hit's own knockback: a ~170 px slide, still inside the charge's reach
+const STUN := 0.6
+const PIN_STUN := 1.4
 const PIN_BONUS := 1.6
 const PIN_REACH := 130.0
 
@@ -26,10 +29,11 @@ class Rider extends Node:
 				continue
 			_hit.append(e)
 			var pinned := Spell.solid_ahead(caster, e.global_position + Vector2(0, 14), dir, PIN_REACH)
-			e.take_damage(roundi(dmg * PIN_BONUS) if pinned else dmg, pos, false, caster)
-			Sfx.play("hit_big", pos)
+			if not e.take_damage(roundi(dmg * PIN_BONUS) if pinned else dmg, pos, false, caster):
+				continue   # dodged (dash / phase): no stun, no shove
 			if pinned and e.has_method("float_text"):
 				e.float_text("PINNED!", Color(1.0, 0.7, 0.2), 22)
+			Spell.stun(e, PIN_STUN if pinned else STUN)
 			Spell.shove(e, dir * SHOVE)   # only the victim's own peer moves it
 		if left <= 0.0:
 			queue_free()
@@ -39,6 +43,8 @@ func _init() -> void:
 	cooldown = 6.0
 	damage = 22
 	sfx = "dash"
+	cast_pitch = 0.8   # heavier than the other two "dash" skills
+	cast_vol = 2.0
 
 func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	caster.lunge(aim_dir, TIME, SPEED)

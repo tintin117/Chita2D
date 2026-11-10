@@ -1,6 +1,6 @@
 class_name GameMode extends RefCounted
 ## Match modes. Classic: everyone picks a hero, a few drops now and then. Friendslop: everyone is the same modest Bonker
-## (LMB bonk + RMB shove) and the power comes from the drops, which fall often and in numbers.
+## (LMB bonk + RMB hook) and the power comes from the drops, which fall often and in numbers.
 ## The host picks the mode (Net.mode) and it travels with the match start, so every peer reads the same CONFIG row.
 
 const CLASSIC := "classic"

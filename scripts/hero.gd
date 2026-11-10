@@ -35,36 +35,36 @@ static func all() -> Array[Hero]:
 	if _all.is_empty():
 		_all = [
 			_make({"id": "knight", "display_name": "Knight", "unit": "Warrior", "attack_type": "melee", "attack_range": 115.0,
-				"description": "Bruiser. Commit to the fight and trade blows: three sweeping slashes, the last one hits hard. Shove foes toward the water.",
+				"description": "Bruiser. Commit to the fight and trade blows: three sweeping slashes, the last one hits hard. Charge in and pin foes on the rocks.",
 				"basic_name": "Flame Slash", "basic_damage": 12, "max_hp": 130, "speed": 255.0, "finisher_mult": 1.8,
-				"rmb_skill": "shield_charge", "rmb_text": "Rush forward and shove. Pinning a foe on a rock or wall hurts more."}),
+				"rmb_skill": "shield_charge", "rmb_text": "Rush forward and stun. Pinning a foe on a rock or wall stuns longer and hurts more."}),
 			_make({"id": "rogue", "display_name": "Rogue", "unit": "Warrior", "attack_type": "melee", "attack_range": 80.0,
 				"description": "Assassin. Fastest hero, rapid short stabs that hit hard from behind. Flank, burst, vanish. Dies if caught in the open.",
 				"basic_name": "Backstab", "basic_damage": 7, "max_hp": 75, "speed": 310.0, "finisher_mult": 1.4,
 				"basic_cd": 0.3, "arc_angle": 1.7, "back_mult": 1.8, "lunge": 500.0, "tint": Color(0.62, 0.55, 0.85),
-				"rmb_skill": "shadow_step", "rmb_text": "Blink behind your target and go untargetable for a moment."}),
+				"rmb_skill": "shadow_step", "rmb_text": "Blink behind your target and stun it. Untargetable for a moment."}),
 			_make({"id": "wizard", "display_name": "Mage", "unit": "Monk", "attack_type": "ranged", "attack_range": 380.0,
 				"description": "Zoner. Rapid fire bolts, every third cast fans out three. Control the ground and the pickups, peel anyone who gets close.",
 				"basic_name": "Fire Bolt", "basic_damage": 10, "max_hp": 100, "speed": 260.0, "bolt_speed": 900.0, "finisher_spread": 1,
-				"rmb_skill": "ember_field", "rmb_text": "Blast a patch of ground, knocking foes back. It burns and slows for a while."}),
+				"rmb_skill": "ember_field", "rmb_text": "Blast a patch of ground, stunning foes in it. It burns and slows for a while."}),
 			_make({"id": "ranger", "display_name": "Ranger", "unit": "Archer", "attack_type": "ranged", "attack_range": 650.0,
 				"description": "Marksman. Piercing arrows from far away. Kite, hold the lines, and launch foes off the island. Fragile up close.",
 				"basic_name": "Flame Arrow", "basic_damage": 9, "max_hp": 80, "speed": 270.0, "bolt_speed": 1200.0, "bolt_pierce": 1, "finisher_spread": 0, "finisher_mult": 2.2,
-				"rmb_skill": "snipe_shot", "rmb_text": "Charge a heavy arrow, then it fires: huge knockback. Slow while aiming."}),
+				"rmb_skill": "snipe_shot", "rmb_text": "Charge a heavy arrow: it stuns longer the farther it flies. Slow while aiming."}),
 		]
 	return _all
 
-## The Friendslop hero: deliberately modest (short bonk, a shove for a skill) so the drops make the difference.
+## The Friendslop hero: deliberately modest (short bonk, a hook for a skill) so the drops make the difference.
 ## Not in all(): it is never offered on the hero pick screen and Classic bots never use it.
 static var _bonker: Hero
 
 static func bonker() -> Hero:
 	if _bonker == null:
 		_bonker = _make({"id": "bonker", "display_name": "Bonker", "unit": "Warrior", "attack_type": "melee", "attack_range": 95.0,
-			"description": "Everyone's the same. A short bonk and a shove: the loot decides who wins.",
+			"description": "Everyone's the same. A short bonk and a hook: the loot decides who wins.",
 			"basic_name": "Bonk", "basic_damage": 9, "max_hp": 110, "speed": 265.0, "finisher_mult": 1.4,
 			"basic_cd": 0.4, "arc_angle": 2.0, "lunge": 500.0,
-			"rmb_skill": "shove", "rmb_text": "Slam a shockwave that launches foes away. Great near water."})
+			"rmb_skill": "hook", "rmb_text": "Throw a hook: the first foe it touches is dragged to you and stunned."})
 	return _bonker
 
 static func by_id(hero_id: String) -> Hero:
@@ -109,7 +109,7 @@ static func make_skill(skill_id: String) -> Spell:
 		"shield_charge": return ShieldCharge.new()
 		"shadow_step": return ShadowStep.new()
 		"snipe_shot": return SnipeShot.new()
-		"shove": return Shove.new()
+		"hook": return Hook.new()
 	return EmberField.new()
 
 ## Slot order: basic (LMB), signature skill (RMB).

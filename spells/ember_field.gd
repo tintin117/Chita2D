@@ -1,6 +1,6 @@
 class_name EmberField extends Spell
-## Mage right click: marks a patch of ground at the cursor. After a short telegraph it erupts (damage + knockback away from
-## the centre, which peels melee off you), then smoulders for a few seconds, slowing and burning anyone inside.
+## Mage right click: marks a patch of ground at the cursor. After a short telegraph it erupts (damage + a stun, which
+## holds a foe still for your bolts), then smoulders for a few seconds, slowing and burning anyone inside.
 ## Standing it on a pickup denies the pickup. Never hurts its caster.
 
 const MAX_RANGE := 460.0
@@ -10,7 +10,7 @@ const LINGER := 3.5
 const SLOW := 0.55          ## move speed multiplier inside the field
 const TICK := 0.5
 const TICK_DAMAGE := 4
-const SHOVE := 520.0
+const STUN := 1.0
 
 class Zone extends Node2D:
 	var caster: Node2D
@@ -57,11 +57,8 @@ class Zone extends Node2D:
 		if cam:
 			cam.shake(0.25)
 		for e in inside():
-			var away: Vector2 = (e.global_position - global_position).normalized()
-			if away == Vector2.ZERO:
-				away = Vector2.RIGHT
-			e.take_damage(dmg, global_position, false, caster)
-			Spell.shove(e, away * SHOVE)
+			if e.take_damage(dmg, global_position, false, caster):
+				Spell.stun(e, STUN)
 
 	func _draw() -> void:
 		if not _boomed:

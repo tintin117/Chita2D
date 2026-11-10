@@ -13,6 +13,11 @@ var from_player := true
 var source: Node
 var silent := false          ## rapid-fire hits: no knockback / shake / hit-stop on enemies
 var shove := 0.0             ## extra launch speed along the flight line, on top of the hit's own knockback
+var stun := 0.0              ## stun on a hit that lands; grows toward stun_far as the shot nears stun_dist px of flight
+var stun_far := 0.0
+var stun_dist := 1.0
+var target: Node2D           ## lock-on: steers at this foe until it dashes, phases or goes down. Cover still blocks the shot
+var _flown := 0.0
 var arrow_tex := ""
 var color := Color(1.0, 0.55, 0.15)
 var _hit: Array[Node] = []
@@ -49,7 +54,13 @@ func _draw() -> void:
 		draw_circle(Vector2.ZERO, radius * 0.5, Color(1, 0.95, 0.6))
 
 func _physics_process(delta: float) -> void:
+	if target != null:
+		if not is_instance_valid(target) or target.down or (target.has_method("dodging") and target.dodging()):
+			target = null   # shaken off: it flies on straight and can still be sidestepped
+		else:
+			velocity = (target.global_position + Vector2(0, 8) - global_position).normalized() * velocity.length()
 	position += velocity * delta
+	_flown += velocity.length() * delta
 	life -= delta
 	if life <= 0.0:
 		queue_free()
@@ -67,11 +78,11 @@ func _on_body_entered(body: Node) -> void:
 		if body in _hit:
 			return
 		_hit.append(body)
-		Sfx.play("hit_big" if damage >= 30 else "hit", global_position)
-		if silent and from_player:
-			body.take_damage(damage, global_position, true, source)
-		else:
-			body.take_damage(damage, global_position, false, source)
+		var landed: bool = body.take_damage(damage, global_position, silent and from_player, source) == true   # PvE enemies return nothing
+		if landed and maxf(stun, stun_far) > 0.0:
+			Spell.stun(body, lerpf(stun, maxf(stun, stun_far), clampf(_flown / stun_dist, 0.0, 1.0)))
+		if body == target:
+			target = null   # a piercing shot flies on straight
 		if shove > 0.0:
 			Spell.shove(body, velocity.normalized() * shove)
 		if pierce > 0:
