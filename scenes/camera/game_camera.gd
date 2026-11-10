@@ -4,6 +4,7 @@ class_name GameCamera extends Camera2D
 const MARGIN := Vector2(360, 260)
 const MIN_ZOOM := 0.6
 const MAX_ZOOM := 1.0
+const SHAKE_PX := 36.0    ## offset at full trauma; it scales with trauma squared, so shake(0.3) is ~3 px and shake(0.6) ~13 px
 
 var target: Node2D        ## online: follow just this player at a fixed zoom instead of fitting everyone
 var _trauma := 0.0
@@ -16,7 +17,7 @@ func _process(delta: float) -> void:
 		if is_instance_valid(target):
 			global_position = global_position.lerp(target.global_position, 1.0 - exp(-10.0 * delta))
 		_trauma = maxf(_trauma - delta * 2.5, 0.0)
-		offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * 14.0 * _trauma * _trauma
+		offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * SHAKE_PX * _trauma * _trauma
 		return
 	var alive := get_tree().get_nodes_in_group("players").filter(func(p: Player) -> bool: return not p.down)
 	if not alive.is_empty():
@@ -32,7 +33,7 @@ func _process(delta: float) -> void:
 		zoom = zoom.lerp(Vector2(z, z), k)
 		global_position = global_position.lerp(bounds.get_center(), k)
 	_trauma = maxf(_trauma - delta * 2.5, 0.0)
-	offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * 14.0 * _trauma * _trauma
+	offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * SHAKE_PX * _trauma * _trauma
 
 func shake(amount := 0.4) -> void:
 	_trauma = minf(_trauma + amount, 1.0)

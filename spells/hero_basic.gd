@@ -2,14 +2,14 @@ class_name HeroBasic extends Spell
 ## Fast 3-cast combo basic. mode "arc": instant cone sweep (melee). mode "bolt": projectile(s) (ranged).
 ## The 3rd cast is the finisher: bigger damage, and extra bolts for spread heroes. Built by Hero.make_basic().
 
-const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~240 px slide with its own knockback)
+const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 px slide with its own knockback)
 
 @export var mode := "bolt"
 @export var radius := 115.0          ## arc reach
 @export var arc_angle := 2.2
 @export var windup := 0.1             ## melee: telegraph before the sweep turns live
 @export var active := 0.12            ## melee: how long the sweep keeps hitting (each foe once)
-@export var assist_angle := 0.35      ## melee/bolt aim assist: snap toward the nearest foe within this angle
+@export var assist_angle := 0.35      ## melee/bolt aim assist: snap toward the nearest foe within this angle (see aim())
 @export var lunge_speed := 0.0       ## melee: step forward with each sweep
 @export var back_mult := 1.0         ## melee: damage multiplier on a victim that is facing away from the sweep
 @export var bolt_speed := 640.0
@@ -96,6 +96,13 @@ class Sweep extends Node2D:
 		draw_colored_polygon(pts, Color(1.0, 0.5, 0.15, 0.55 * (1.0 - t)))
 		draw_polyline(pts.slice(1), Color(1, 1, 1, 0.8 * (1.0 - t)), 3.0)
 
+## Melee snaps to the nearest foe in reach. Bolts soft-lock: aim near a foe and the shot leads it (bots do their own
+## leading by skill, so they only get the plain snap).
+func aim(caster: Node2D, dir: Vector2) -> Vector2:
+	if mode == "arc":
+		return Spell.assist_dir(caster, dir, assist_angle, radius + 40.0)
+	return Spell.assist_dir(caster, dir, assist_angle, bolt_speed * bolt_life, 0.0 if caster.get("ai") else bolt_speed)
+
 func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	var now := Time.get_ticks_msec()
 	if now - _last_msec > 900:
@@ -108,7 +115,7 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	if mode == "arc":
 		var fx := Sweep.new()
 		fx.caster = caster
-		fx.dir = Spell.assist_dir(caster, aim_dir, assist_angle, radius + 40.0)
+		fx.dir = aim_dir.normalized()
 		fx.reach = radius
 		fx.angle = arc_angle
 		fx.windup = windup
@@ -122,7 +129,6 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		scene.add_child(fx)
 	else:
 		var extra := finisher_spread if finisher else 0
-		aim_dir = Spell.assist_dir(caster, aim_dir, assist_angle * 0.75, bolt_speed * bolt_life)
 		for i in extra * 2 + 1:
 			var dir := aim_dir.rotated((i - extra) * 0.22)
 			var p := Projectile.new().setup(caster.global_position + dir * 28.0 + Vector2(0, 8), dir * bolt_speed, dmg, true, caster)

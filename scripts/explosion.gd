@@ -43,5 +43,5 @@ func _boom() -> void:
 	SheetFrames.play_once(get_parent(), global_position, "res://assets/tiny_swords/fx/Explosion_02.png", 10, 22.0, radius / 60.0)
 	var cam := get_tree().get_first_node_in_group("camera") as GameCamera
 	if cam:
-		cam.shake(0.3)
+		cam.shake(0.5)
 	get_tree().create_timer(0.1).timeout.connect(queue_free)

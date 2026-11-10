@@ -51,10 +51,13 @@ func _init() -> void:
 	damage = 4
 	sfx = "dash"
 
+func aim(caster: Node2D, dir: Vector2) -> Vector2:
+	return Spell.assist_dir(caster, dir, 0.3, REACH + 40.0)
+
 func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	var w := Wave.new()
 	w.caster = caster
-	w.dir = Spell.assist_dir(caster, aim_dir, 0.3, REACH + 40.0)
+	w.dir = aim_dir.normalized()
 	w.dmg = damage
 	w.z_index = 5
 	w.position = caster.global_position + Vector2(0, 8)

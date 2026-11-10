@@ -2,17 +2,17 @@ extends Node2D
 ## One online deathmatch on the fixed arena. Every peer builds the same scene from Net.roster; each owns its own Player.
 ## Kills are counted on every peer from the same reliable Player.fragged events; only the host decides when the match ends.
 
-const CAM_ZOOM := 0.65            ## <1 = camera higher; 1.0 showed only ~1/3 of the arena
+const CAM_ZOOM := 0.8             ## <1 = camera higher; at 0.8 a 1280x720 view shows 1600x900 px of the 2048x1472 arena
 const PICKUP_EVERY := 12.0
 const MAX_PICKUPS := 3
-const PICKUP_SPAWN_CLEAR := 600.0 ## pickups never appear this close to a player spawn (the short axis of the spawn ring is only 768 px from the centre)
+const PICKUP_SPAWN_CLEAR := 380.0 ## pickups never appear this close to a player spawn (the short axis of the spawn ring is only 544 px from the centre)
 const PICKUP_COVER_CLEAR := 120.0
-const PICKUP_APART := 400.0
+const PICKUP_APART := 300.0
 const CROWN_MIN_KILLS := 3        ## the kill leader wears the crown from here on (needs a strict lead)
 const CATCHUP_GAP := 6.0          ## Friendslop: kills behind the leader for the full catch-up bias
 const CATCHUP_NEAR_CHANCE := 0.45 ## chance (at full bias) that a drop falls near the trailing player
-const CATCHUP_MIN := 450.0
-const CATCHUP_MAX := 900.0
+const CATCHUP_MIN := 300.0
+const CATCHUP_MAX := 600.0
 const BOUNTY := 2                 ## kills toward the limit for killing the crown holder
 const VERBS_HIT := ["bonked", "deleted", "humbled", "launched", "clapped", "sent to the shadow realm"]
 const LINES_FALL := ["%s took a swim", "%s forgot how to walk", "%s tried to fly", "%s found the water"]

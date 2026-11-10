@@ -26,7 +26,7 @@ func test_eight_spawns_are_reachable_and_apart() -> void:
 	for i in 8:
 		assert_true(m.is_reachable(m.spawn_points[i]), "spawn %d on open ground" % i)
 		for j in range(i + 1, 8):
-			assert_gt(m.spawn_points[i].distance_to(m.spawn_points[j]), 500.0, "spawns %d,%d apart" % [i, j])
+			assert_gt(m.spawn_points[i].distance_to(m.spawn_points[j]), 400.0, "spawns %d,%d apart" % [i, j])
 		for c in m.cover:
 			assert_gt(m.spawn_points[i].distance_to(c), WorldMap.COVER_R + 120.0, "cover not on spawn %d" % i)
 

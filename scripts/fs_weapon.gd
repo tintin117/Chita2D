@@ -62,12 +62,17 @@ static func make(weapon_id: String) -> FsWeapon:
 func seconds_left() -> float:
 	return maxf(until - Time.get_ticks_msec() / 1000.0, 0.0)
 
+func aim(caster: Node2D, dir: Vector2) -> Vector2:
+	if _melee:
+		return _melee.aim(caster, dir)
+	return Spell.assist_dir(caster, dir, 0.25, 420.0) if id == "slingshot" else dir
+
 func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var scene := caster.get_tree().current_scene
 	var from := caster.global_position + Vector2(0, 8)
 	match id:
 		"slingshot":
-			_bolt(scene, caster, Spell.assist_dir(caster, aim_dir, 0.25, 420.0), 720.0, 0.55, 9.0, Color(0.85, 0.7, 0.4))
+			_bolt(scene, caster, aim_dir, 720.0, 0.55, 9.0, Color(0.85, 0.7, 0.4))
 		"frost_gun":
 			var p := IceBolt.new().setup(from + aim_dir * 28.0, aim_dir * 760.0, damage, true, caster)
 			p.radius = 10.0

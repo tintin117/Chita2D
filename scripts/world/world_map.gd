@@ -23,7 +23,7 @@ const EXTRA_LOOPS := 3                  ## corridors beyond the spanning tree
 const DECOR_BUSH := 0.03                ## per open cell
 const DECOR_ROCK := 0.012
 const ARENA_SEED := 1337                ## the fixed PvP map: every peer builds the identical arena from this
-const ARENA_HALF := Vector2(24.0, 17.0) ## cells; the plateau is a rounded rectangle (superellipse) this big
+const ARENA_HALF := Vector2(16.0, 11.5) ## cells; the plateau is a rounded rectangle (superellipse) this big: 2048 x 1472 px, ~7 s to cross
 const COVER_R := 50.0
 const GYM_HALF := Vector2(11.0, 8.0)  ## cells; the training room
 
@@ -74,12 +74,11 @@ func generate_arena(build_visuals := true) -> void:
 	var mid := _begin_fixed(ARENA_HALF)
 	spawn_points.clear()
 	for k in 8:
-		spawn_points.append(center_of(Vector2i(mid + Vector2.from_angle(k * TAU / 8.0) * Vector2(19.0, 12.0))))
-	var offsets: Array[Vector2] = [Vector2(5, 0), Vector2(0, 4), Vector2(-5, 0), Vector2(0, -4),   # pillar ring
-		Vector2(0, 9), Vector2(0, -9)]
+		spawn_points.append(center_of(Vector2i(mid + Vector2.from_angle(k * TAU / 8.0) * Vector2(13.0, 8.5))))
+	var offsets: Array[Vector2] = [Vector2(4, 0), Vector2(0, 3), Vector2(-4, 0), Vector2(0, -3)]   # pillar ring
 	for q: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
-		offsets.append(Vector2(9, 5) * q)
-		offsets.append(Vector2(11, 5) * q)
+		offsets.append(Vector2(7, 4) * q)
+		offsets.append(Vector2(3, 6) * q)
 	for o in offsets:
 		cover.append(center_of(Vector2i(mid + o)))
 	_finish_fixed(build_visuals)

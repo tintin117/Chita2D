@@ -23,13 +23,15 @@ const TEAM_COLORS := [Color("ff6a5f"), Color("5fa8ff")]
 const NAME_COLORS := [Color("5fa8ff"), Color("ffd84a"), Color("ff6a5f"), Color("b9b9c8"), Color("6fe08a"), Color("e08aff"), Color("ff9a3c"), Color("4fe3e3")]
 const RESPAWN_TIME := 3.0
 const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
-const KNOCK_BASE := 300.0          ## launch speed of a light hit: a flinch (~40 px) so basic combos keep connecting
+const KNOCK_BASE := 220.0          ## launch speed of a light hit: a flinch (~11 px) so basic combos keep connecting
 const KNOCK_LIGHT_DMG := 12        ## hits up to this damage are light; only heavier ones (finishers, skills) launch
-const KNOCK_PER_DMG := 20.0        ## extra launch speed per damage above KNOCK_LIGHT_DMG (a 45-dmg snipe slides ~420 px)
+const KNOCK_PER_DMG := 20.0        ## extra launch speed per damage above KNOCK_LIGHT_DMG (skills add their own Spell.shove on top)
 const KNOCK_LOW_HP := 0.6          ## launch bonus at 0 HP: knockback grows as the victim's health drops (Smash-style), so ring-outs come late in a fight
 const KNOCK_MAX := 1500.0
-const KNOCK_DECEL := 1100.0
-const ATTACK_MOVE := 0.4          ## move speed multiplier while attacking
+const KNOCK_DECEL := 2200.0        ## slide = v^2 / (2 * this): a Shove (~1470 px/s) carries ~490 px, short enough to follow up
+const ATTACK_MOVE := 0.75          ## move speed multiplier during the cast lock (not while merely holding the button)
+const HIT_SLOW_LIGHT := [0.3, 0.3] ## [speed multiplier, seconds] on the victim of a light hit: this is what lets a chaser stay on them
+const HIT_SLOW_HEAVY := [0.5, 0.6]
 const SINK_TIME := 0.3             ## seconds over water before you drown
 const LAST_HIT_WINDOW := 4.0       ## a fall within this long of a hit is credited to the hitter
 const GIANT_SCALE := 1.8
@@ -90,7 +92,10 @@ var _puppet := false       ## online and owned by another peer: no input, positi
 var _mouse_aim := true     ## P1 only: aim with the mouse until a gamepad is touched, then with the right stick
 var _swing := false        ## alternates basic-attack animations (cast / cast2) when the hero has both
 var _iframes := 0.0
-var _sink := 0.0           ## seconds spent over water
+var _stun_left := 0.0      ## stunned: no moving, casting or dashing. Kept on every peer; only the owner's copy stops input, the rest show it
+var _hover: Node2D         ## local human only: the foe the basic attack would lock onto right now (drawn as a ring)
+var _punch := 0.0         ## 1 -> 0 squash on being hit (see _apply_look)
+var _sink := 0.0          ## seconds spent over water
 var crowned := false: set = _set_crowned   ## wears the match crown (set by the match); drawn as a crown and a beam
 var has_bomb := false      ## carrying the hot potato; every peer ticks bomb_left, the host decides when it blows
 var bomb_left := 0.0
@@ -111,6 +116,25 @@ func owns() -> bool:
 static func knock_for(amount: int, hp_left := 1.0) -> float:
 	var v := KNOCK_BASE + maxi(amount - KNOCK_LIGHT_DMG, 0) * KNOCK_PER_DMG
 	return minf(v * (1.0 + KNOCK_LOW_HP * (1.0 - clampf(hp_left, 0.0, 1.0))), KNOCK_MAX)
+
+## True when `n` is a human player simulated on this peer (not a bot, not a puppet).
+static func is_local(n: Node) -> bool:
+	var p := n as Player
+	return p != null and p.ai == null and p.owns()
+
+## Impact feedback on `victim` for a hit of `amount`: a spark for everyone; shake and hit-stop only when `felt`
+## (the local human dealt or took the hit), because hit-stop dips the global time scale. Also used by the gym dummy.
+static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false) -> void:
+	if not victim.is_inside_tree():
+		return
+	var heavy := amount > KNOCK_LIGHT_DMG
+	var fx := "res://assets/tiny_swords/fx/%s.png" % ("Explosion_01" if heavy else "Dust_02")
+	SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 8 if heavy else 10, 30.0, 0.5 if heavy else 1.0).z_index = 20
+	var cam := victim.get_tree().get_first_node_in_group("camera") as GameCamera
+	if cam and felt:
+		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
+		if heavy or killed:   # light hits come several a second: freezing on each one made attacking feel slow
+			cam.hit_stop(0.16 if killed else 0.1)
 
 ## Closest living player, or null.
 static func nearest_alive(tree: SceneTree, pos: Vector2) -> Player:
@@ -360,6 +384,8 @@ func _draw() -> void:
 		var c := PackedVector2Array([Vector2(-14, -92), Vector2(-14, -108), Vector2(-7, -100), Vector2(0, -112), Vector2(7, -100), Vector2(14, -108), Vector2(14, -92)])
 		draw_colored_polygon(c, Color(1.0, 0.85, 0.3))
 		draw_polyline(c + PackedVector2Array([c[0]]), Color.BLACK, 2.0)
+	if is_instance_valid(_hover) and not down:   # lock-on marker: this is who the next basic attack goes for
+		draw_arc(to_local(_hover.global_position) + Vector2(0, 14), 30.0, 0.0, TAU, 28, Color(1.0, 0.3, 0.25, 0.9), 3.0)
 	if not has_bomb or down:
 		return
 	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * (0.01 + 0.02 / maxf(bomb_left, 0.5)))
@@ -401,7 +427,7 @@ func float_text(text: String, color: Color, font_size := 18) -> void:
 	l.modulate = color
 	l.z_index = 100
 	l.size = Vector2(160, 24)
-	l.position = Vector2(-80, -90)
+	l.position = Vector2(-80 + randf_range(-22.0, 22.0), -90)   # jitter so stacked hit numbers stay readable
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -433,13 +459,20 @@ func _physics_process(delta: float) -> void:
 		ai.think(delta)
 	var move := ai.move if ai else Input.get_vector(_p + "left", _p + "right", _p + "up", _p + "down")
 	_update_aim(move)
+	if ai == null and (_hover != null or not spells.is_empty()):
+		var seen := spell_in(0).target(self, aim_pos, aim_dir) if _stun_left <= 0.0 else null
+		if seen != _hover or seen != null:   # redraw while a ring is up: it follows the target
+			_hover = seen
+			queue_redraw()
 	if _dash_time > 0.0:
 		_dash_time -= delta
 		velocity = _dash_vec * _dash_speed
+	elif _stun_left > 0.0:
+		velocity = Vector2.ZERO   # knockback (a hook's pull, a launch) still carries a stunned player
 	else:
 		if _dash_pressed() and dash_charges > 0:
 			_start_dash(move)
-		velocity = move * speed * _speed_mult() * (ATTACK_MOVE if _firing() else 1.0)  # attacking slows you instead of rooting you
+		velocity = move * speed * _speed_mult() * (ATTACK_MOVE if _cast_time > 0.0 else 1.0)  # a swing slows you a little instead of rooting you
 		_try_cast()
 		_try_emote()
 	velocity += knock
@@ -455,13 +488,16 @@ func _physics_process(delta: float) -> void:
 ## Another peer's player: ease toward the replicated position, animate from the movement.
 func _puppet_tick(delta: float) -> void:
 	_cast_time = maxf(_cast_time - delta, 0.0)
+	_stun_left = maxf(_stun_left - delta, 0.0)
 	_phase_left = maxf(_phase_left - delta, 0.0)
 	_update_sink(delta)   # puppets only show the sinking; the owner decides when it kills
 	_apply_look()
 	if down:
 		return
 	var off := net_pos - position
+	var before := position
 	position = net_pos if off.length() > 300.0 else position.lerp(net_pos, 1.0 - exp(-20.0 * delta))
+	velocity = (position - before) / delta   # never moved by physics here; the soft lock leads a puppet by this
 	_animate(off if off.length() > 3.0 else Vector2.ZERO)
 
 ## Counts time over water (shared by owner and puppets so everyone sees the sinking). True once the drowning is complete.
@@ -491,9 +527,15 @@ func _apply_look() -> void:
 	if buffed("chicken") and Time.get_ticks_msec() > _cluck_at:
 		Sfx.play("cluck", global_position)
 		_cluck_at = Time.get_ticks_msec() + randi_range(900, 1500)
+	if _stun_left > 0.0:
+		_sprite.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.22   # dizzy wobble
+		tint = tint * Color(1.0, 1.0, 0.55)
+	if down:
+		_sprite.rotation = PI / 2.0   # knocked flat until the respawn (the sheets have no death animation)
 	_shape.radius = 14.0 * maxf(s, 1.0)   # a giant is also harder to miss
 	var sink := clampf(_sink / SINK_TIME, 0.0, 1.0)
-	_sprite.scale = Vector2.ONE * s * (1.0 - 0.7 * sink)
+	_punch = move_toward(_punch, 0.0, get_physics_process_delta_time() * 7.0)
+	_sprite.scale = Vector2(1.0 + 0.3 * _punch, 1.0 - 0.3 * _punch) * s * (1.0 - 0.7 * sink)
 	_sprite.position = Vector2(0, -(s - 1.0) * 20.0)   # keep the feet on the ground while resizing
 	_sprite.self_modulate = Color(tint, (1.0 - sink) * (0.35 if _phase_left > 0.0 else 1.0))
 
@@ -506,6 +548,7 @@ func _tick_timers(delta: float) -> void:
 	_iframes = maxf(_iframes - delta, 0.0)
 	_cast_time = maxf(_cast_time - delta, 0.0)
 	_slow_left = maxf(_slow_left - delta, 0.0)
+	_stun_left = maxf(_stun_left - delta, 0.0)
 	_phase_left = maxf(_phase_left - delta, 0.0)
 	_queued_time -= delta
 	if _queued_time <= 0.0:
@@ -551,6 +594,23 @@ func lunge(vec: Vector2, time: float, spd: float) -> void:
 func apply_slow(mult: float, secs: float) -> void:
 	_slow_mult = mult
 	_slow_left = maxf(_slow_left, secs)
+
+## Stunned for `secs` (the longer of this and what is left). Safe on any peer: see _stun_left.
+func stun(secs: float) -> void:
+	if down or secs <= 0.0:
+		return
+	if _stun_left <= 0.0:
+		float_text("STUNNED", Color(1.0, 0.95, 0.4), 18)
+	_stun_left = maxf(_stun_left, secs)
+
+func stunned() -> bool:
+	return _stun_left > 0.0
+
+## True while a real dash or a phase is on: a locked-on bolt loses its target (a melee lunge does not count).
+## ponytail: _ghost is only known on the owner's peer, so a shooter's own screen can show a bolt still homing on a
+## dash that dodged it; the victim's peer decides the hit. Replicate the dash state if that looks wrong online.
+func dodging() -> bool:
+	return _ghost or _phase_left > 0.0
 
 ## Untargetable and see-through for `secs` (Shadow Step).
 func phase(secs: float) -> void:
@@ -649,18 +709,20 @@ func _try_cast() -> void:
 		var spell := spell_in(i)
 		if spell and cooldowns[i] <= 0.0 and (_queued == i or _held(i)):
 			_queued = -1
-			_net_cast.rpc(i + (2 if weapon_active(i) else 0), aim_dir, aim_pos, randi())   # slot 2/3 = the weapon in slot 0/1
+			_net_cast.rpc(i + (2 if weapon_active(i) else 0), spell.aim(self, aim_dir), aim_pos, randi())   # slot 2/3 = the weapon in slot 0/1
 			return
 
 ## Runs on every peer (offline: just here), so every screen gets the same projectiles / sweeps / explosions.
 ## Damage still only lands on the victim's own peer (see take_damage).
 @rpc("authority", "call_local", "reliable")
-func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int) -> void:
+func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int, lock_path := NodePath()) -> void:
 	var weapon: FsWeapon = weapons[slot - 2] if slot >= 2 else null
 	slot %= 2
 	var spell: Spell = weapon if weapon != null else spells[slot]
 	rng.seed = seed_value
+	spell.lock = null if lock_path.is_empty() else get_node_or_null(lock_path) as Node2D   # node paths match on every peer
 	var cd := spell.cast(self, dir, pos)
+	spell.lock = null
 	if weapon != null:
 		cd *= cooldown_mult
 		weapon.uses -= 1
@@ -669,8 +731,12 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int) -> void:
 			float_text("%s empty" % weapon.display_name, Color(0.8, 0.8, 0.8))
 	cooldowns[slot] = cd
 	cooldown_max[slot] = cd
-	_cast_time = clampf(cd, 0.25, 0.5)  # cover fast-attack cooldowns so tapping never unlocks movement
+	_cast_time = clampf(cd, 0.25, SWING_TIME)  # cover fast-attack cooldowns so tapping never unlocks movement
 	_play_cast(slot, spell)
+
+## The cast lock and its animation last this long at most, so the blade comes down when the hit lands
+## (0.1 s windup + 0.12 s active) and you are free to move again right after.
+const SWING_TIME := 0.3
 
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
 func _play_cast(slot: int, spell: Spell) -> void:
@@ -693,11 +759,22 @@ func _animate(move: Vector2) -> void:
 		_sprite.play(anim)
 
 ## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
-func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> void:
-	if not owns() or _iframes > 0.0 or down:
-		return
+## Returns true when the hit landed (on other peers: when it looks like it did), so stuns and pulls skip a dodged hit.
+func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null) -> bool:
+	if down:
+		return false
 	if attacker is Player and attacker != self and team >= 0 and attacker.team == team and not friendly_fire:
-		return
+		return false
+	if not owns():
+		# Our own hit on somebody else's player: show the impact now instead of waiting for their peer's reply.
+		# ponytail: predicted, so it also fires when their i-frames ate the hit; replicate _iframes if that reads wrong.
+		if not silent and is_local(attacker):
+			_punch = 1.0
+			_flash()
+			hit_fx(self, amount, true)
+		return true
+	if _iframes > 0.0:
+		return false
 	if attacker is Player and attacker.buffed("damage"):   # victim-side hit: read the attacker's copy of the buff
 		amount *= 2
 	amount = form_damage(roundi(amount * RuleSet.current.damage))
@@ -708,20 +785,30 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 	if not silent:   # rapid-tick hits (an ember field's burn) neither stagger nor grant i-frames
 		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
 		knock = (global_position - from_pos).normalized() * knock_for(amount, float(hp) / max_hp) * form_knock(attacker)
+		var slow: Array = HIT_SLOW_HEAVY if amount > KNOCK_LIGHT_DMG else HIT_SLOW_LIGHT
+		apply_slow(slow[0], slow[1])
+		_punch = 1.0
+		if hp > 0 or not online:   # an online kill gets its bigger impact from _net_died, on every peer
+			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0)
+	_hit_number(amount)
 	_flash()
 	hp_changed.emit(hp, max_hp)
 	if not online:
 		if hp == 0:
 			_die()
-		return
+		return true
 	if hp == 0:
 		_net_died.rpc(attacker.peer_id if attacker is Player else 0, "hit" if attacker is Player else "bomb")   # no attacker = an ownerless Explosion (the hot potato)
 	else:
 		_net_hp.rpc(hp)
+	return true
 
 func _flash() -> void:
-	_sprite.modulate = Color(1, 0.4, 0.4)
-	create_tween().tween_property(_sprite, "modulate", Color.WHITE, 0.25)
+	_sprite.modulate = Color(2.5, 1.1, 1.1)   # overbright, so it reads as an impact and not just a tint
+	create_tween().tween_property(_sprite, "modulate", Color.WHITE, 0.2)
+
+func _hit_number(amount: int) -> void:
+	float_text(str(amount), Color(1.0, 0.9, 0.5), 16 + mini(amount / 2, 14))
 
 func _die() -> void:
 	down = true
@@ -730,6 +817,7 @@ func _die() -> void:
 	clear_weapons()
 	velocity = Vector2.ZERO
 	_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
+	_sprite.rotation = PI / 2.0   # the owner stops calling _apply_look while down, so set the knocked-flat pose here too
 	_sprite.play("idle")
 	downed.emit()
 
@@ -737,6 +825,7 @@ func _die() -> void:
 func _net_hp(value: int) -> void:
 	if value < hp:   # a heal must not flash red
 		_flash()
+		_hit_number(hp - value)
 	hp = value
 	hp_changed.emit(hp, max_hp)
 
@@ -747,6 +836,8 @@ func _net_died(killer_peer: int, cause: String) -> void:
 	Sfx.play("death", global_position)
 	_sink = SINK_TIME if cause == "fall" else 0.0   # a drowned player stays under until the respawn
 	_die()
+	if cause != "fall":   # everyone sees the burst; only the killer and the victim feel the shake and the freeze
+		hit_fx(self, 99, is_local(self) or (cause == "hit" and killer_peer == Net.local_id()), true)
 	fragged.emit(self, killer_peer, cause)
 	if owns():
 		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_respawn)
@@ -762,6 +853,7 @@ func _net_respawn(pos: Vector2) -> void:
 	knock = Vector2.ZERO
 	_dash_time = 0.0
 	_slow_left = 0.0
+	_stun_left = 0.0
 	_phase_left = 0.0
 	if _ghost:
 		_end_ghost()

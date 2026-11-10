@@ -46,8 +46,10 @@ func _draw() -> void:
 		draw_arc(Vector2(0, -46), r, 0.0, TAU, 20, Color(0.8, 0.2, 0.2), 2.0)   # target rings
 	draw_rect(Rect2(-18, 16, 36, 8), Color(0.3, 0.2, 0.12))          # base
 
-func take_damage(amount: int, _from_pos: Vector2, _silent := false, _attacker: Node = null) -> void:
+func take_damage(amount: int, _from_pos: Vector2, silent := false, _attacker: Node = null) -> bool:
 	_hits.append(Vector2(Time.get_ticks_msec() / 1000.0, amount))
+	if not silent:
+		Player.hit_fx(self, amount, true)   # the gym is where the hit feel gets tuned
 	var l := Label.new()
 	l.text = str(amount)
 	l.modulate = Color(1, 0.85, 0.3)
@@ -63,3 +65,4 @@ func take_damage(amount: int, _from_pos: Vector2, _silent := false, _attacker: N
 	t.chain().tween_callback(l.queue_free)
 	modulate = Color(1, 0.6, 0.6)
 	create_tween().tween_property(self, "modulate", Color.WHITE, 0.15)
+	return true

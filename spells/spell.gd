@@ -11,6 +11,18 @@ class_name Spell extends Resource
 func cast(_caster: Node2D, _aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	return cooldown
 
+var lock: Node2D   ## the foe this one cast is locked onto (see target()); set by the Player around cast(), null otherwise
+
+## Lock-on: the foe a cast aimed at `aim_pos` / `dir` should go for, or null for a free-aimed cast. Asked once by the
+## caster's owner; the answer travels with the cast and reaches cast() as `lock` on every peer.
+func target(_caster: Node2D, _aim_pos: Vector2, _dir: Vector2) -> Node2D:
+	return null
+
+## Aim correction (assist / soft lock) for a cast toward `dir`. Called once by the caster's owner before the cast is
+## sent, so every peer spawns the same shot; cast() must use the direction it is given as-is.
+func aim(_caster: Node2D, dir: Vector2) -> Vector2:
+	return dir
+
 ## Everything a cast by `caster` can hurt: the other living players (PvP). Add enemies here for PvE later.
 static func foes(caster: Node) -> Array[Node2D]:
 	var out: Array[Node2D] = []
@@ -32,13 +44,40 @@ static func shove(foe: Node, vec: Vector2) -> void:
 		foe.knock += vec
 
 ## Aim assist: `dir` bent toward the closest foe inside `max_angle` (radians) and `max_dist`; unchanged if none.
-static func assist_dir(caster: Node2D, dir: Vector2, max_angle: float, max_dist: float) -> Vector2:
-	var best: Vector2 = dir
-	var best_off: float = max_angle
+## With `lead_speed` (a projectile's px/s) it is a soft lock: pointing at a moving foe aims at where the shot will meet it.
+static func assist_dir(caster: Node2D, dir: Vector2, max_angle: float, max_dist: float, lead_speed := 0.0) -> Vector2:
+	var e := pick_foe(caster, Vector2.INF, dir, 0.0, max_angle, max_dist)
+	if e == null:
+		return dir
+	var from := caster.global_position
+	var at := e.global_position
+	if lead_speed > 0.0 and e is CharacterBody2D:
+		at = BotBrain.lead(from, at, e.velocity, lead_speed)
+	return (at - from).normalized()
+
+## The foe a cast is meant for: the one closest to `aim_pos` (the cursor) within `pick_radius`, else the one closest to
+## the aim line within `max_angle`. Only foes within `max_dist` of the caster count. Null if nobody qualifies.
+static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius: float, max_angle: float, max_dist: float) -> Node2D:
+	var near: Node2D = null
+	var near_d := pick_radius
+	var cone: Node2D = null
+	var cone_off := max_angle
 	for e: Node2D in foes(caster):
 		var off: Vector2 = e.global_position - caster.global_position
+		if off.length() > max_dist:
+			continue
+		var d := e.global_position.distance_to(aim_pos)
+		if d < near_d:
+			near_d = d
+			near = e
 		var ang: float = absf(dir.angle_to(off))
-		if off.length() <= max_dist and ang <= best_off:
-			best_off = ang
-			best = off.normalized()
-	return best
+		if ang <= cone_off:
+			cone_off = ang
+			cone = e
+	return near if near else cone
+
+## Stuns a foe that can be stunned (players; the dummy ignores it). Called on every peer so every screen shows it;
+## only the victim's own peer actually stops moving. Call it only for a hit that landed (take_damage returned true).
+static func stun(foe: Node, secs: float) -> void:
+	if foe.has_method("stun"):
+		foe.stun(secs)

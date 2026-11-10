@@ -11,10 +11,10 @@ const MODES := [CLASSIC, FRIENDSLOP]
 ## spawn_clear / apart: how far a drop stays from player spawns / other drops (smaller spawn_clear = drops spread over the whole arena).
 const CONFIG := {
 	CLASSIC: {"name": "Classic", "blurb": "Pick a hero, fight it out.", "hero_pick": true, "hero": "",
-		"pickup_every": 12.0, "first_pickup": 6.0, "max_pickups": 3, "spawn_clear": 600.0, "apart": 400.0,
+		"pickup_every": 12.0, "first_pickup": 6.0, "max_pickups": 3, "spawn_clear": 380.0, "apart": 300.0,
 		"kill_limit": 15, "time_limit": 300.0, "weapons": false},
 	FRIENDSLOP: {"name": "Friendslop", "blurb": "Same hero for all. Loot the drops, wreck your friends.", "hero_pick": false, "hero": "bonker",
-		"pickup_every": 4.5, "first_pickup": 1.5, "max_pickups": 7, "spawn_clear": 380.0, "apart": 520.0,
+		"pickup_every": 4.5, "first_pickup": 1.5, "max_pickups": 5, "spawn_clear": 250.0, "apart": 350.0,
 		"kill_limit": 20, "time_limit": 300.0, "weapons": true},
 }
 
