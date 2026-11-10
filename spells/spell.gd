@@ -83,17 +83,6 @@ static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius
 			cone = e
 	return near if near else cone
 
-## The foe closest to the caster within `max_dist`, ignoring where the cursor points; null if none.
-static func nearest_foe(caster: Node2D, max_dist: float) -> Node2D:
-	var best: Node2D = null
-	var best_d := max_dist
-	for e: Node2D in foes(caster):
-		var d := e.global_position.distance_to(caster.global_position)
-		if d <= best_d:
-			best_d = d
-			best = e
-	return best
-
 ## Stuns a foe that can be stunned (players; the dummy ignores it). Called on every peer so every screen shows it;
 ## only the victim's own peer actually stops moving. Call it only for a hit that landed (take_damage returned true).
 static func stun(foe: Node, secs: float) -> void:

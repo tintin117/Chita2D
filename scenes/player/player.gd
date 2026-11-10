@@ -742,7 +742,7 @@ func _firing() -> bool:
 	if _puppet:
 		return false
 	for i in SLOTS.size():
-		if _held(i) and not (i == 0 and (_chase_pending() or _no_target)):
+		if _held(i) and not (i == 0 and _chase_pending()):
 			return true
 	return false
 
@@ -753,11 +753,7 @@ func _chase_pending() -> bool:
 		return false
 	return global_position.distance_to(_chase.global_position) > spell_in(0).reach()
 
-var _no_target := false     ## the held basic attack has nobody to hit (so it is not "firing": you keep the run animation)
-var _no_target_msec := 0
-
 func _try_cast() -> void:
-	_no_target = false
 	if buffed("chicken"):
 		return
 	for i in SLOTS.size():
@@ -772,16 +768,8 @@ func _try_cast() -> void:
 				if _chase_pending():
 					continue   # still walking up to it: no swing, no shot until it is in reach
 				foe = _chase   # the foe a held attack walked up to, even if the cursor has left it
-			if foe == null and i == 0 and ai == null and spell.reach() > 0.0:
-				# A hero basic needs a target (Dota: no attacking the ground): the nearest foe in reach, else nothing.
-				# Weapon drops (reach 0) and skills keep free aim; bots aim for themselves.
-				foe = Spell.nearest_foe(self, spell.reach())
-				if foe == null:
-					_no_target = true
-					if Time.get_ticks_msec() - _no_target_msec > 400:
-						_no_target_msec = Time.get_ticks_msec()
-						Sfx.play("emote", Vector2.INF, -10.0, 0.6)   # a dull tick, so the button does not feel dead
-					continue
+			# No target: the attack goes where you aim, a free swing or shot at the ground. The visible whiff is the
+			# feedback that teaches new players to aim at someone; lock-on only assists.
 			_queued = -1
 			var dir := (foe.global_position - global_position).normalized() if foe else spell.aim(self, aim_dir)
 			_net_cast.rpc(i + (2 if weapon_active(i) else 0), dir, aim_pos, randi(), foe.get_path() if foe else NodePath())   # slot 2/3 = the weapon in slot 0/1
