@@ -124,19 +124,21 @@ static func is_local(n: Node) -> bool:
 	var p := n as Player
 	return p != null and p.ai == null and p.owns()
 
-## Impact feedback on `victim` for a hit of `amount`: a spark for everyone; shake and hit-stop only when `felt`
-## (the local human dealt or took the hit), because hit-stop dips the global time scale. Also used by the gym dummy.
-static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false) -> void:
+## Impact feedback on `victim` for a hit of `amount`: a spark for everyone; hit-stop only when `felt` (the local human
+## dealt or took the hit, because hit-stop dips the global time scale); camera shake only when `shaken` (the local human
+## is the victim: shake means "you were hit", and landing a hit confirms with the freeze, spark, number and sound instead,
+## so the shake never spoils your aim). Also used by the gym dummy.
+static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, shaken := false) -> void:
 	if not victim.is_inside_tree():
 		return
 	var heavy := amount > KNOCK_LIGHT_DMG
 	var fx := "res://assets/tiny_swords/fx/%s.png" % ("Explosion_01" if heavy else "Dust_02")
 	SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 8 if heavy else 10, 30.0, 0.5 if heavy else 1.0).z_index = 20
 	var cam := victim.get_tree().get_first_node_in_group("camera") as GameCamera
-	if cam and felt:
+	if cam and shaken:
 		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
-		if heavy or killed:   # light hits come several a second: freezing on each one made attacking feel slow
-			cam.hit_stop(0.16 if killed else 0.1)
+	if cam and felt and (heavy or killed):   # light hits come several a second: freezing on each one made attacking feel slow
+		cam.hit_stop(0.16 if killed else 0.1)
 	hit_sound(victim, amount)
 
 ## The impact sound of a hit that landed: heavier hits are louder and lower. Played here and nowhere else, so a hit the
@@ -834,7 +836,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		if not silent and is_local(attacker):
 			_punch = 1.0
 			_flash()
-			hit_fx(self, amount, true)
+			hit_fx(self, amount, true)   # our hit on somebody else: the freeze, never a shake
 		return true
 	if _iframes > 0.0:
 		return false
@@ -852,7 +854,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		apply_slow(slow[0], slow[1])
 		_punch = 1.0
 		if hp > 0 or not online:   # an online kill gets its bigger impact from _net_died, on every peer
-			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0)
+			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0, is_local(self))
 	_hit_number(amount)
 	_flash()
 	hp_changed.emit(hp, max_hp)
@@ -902,7 +904,7 @@ func _net_died(killer_peer: int, cause: String) -> void:
 	_sink = SINK_TIME if cause == "fall" else 0.0   # a drowned player stays under until the respawn
 	_die()
 	if cause != "fall":   # everyone sees the burst; only the killer and the victim feel the shake and the freeze
-		hit_fx(self, 99, is_local(self) or (cause == "hit" and killer_peer == Net.local_id()), true)
+		hit_fx(self, 99, is_local(self) or (cause == "hit" and killer_peer == Net.local_id()), true, is_local(self))
 	fragged.emit(self, killer_peer, cause)
 	if owns():
 		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_respawn)
