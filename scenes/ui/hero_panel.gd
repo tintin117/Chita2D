@@ -2,11 +2,13 @@ class_name HeroPanel extends Control
 ## Combat HUD. PvE also displays character progression and gear.
 ## Positions itself (bottom-left, or bottom-right when mirror). Hud.add_player creates one per player.
 
-const SIZE_PX := Vector2(422, 114)
+const SIZE_PX := Vector2(438, 132)
 const GOLD := ArenaUi.GOLD
 const BAR := Rect2(98, 45, 154, 20)
 const SLOT := 48.0
-const SLOT_POS := Vector2(276, 25)
+const SLOT_POS := Vector2(272, 25)
+const SKILL_COLUMN_WIDTH := 76.0
+const SKILL_COLUMN_GAP := 6.0
 var player: Player
 var mirror := false
 var _portrait: Texture2D
@@ -15,7 +17,7 @@ var _shown := -1.0   ## HP the damage tail has drained down to
 var _hooked := false
 
 func _ready() -> void:
-	size = SIZE_PX if player.online else SIZE_PX + Vector2(0, 28)
+	size = SIZE_PX if player.online else SIZE_PX + Vector2(0, 10)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for slot: String in Item.SLOTS:
@@ -102,14 +104,15 @@ func _draw_dash() -> void:
 func _draw_skills() -> void:
 	var hints: Array = Hud.HINTS[0 if player.online else player.player_index % 2]
 	for i in 2:
-		var r := Rect2(SLOT_POS + Vector2(i * (SLOT + 16.0), 0), Vector2(SLOT, SLOT))
+		var column_x := i * (SKILL_COLUMN_WIDTH + SKILL_COLUMN_GAP)
+		var r := Rect2(SLOT_POS + Vector2(column_x, 0), Vector2(SLOT, SLOT))
 		draw_rect(r, ArenaUi.SHADE)
 		var spell: Spell = player.spells[i] if i < player.spells.size() else null
 		var border := ArenaUi.EDGE
 		if spell:
 			draw_texture_rect(ArenaUi.skill_icon(player.hero, i), Rect2(r.position + Vector2(8, 8), Vector2(32, 32)), false)
 			if not player.weapon_active(i):
-				_text(r.position + Vector2(-12, SLOT + 34), spell.display_name, 13, ArenaUi.MUTED, HORIZONTAL_ALIGNMENT_CENTER, SLOT + 24.0)
+				_draw_skill_caption(r, spell.display_name, ArenaUi.MUTED)
 			var cd := player.cooldowns[i]
 			if cd > 0.0:
 				var frac := clampf(cd / maxf(player.cooldown_max[i], 0.01), 0.0, 1.0)
@@ -125,7 +128,12 @@ func _draw_skills() -> void:
 		_draw_weapon(i, r)
 		_text(r.position + Vector2(0, SLOT + 17), hints[i], 15, Color(0.9, 0.9, 0.9), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 
-## Friendslop: the weapon held in slot i covers the slot with its tier colour, icon, uses left and a time bar; its name sits above.
+func _draw_skill_caption(slot: Rect2, caption: String, color: Color) -> void:
+	var at := slot.end + Vector2(-(SLOT + SKILL_COLUMN_WIDTH) * 0.5, 34)
+	draw_multiline_string(ArenaUi.BODY, at, caption, HORIZONTAL_ALIGNMENT_CENTER, SKILL_COLUMN_WIDTH, 14, 2, color,
+		TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE)
+
+## The held weapon covers the slot with its icon, uses left and lifetime bar.
 func _draw_weapon(i: int, r: Rect2) -> void:
 	if not player.weapon_active(i):
 		return
@@ -140,4 +148,4 @@ func _draw_weapon(i: int, r: Rect2) -> void:
 	draw_rect(Rect2(r.position + Vector2(0, -7), Vector2(SLOT, 5)), Color(0, 0, 0, 0.8))
 	draw_rect(Rect2(r.position + Vector2(0, -7), Vector2(SLOT * left, 5)), Color(col, 0.7 + 0.3 * pulse) if left > 0.25 else Color(1, 0.3, 0.2, 0.6 + 0.4 * pulse))
 	draw_rect(r, Color(col, 0.7 + 0.3 * pulse), false, 3.0)
-	_text(r.position + Vector2(-12, SLOT + 34), "%s %ds" % [w.display_name, ceili(w.seconds_left())], 12, col, HORIZONTAL_ALIGNMENT_CENTER, SLOT + 24.0)
+	_draw_skill_caption(r, "%s %ds" % [w.display_name, ceili(w.seconds_left())], col)

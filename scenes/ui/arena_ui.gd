@@ -1,7 +1,7 @@
 class_name ArenaUi extends RefCounted
 
 const THEME := preload("res://assets/ui/arena_theme.tres")
-const BODY := preload("res://assets/ui/PixelifySans.ttf")
+const BODY := preload("res://assets/ui/pixelify_ui.tres")
 const DISPLAY := BODY
 const BACKDROP := preload("res://assets/ui/arena-diorama.png")
 const LOGO := preload("res://assets/ui/chita-mark.png")
@@ -25,8 +25,8 @@ const PORTRAIT_CELLS := {
 	"1Knight": 0, "2Archer": 1, "3Wizard": 2, "4Paladin": 3, "5CamoArcher": 4,
 	"6Mage": 5, "7DeathKnight": 6, "8DarkLord": 7, "9Longbow": 8,
 }
-const BASIC_CELLS := {"wizard": 1, "ranger": 2}
-const SIGNATURE_CELLS := {"knight": 3, "rogue": 4, "wizard": 5, "ranger": 2}
+const SKILL_COLUMNS := 5
+const SKILL_COLUMNS_BY_HERO := {"knight": 0, "rogue": 1, "wizard": 2, "ranger": 3, "bonker": 4}
 
 static var _skills: Dictionary[int, Texture2D] = {}
 
@@ -111,12 +111,10 @@ static func portrait(hero: Hero, color: String) -> Texture2D:
 	return _atlas_cell(PORTRAITS, PORTRAIT_CELLS.get(hero.units[variant], 0), 3)
 
 static func skill_icon(hero: Hero, slot: int) -> Texture2D:
-	if hero.id == "bonker" and slot == 0:
-		return SWORDS
-	var cells := BASIC_CELLS if slot == 0 else SIGNATURE_CELLS
-	var cell: int = 6 if hero.id == "bonker" else cells.get(hero.id, 0)
+	var column: int = SKILL_COLUMNS_BY_HERO.get(hero.id, 0)
+	var cell := column + slot * SKILL_COLUMNS
 	if not _skills.has(cell):
-		_skills[cell] = _atlas_cell(EQUIPMENT, 0, 2) if cell == 6 else _atlas_cell(ABILITIES, cell, 3)
+		_skills[cell] = _atlas_cell(ABILITIES, cell, SKILL_COLUMNS)
 	return _skills[cell]
 
 static func gear_icon(slot: String) -> Texture2D:
