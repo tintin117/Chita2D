@@ -1,121 +1,172 @@
 extends Control
-## Hero select. Gym (no network session): pick, then Enter Gym. Online: everyone picks and presses Ready; the host sends all
-## of them into the arena once everybody is ready or the timer runs out.
+## Gym and online hero selection. The host starts the battle when everyone is ready or time runs out.
 
 const PICK_TIME := 30.0
+const ROLE := {"knight": "Bruiser", "rogue": "Assassin", "wizard": "Zoner", "ranger": "Marksman"}
 
 var _online := false
 var _time_left := PICK_TIME
 var _ready_btn: Button
 var _timer_label: Label
 var _status: Label
+var _roster: GridContainer
 var _hero_buttons: Array[Button] = []
+var _name_label: Label
+var _role_label: Label
+var _description: Label
+var _signature: Label
+var _stats: Label
 
 func _ready() -> void:
 	_online = not Net.roster.is_empty()
-	var bg := ColorRect.new()
-	bg.color = Color(0.09, 0.1, 0.14)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	theme = ArenaUi.THEME
+	ArenaUi.backdrop(self, 0.76)
+
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 14)
+	box.custom_minimum_size.x = 866
+	box.add_theme_constant_override("separation", 12)
 	center.add_child(box)
-	box.add_child(_label("CHOOSE YOUR HERO", 36, Color(1, 0.85, 0.3)))
+
+	var header := HBoxContainer.new()
+	var title := ArenaUi.heading("Choose Your Hero", 38)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
 	if _online:
-		_timer_label = _label("", 18, Color(0.7, 0.85, 1.0))
-		box.add_child(_timer_label)
+		_timer_label = ArenaUi.label("", 20, ArenaUi.GOLD)
+		header.add_child(_timer_label)
+	box.add_child(header)
 
 	var cards := HBoxContainer.new()
-	cards.add_theme_constant_override("separation", 18)
-	cards.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_child(cards)
 	var group := ButtonGroup.new()
-	var color: String = Player.COLORS[Net.roster[Net.local_id()].slot % Player.COLORS.size()] if _online else "Blue"
-	for h in Hero.all():
-		cards.add_child(_card(h, color, group))
+	var selected := Hero.by_id(Net.my_hero)
+	var initial: Button
+	for hero in Hero.all():
+		var card := _card(hero, group, selected.id == hero.id)
+		cards.add_child(card)
+		if selected.id == hero.id:
+			initial = card
 
-	_status = _label("", 16)
-	box.add_child(_status)
+	var details := PanelContainer.new()
+	box.add_child(details)
+	var data := VBoxContainer.new()
+	data.add_theme_constant_override("separation", 4)
+	details.add_child(data)
+	var hero_header := HBoxContainer.new()
+	_name_label = ArenaUi.heading("", 26)
+	_role_label = ArenaUi.label("", 19, ArenaUi.MOSS)
+	_stats = ArenaUi.label("", 18, ArenaUi.MUTED)
+	_stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hero_header.add_child(_name_label)
+	hero_header.add_child(_role_label)
+	hero_header.add_child(_stats)
+	data.add_child(hero_header)
+	_description = ArenaUi.label("", 19)
+	_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	data.add_child(_description)
+	_signature = ArenaUi.label("", 18, ArenaUi.GOLD)
+	_signature.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	data.add_child(_signature)
+	_show_hero(selected)
+
 	if _online:
-		_ready_btn = Button.new()
-		_ready_btn.text = "Ready"
+		_roster = GridContainer.new()
+		_roster.columns = 4
+		_roster.add_theme_constant_override("v_separation", 3)
+		box.add_child(_roster)
+
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	box.add_child(actions)
+	if _online:
+		_status = ArenaUi.label("", 16, ArenaUi.MUTED)
+		_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(_status)
+		actions.add_child(ArenaUi.button("Leave", Net.leave))
+		_ready_btn = ArenaUi.button("Ready", _on_ready_toggled, true)
 		_ready_btn.toggle_mode = true
-		_ready_btn.pressed.connect(_on_ready_toggled)
-		box.add_child(_ready_btn)
-		box.add_child(_button("Leave", Net.leave))
+		_ready_btn.custom_minimum_size.x = 152
+		actions.add_child(_ready_btn)
 		Net.roster_changed.connect(_refresh_status)
-		if Net.dev_enet or Net.solo_auto:   # dev shim: no UI clicking in automated runs
+		_refresh_status()
+		if Net.dev_enet or Net.solo_auto:
 			_ready_btn.button_pressed = true
 			_on_ready_toggled()
 	else:
-		box.add_child(_button("Enter gym", func() -> void: get_tree().change_scene_to_file("res://scenes/gym.tscn")))
-		box.add_child(_button("Back", func() -> void: get_tree().change_scene_to_file(Net.MENU_SCENE)))
-	_refresh_status()
+		actions.add_child(ArenaUi.button("Back", _go_back))
+		var enter := ArenaUi.button("Enter Gym", func() -> void:
+			get_tree().change_scene_to_file("res://scenes/gym.tscn"), true)
+		enter.custom_minimum_size.x = 152
+		actions.add_child(enter)
+	if is_instance_valid(initial) and not initial.disabled:
+		ArenaUi.defer_focus(initial)
 
-func _label(text: String, size: int, color := Color.WHITE) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.modulate = color
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	return l
+func _card(hero: Hero, group: ButtonGroup, selected: bool) -> Button:
+	var card := ArenaUi.button("", func() -> void:
+		Net.set_hero(hero.id)
+		_show_hero(hero))
+	card.toggle_mode = true
+	card.button_group = group
+	card.button_pressed = selected
+	card.tooltip_text = hero.display_name
+	card.custom_minimum_size = Vector2(186, 188)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.text = hero.display_name
+	card.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	card.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card.expand_icon = true
+	card.add_theme_constant_override("icon_max_width", 138)
+	card.add_theme_font_size_override("font_size", 22)
+	card.icon = ArenaUi.portrait(hero.id)
+	_hero_buttons.append(card)
+	return card
 
-func _button(text: String, action: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.pressed.connect(action)
-	return b
+func _show_hero(hero: Hero) -> void:
+	_name_label.text = hero.display_name
+	_role_label.text = ROLE[hero.id]
+	_description.text = hero.description.trim_prefix(ROLE[hero.id] + ". ")
+	_stats.text = "%d HP   /   %d SPEED   /   %d RANGE" % [hero.max_hp, hero.speed, hero.attack_range]
+	_signature.text = "%s  /  %s" % [Hero.make_skill(hero.rmb_skill).display_name, hero.rmb_text]
 
-func _card(h: Hero, color: String, group: ButtonGroup) -> Control:
-	var v := VBoxContainer.new()
-	v.custom_minimum_size = Vector2(220, 0)
-	v.add_theme_constant_override("separation", 6)
-	var pic := TextureRect.new()
-	pic.texture = h.portrait(color)
-	pic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	pic.custom_minimum_size = Vector2(180, 180)
-	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	pic.modulate = h.tint
-	v.add_child(pic)
-	var b := Button.new()
-	b.text = h.display_name
-	b.toggle_mode = true
-	b.button_group = group
-	b.button_pressed = h.id == Net.my_hero
-	b.pressed.connect(func() -> void: Net.set_hero(h.id))
-	_hero_buttons.append(b)
-	v.add_child(b)
-	var desc := _label(h.description, 13, Color(1, 1, 1, 0.8))
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.custom_minimum_size = Vector2(220, 84)
-	v.add_child(desc)
-	var rmb := _label("RMB  %s: %s" % [h.make_skill(h.rmb_skill).display_name, h.rmb_text], 12, Color(1, 0.9, 0.6))
-	rmb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	rmb.custom_minimum_size = Vector2(220, 48)
-	v.add_child(rmb)
-	v.add_child(_label("HP %d    Speed %d    Range %d" % [h.max_hp, h.speed, h.attack_range], 12, Color(1, 0.85, 0.3)))
-	return v
+func _go_back() -> void:
+	if _online:
+		Net.leave()
+	else:
+		get_tree().change_scene_to_file(Net.MENU_SCENE)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_go_back()
 
 func _on_ready_toggled() -> void:
 	Net.set_ready(_ready_btn.button_pressed)
-	for b in _hero_buttons:
-		b.disabled = _ready_btn.button_pressed   # locked in once ready
+	_ready_btn.text = "Unready" if _ready_btn.button_pressed else "Ready"
+	for card in _hero_buttons:
+		card.disabled = _ready_btn.button_pressed
 
 func _refresh_status() -> void:
-	if not _online:
-		_status.text = ""
-		return
+	for child in _roster.get_children():
+		_roster.remove_child(child)
+		child.queue_free()
 	var ids := Net.roster.keys()
 	ids.sort_custom(func(a: int, b: int) -> bool: return Net.roster[a].slot < Net.roster[b].slot)
-	var lines: PackedStringArray = []
+	var ready := 0
 	for id: int in ids:
-		var r: Dictionary = Net.roster[id]
-		lines.append("%s   %s   %s" % [r.name, Hero.by_id(r.hero).display_name, "READY" if r.ready else "choosing..."])
-	_status.text = "\n".join(lines)
+		var member: Dictionary = Net.roster[id]
+		if member.ready:
+			ready += 1
+		var player := ArenaUi.label("%s / %s" % [member.name, Hero.by_id(member.hero).display_name], 16, ArenaUi.MOSS if member.ready else ArenaUi.MUTED)
+		player.custom_minimum_size.x = 195
+		player.size_flags_horizontal = SIZE_EXPAND_FILL
+		player.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		_roster.add_child(player)
+	_status.text = "%d of %d players ready" % [ready, Net.roster.size()]
 
 func _process(delta: float) -> void:
 	if not _online:

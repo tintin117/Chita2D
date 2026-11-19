@@ -36,8 +36,9 @@ var _running := false
 var _over := false
 var _winner := 0
 var _banner: Label
-var _board: Board
-var _feed: KillFeed
+var _board: MatchHud.Board
+var _feed: MatchHud.KillFeed
+var _match_menu: MatchOverlay
 var _crown := 0             ## peer wearing the crown, 0 = nobody
 var _kill_count := 0        ## every death so far; picks the kill-feed wording the same way on every peer
 var _stats := {}            ## peer -> {streak, best, falls, bombs, pickups, emotes, crown}
@@ -191,7 +192,7 @@ func _ready() -> void:
 
 	var ui := CanvasLayer.new()
 	ui.layer = 10
-	_board = Board.new()
+	_board = MatchHud.Board.new()
 	_board.arena = self
 	ui.add_child(_board)
 	var radar := Radar.new()
@@ -200,17 +201,21 @@ func _ready() -> void:
 	var arrows := DropArrows.new()
 	arrows.player = me
 	ui.add_child(arrows)
-	_feed = KillFeed.new()
+	_feed = MatchHud.KillFeed.new()
 	ui.add_child(_feed)
-	_banner = Label.new()
+	_banner = ArenaUi.heading("", 44)
+	_banner.theme = ArenaUi.THEME
 	_banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_banner.add_theme_font_size_override("font_size", 44)
 	_banner.add_theme_color_override("font_outline_color", Color.BLACK)
 	_banner.add_theme_constant_override("outline_size", 12)
 	_banner.text = "Waiting for players..."
 	ui.add_child(_banner)
+	_match_menu = MatchOverlay.new()
+	_match_menu.pause_tree = Net.solo
+	_match_menu.configure("Paused" if Net.solo else "Match Settings", Net.leave)
+	ui.add_child(_match_menu)
 	add_child(ui)
 
 	_set_players_active(false)
@@ -556,128 +561,40 @@ func _end(winner: int, win_team: int) -> void:
 	Sfx.play("win")
 	_set_players_active(false)
 	var who: String = Net.roster[winner].name if Net.roster.has(winner) else "nobody"
-	var hint := "Enter: play again" if Net.solo else ("Enter: back to lobby" if multiplayer.is_server() else "Waiting for the host...")
+	_match_menu.close()
 	var names := {}
 	for id: int in _stats:
 		names[id] = _name_of(id)
-	var results := Results.new()
+	var results := MatchHud.Results.new()
 	results.title = "%s wins!" % who
 	if _tdm:
 		results.title = "%s team wins!" % Net.TEAM_NAMES[win_team] if win_team >= 0 else "Draw!"
 	results.rows = awards(_stats, _kills, _deaths, _killed_by, names)
-	results.hint = "%s     Esc: leave" % hint
+	if Net.solo or multiplayer.is_server():
+		results.next_label = "Play again" if Net.solo else "Back to lobby"
+		results.proceed = _continue_from_results
 	_banner.get_parent().add_child(results)
 	_banner.modulate.a = 0.0
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		Net.leave()
-	elif _over and event.is_action_pressed("ui_accept"):
-		if Net.solo:
-			get_tree().reload_current_scene()
+	var menu_pressed: bool = event.is_action_pressed("ui_cancel") or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_START)
+	if menu_pressed:
+		get_viewport().set_input_as_handled()
+		if _over:
+			Net.leave()
 		else:
-			Net.back_to_lobby()
+			_match_menu.open()
+
+func _continue_from_results() -> void:
+	if Net.solo:
+		get_tree().reload_current_scene()
+	else:
+		Net.back_to_lobby()
 
 func _say(text: String, seconds: float) -> void:
 	_banner.text = text
 	_banner.modulate.a = 1.0
 	create_tween().tween_property(_banner, "modulate:a", 0.0, 0.5).set_delay(seconds)
-
-## Top-right scoreboard: time left and kills / deaths, best first.
-class Board extends Control:
-	var arena: Node
-
-	func _ready() -> void:
-		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _process(_delta: float) -> void:
-		queue_redraw()
-
-	func _draw() -> void:
-		var font := ThemeDB.fallback_font
-		var w := get_viewport_rect().size.x
-		var limit: int = Net.settings.kill_limit
-		var clock := "--:--"
-		if arena._time_left != INF:
-			var t := int(ceil(arena._time_left))
-			clock = "%d:%02d" % [t / 60, t % 60]
-		var head := clock + ("    first to %d" % limit if limit > 0 else "")
-		if arena._tdm:
-			var tt: Array[int] = arena.team_totals(arena._kills, arena._teams)
-			head += "     Red %d - %d Blue" % [tt[0], tt[1]]
-		draw_string(font, Vector2(0, 30), ("FRIENDSLOP   " if arena._fs else "") + head, HORIZONTAL_ALIGNMENT_CENTER, w, 22, Color.WHITE)
-		var me: Player = arena._players.get(Net.local_id())
-		if me:
-			var line := ""
-			for kind: String in ["damage", "speed", "giant", "chicken"]:
-				if me.buffed(kind):
-					line += "%s %ds   " % [PvpPickup.LABELS[kind], ceili(me.buff_left(kind))]
-			draw_string(font, Vector2(0, 56), line, HORIZONTAL_ALIGNMENT_CENTER, w, 18, Color(1.0, 0.9, 0.4))
-		var ids: Array = arena._players.keys()
-		ids.sort_custom(func(a: int, b: int) -> bool: return arena._kills[a] > arena._kills[b])
-		for i in ids.size():
-			var id: int = ids[i]
-			var p: Player = arena._players[id]
-			var col: Color = Player.TEAM_COLORS[p.team] if p.team >= 0 else Player.NAME_COLORS[p.player_index % Player.NAME_COLORS.size()]
-			var y := 24.0 + i * 22.0
-			draw_string(font, Vector2(w - 260, y), p.display_name, HORIZONTAL_ALIGNMENT_LEFT, 150, 16, col)
-			draw_string(font, Vector2(w - 100, y), "%d / %d" % [arena._kills[id], arena._deaths[id]], HORIZONTAL_ALIGNMENT_RIGHT, 80, 16, Color.WHITE)
-
-## Top-left list of the last few deaths; each line fades out after LIFE seconds.
-class KillFeed extends Control:
-	const LIFE := 6.0
-	const MAX := 5
-	var _lines: Array[Dictionary] = []
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func add(text: String, color: Color) -> void:
-		_lines.append({"text": text, "color": color, "age": 0.0})
-		if _lines.size() > MAX:
-			_lines.pop_front()
-
-	func _process(delta: float) -> void:
-		for l in _lines:
-			l.age += delta
-		_lines = _lines.filter(func(l: Dictionary) -> bool: return l.age < LIFE)
-		queue_redraw()
-
-	func _draw() -> void:
-		var font := ThemeDB.fallback_font
-		for i in _lines.size():
-			var l: Dictionary = _lines[i]
-			var a := clampf((LIFE - l.age) / 1.0, 0.0, 1.0)
-			var pos := Vector2(16, 44 + i * 24)
-			draw_string_outline(font, pos, l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 5, Color(0, 0, 0, a))
-			draw_string(font, pos, l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(l.color, a))
-
-## End-of-match screen: winner, the awards, and how to leave.
-class Results extends Control:
-	var title := ""
-	var rows: Array[Dictionary] = []
-	var hint := ""
-
-	func _ready() -> void:
-		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _draw() -> void:
-		var font := ThemeDB.fallback_font
-		var vp := get_viewport_rect().size
-		var h := 150.0 + rows.size() * 36.0
-		var panel := Rect2((vp.x - 640.0) / 2.0, (vp.y - h) / 2.0, 640.0, h)
-		draw_rect(panel, Color(0.04, 0.04, 0.07, 0.88))
-		draw_rect(panel, Color(1.0, 0.85, 0.3), false, 3.0)
-		draw_string_outline(font, panel.position + Vector2(0, 58), title, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 44, 8, Color.BLACK)
-		draw_string(font, panel.position + Vector2(0, 58), title, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 44, Color(1.0, 0.85, 0.3))
-		for i in rows.size():
-			var r: Dictionary = rows[i]
-			var y := 108.0 + i * 36.0
-			draw_string(font, panel.position + Vector2(28, y), r.title, HORIZONTAL_ALIGNMENT_LEFT, 240, 22, Color(1.0, 0.85, 0.3))
-			draw_string(font, panel.position + Vector2(280, y), "%s   %s" % [r.who, r.detail], HORIZONTAL_ALIGNMENT_LEFT, 340, 20, Color.WHITE)
-		draw_string(font, panel.position + Vector2(0, h - 22), hint, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 18, Color(0.75, 0.85, 1.0))
 
 ## Bottom-right radar of the whole plateau: cover, pickups, living enemies (red) and you (white ring).
 class Radar extends Control:
@@ -698,8 +615,7 @@ class Radar extends Control:
 		return size / 2.0 + (world - arena._map.spawn_point) * _scale
 
 	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.06, 0.05, 0.6))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.8, 0.75, 0.55, 0.8), false, 2.0)
+		ArenaUi.panel(self, Rect2(Vector2.ZERO, size))
 		for c: Vector2 in arena._map.cover:
 			draw_circle(_to_radar(c), 2.5, Color(0.55, 0.55, 0.5))
 		for pk: PvpPickup in arena._pickups.values():
