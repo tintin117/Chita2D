@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://dokk86tprnbc0"]
 
-[ext_resource type="Script" path="res://scenes/main_menu.gd" id="1"]
+[ext_resource type="Script" uid="uid://c13gn7ln4s2hf" path="res://scenes/main_menu.gd" id="1"]
 
-[node name="MainMenu" type="Control"]
+[node name="MainMenu" type="Control" unique_id=2019476301]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
