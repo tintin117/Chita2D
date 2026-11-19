@@ -11,10 +11,11 @@ class_name BotBrain extends RefCounted
 ##  5. Fight: pick a target (wounded, close, crowned, not a giant), hold the spacing the hero is built for (melee closes in,
 ##     ranged keeps back and strafes; the rogue circles to its back and hit-and-runs), lead its shots, fire only through clear lines
 ##     (cover blocks bolts), and use the hero's signature the way it is meant: charge to pin, blink behind, zone a pickup, snipe.
-## `skill` (0..1) scales reaction time, aim error and how often it dodges. Rocks are steered around, and a bot that stops
+## `skill` (0..1) scales reaction time, aim error and how often it dodges, through `_sharp` (skill squared) so Easy and
+## Normal are beatable by a newcomer while Hard stays close to the old curve. Rocks are steered around, and a bot that stops
 ## making progress backs off sideways and dashes.
 
-const REACT_SLOW := 0.32      ## seconds between decisions at skill 0
+const REACT_SLOW := 0.42      ## seconds between decisions at skill 0 (was 0.32)
 const REACT_FAST := 0.07      ## ... at skill 1
 const EDGE_PROBE := 130.0     ## px: how far ahead the bot looks for water
 const EDGE_FAR := 330.0       ## px: a softer, earlier nudge toward the middle
@@ -26,6 +27,7 @@ var move := Vector2.ZERO
 var aim_pos := Vector2.ZERO
 var held: Array[bool] = [false, false]
 var skill := 0.6
+var _sharp := 0.36   ## skill squared: the reaction / aim / dodge curves (Normal 0.6 -> 0.36, Hard 0.9 -> 0.81)
 
 var _dash := false
 var _emote := -1
@@ -56,6 +58,7 @@ func setup(player: Player, arena: Node, level: float) -> void:
 	_arena = arena
 	_map = arena._map
 	skill = clampf(level, 0.0, 1.0)
+	_sharp = skill * skill
 	_orbit = 1.0 if randf() < 0.5 else -1.0
 	_react = randf() * 0.3   # bots do not all think on the same frame
 
@@ -109,7 +112,7 @@ func think(delta: float) -> void:
 		_bursting = not _bursting
 		_burst_t = randf_range(0.5, 0.9) if _bursting else randf_range(0.15, 0.35)
 	if _react <= 0.0:
-		_react = lerpf(REACT_SLOW, REACT_FAST, skill) * randf_range(0.75, 1.25)
+		_react = lerpf(REACT_SLOW, REACT_FAST, _sharp) * randf_range(0.75, 1.25)
 		_decide()
 	move = _dash_dir if _dash else _steer   # a dash press uses `move` as its direction
 	aim_pos = _aim_goal
@@ -217,7 +220,7 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 		if deny != Vector2.INF:
 			held[1] = true
 			_aim_goal = deny
-	var err := randfn(0.0, lerpf(0.14, 0.015, skill))
+	var err := randfn(0.0, lerpf(0.2, 0.02, _sharp))   # Normal ~7.7 deg (was 3.7), Hard ~3 deg (was 1.6)
 	_aim_goal = aim_from + (_aim_goal - aim_from).rotated(err)
 
 ## Does this skill make sense at this range? Bolts need a clear line, blasts and arcs do not.
@@ -396,7 +399,7 @@ func _dodge(me: Vector2) -> Vector2:
 		if lateral.length() < pr.radius + 26.0:
 			worst_t = along / pr.velocity.length()
 			side = lateral.normalized() if lateral.length() > 2.0 else dirv.orthogonal()
-	if side == Vector2.ZERO or randf() > lerpf(0.15, 0.85, skill) * 1.4:
+	if side == Vector2.ZERO or randf() > lerpf(0.1, 0.85, _sharp) * 1.4:   # Normal dodges ~52% of shots (was 83%)
 		return Vector2.ZERO
 	if worst_t < 0.3:
 		_try_dash(side, 1.0)

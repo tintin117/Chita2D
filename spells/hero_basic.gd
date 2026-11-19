@@ -9,7 +9,7 @@ const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 p
 @export var arc_angle := 2.2
 @export var windup := 0.1             ## melee: telegraph before the sweep turns live
 @export var active := 0.12            ## melee: how long the sweep keeps hitting (each foe once)
-@export var assist_angle := 0.35      ## melee/bolt aim assist: snap toward the nearest foe within this angle (see aim())
+@export var assist_angle := 0.55      ## melee/bolt aim assist: snap toward the nearest foe within this angle (see aim()); was 0.35 (20 deg), whiffed on strafing foes
 @export var lunge_speed := 0.0       ## melee: step forward with each sweep
 @export var back_mult := 1.0         ## melee: damage multiplier on a victim that is facing away from the sweep
 @export var bolt_speed := 640.0
@@ -59,7 +59,7 @@ class Sweep extends Node2D:
 			var off := e.global_position - position
 			if e in _hit or off.length() > reach + 20.0:
 				continue
-			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0:
+			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0 + atan2(20.0, off.length()):   # the edge of the cone counts the foe's body, not just its centre
 				_hit.append(e)
 				var hit := dmg
 				if back_mult > 1.0 and Sweep.from_behind(e, position):
@@ -96,7 +96,7 @@ class Sweep extends Node2D:
 		draw_colored_polygon(pts, Color(1.0, 0.5, 0.15, 0.55 * (1.0 - t)))
 		draw_polyline(pts.slice(1), Color(1, 1, 1, 0.8 * (1.0 - t)), 3.0)
 
-const LOCK_RADIUS := 110.0   ## a foe this close to the cursor is the target
+const LOCK_RADIUS := 150.0   ## a foe this close to the cursor is the target (was 110: a moving foe slipped out from under a casual cursor)
 const LOCK_STEP := 250.0     ## melee: a locked swing reaches this far beyond the blade by stepping in
 const LOCK_LUNGE := 1000.0   ## step-in speed of a locked swing (px/s), so the gap closes inside ~0.27 s
 

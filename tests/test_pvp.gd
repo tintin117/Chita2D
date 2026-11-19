@@ -91,6 +91,20 @@ func test_stun_holds_then_expires() -> void:
 	p._tick_timers(0.3)
 	assert_false(p.stunned())
 
+func test_stuns_never_chain() -> void:
+	var p := Player.new()
+	track(p)
+	p.stun(0.6)
+	p._tick_timers(0.5)
+	p.stun(1.4)   # a second stun while held does not extend it
+	p._tick_timers(0.2)
+	assert_false(p.stunned(), "held for one stun at most")
+	p.stun(1.0)
+	assert_false(p.stunned(), "immune right after a stun wears off")
+	p._tick_timers(Player.STUN_IMMUNITY)
+	p.stun(1.0)
+	assert_true(p.stunned(), "stunnable again once the immunity is over")
+
 func test_basic_reach_drives_lock_on_and_chase() -> void:
 	for id in ["knight", "rogue", "wizard", "ranger"]:
 		var h := Hero.by_id(id)

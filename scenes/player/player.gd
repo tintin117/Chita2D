@@ -16,7 +16,7 @@ const DASH_SPEED := 1500.0
 const DASH_TIME := 0.16
 const DASH_RECHARGE := 2.5
 const AIM_REACH := 280.0   ## aim_pos distance for stick aiming
-const BUFFER_TIME := 0.15  ## a press this close to coming off cooldown is queued, not dropped
+const BUFFER_TIME := 0.25  ## a press this close to coming off cooldown is queued, not dropped (was 0.15: mashing between swings ate presses)
 const COLORS := ["Blue", "Yellow", "Red", "Black"]   ## Tiny Swords unit colours, by player_index % 4
 const TEAM_SPRITES := ["Red", "Blue"]
 const TEAM_COLORS := [Color("ff6a5f"), Color("5fa8ff")]
@@ -42,6 +42,8 @@ const SLOTS_NAME := ["LMB", "RMB"]
 const EMOTES := ["Bonk!", "Haha", "Oops", "GG"]
 const EMOTE_COOLDOWN := 1.5
 const CHICKEN_SCALE := 0.7
+const HIT_STOP := [0.05, 0.09, 0.14]   ## sprite hit-stop seconds: light hit, heavy hit, kill
+const STUN_IMMUNITY := 1.0             ## after a stun wears off, no new stun for this long: no stunlocks in a brawl
 
 @export var player_index := 0
 var ai: BotBrain            ## set before add_child: this player is a bot and its input comes from here, not the keyboard
@@ -92,6 +94,8 @@ var _puppet := false       ## online and owned by another peer: no input, positi
 var _mouse_aim := true     ## P1 only: aim with the mouse until a gamepad is touched, then with the right stick
 var _swing := false        ## alternates basic-attack animations (cast / cast2) when the hero has both
 var _iframes := 0.0
+var _stun_immune := 0.0   ## post-stun immunity left (see STUN_IMMUNITY); ticked on every peer like _stun_left
+var _freeze := 0.0        ## sprite hit-stop left (see hit_fx)
 var _stun_left := 0.0      ## stunned: no moving, casting or dashing. Kept on every peer; only the owner's copy stops input, the rest show it
 var _hover: Node2D         ## local human only: the foe the basic attack would lock onto right now (drawn as a ring)
 var _chase: Node2D         ## local human only: the foe a held basic attack is walking toward (see _tick_chase)
@@ -126,11 +130,12 @@ static func is_local(n: Node) -> bool:
 	var p := n as Player
 	return p != null and p.ai == null and p.owns()
 
-## Impact feedback on `victim` for a hit of `amount`: a spark for everyone; hit-stop only when `felt` (the local human
-## dealt or took the hit, because hit-stop dips the global time scale); camera shake only when `shaken` (the local human
-## is the victim: shake means "you were hit", and landing a hit confirms with the freeze, spark, number and sound instead,
-## so the shake never spoils your aim). Also used by the gym dummy.
-static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, shaken := false) -> void:
+## Impact feedback on `victim` for a hit of `amount`: a spark and a sprite hit-stop (victim and `attacker` hold their frame
+## and shudder; purely visual, the simulation and Engine.time_scale never pause, so peers stay in step) for everyone;
+## camera shake only when `shaken` (the local human is the victim: shake means "you were hit", and landing a hit
+## confirms with the freeze, spark, number and sound instead, so the shake never spoils your aim). `felt` (the local
+## human dealt or took it) adds a beat to the freeze. Also used by the gym dummy.
+static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, shaken := false, attacker: Node = null) -> void:
 	if not victim.is_inside_tree():
 		return
 	var heavy := amount > KNOCK_LIGHT_DMG
@@ -139,8 +144,11 @@ static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, sha
 	var cam := victim.get_tree().get_first_node_in_group("camera") as GameCamera
 	if cam and shaken:
 		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
-	if cam and felt and (heavy or killed):   # light hits come several a second: freezing on each one made attacking feel slow
-		cam.hit_stop(0.16 if killed else 0.1)
+	var stop: float = HIT_STOP[2 if killed else (1 if heavy else 0)] + (0.02 if felt else 0.0)
+	if victim is Player:
+		victim.hit_freeze(stop)
+	if attacker is Player and attacker != victim:
+		attacker.hit_freeze(stop * 0.7)
 	hit_sound(victim, amount)
 
 ## The impact sound of a hit that landed: heavier hits are louder and lower. Played here and nowhere else, so a hit the
@@ -537,7 +545,7 @@ func _tick_chase(move: Vector2) -> Vector2:
 ## Another peer's player: ease toward the replicated position, animate from the movement.
 func _puppet_tick(delta: float) -> void:
 	_cast_time = maxf(_cast_time - delta, 0.0)
-	_stun_left = maxf(_stun_left - delta, 0.0)
+	_tick_stun(delta)
 	_phase_left = maxf(_phase_left - delta, 0.0)
 	_update_sink(delta)   # puppets only show the sinking; the owner decides when it kills
 	_apply_look()
@@ -583,6 +591,8 @@ func _apply_look() -> void:
 	if _stun_left > 0.0:
 		_sprite.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.22   # dizzy wobble
 		tint = tint * Color(1.0, 1.0, 0.55)
+	elif _stun_immune > 0.0:
+		tint = tint.lerp(Color(1.4, 1.4, 1.6), 0.35 + 0.15 * sin(Time.get_ticks_msec() * 0.03))   # pale shimmer: can't be stunned
 	if down:
 		_sprite.rotation = PI / 2.0   # knocked flat until the respawn (the sheets have no death animation)
 	_shape.radius = 14.0 * maxf(s, 1.0)   # a giant is also harder to miss
@@ -590,6 +600,11 @@ func _apply_look() -> void:
 	_punch = move_toward(_punch, 0.0, get_physics_process_delta_time() * 7.0)
 	_sprite.scale = Vector2(1.0 + 0.3 * _punch, 1.0 - 0.3 * _punch) * s * (1.0 - 0.7 * sink) * SPRITE_SCALE
 	_sprite.position = Vector2(0, -(s - 1.0) * 20.0)   # keep the feet on the ground while resizing
+	if _freeze > 0.0:
+		_freeze -= get_physics_process_delta_time()
+		_sprite.position.x += 3.0 if Engine.get_physics_frames() % 2 else -3.0   # shudder while the frame holds
+		if _freeze <= 0.0 and not down:
+			_sprite.play()   # resumes the paused animation where it stopped
 	_sprite.self_modulate = Color(tint, (1.0 - sink) * (0.35 if _phase_left > 0.0 else 1.0))
 
 ## Drowned: the owner announces the death, crediting the last player who hit us recently.
@@ -601,7 +616,7 @@ func _tick_timers(delta: float) -> void:
 	_iframes = maxf(_iframes - delta, 0.0)
 	_cast_time = maxf(_cast_time - delta, 0.0)
 	_slow_left = maxf(_slow_left - delta, 0.0)
-	_stun_left = maxf(_stun_left - delta, 0.0)
+	_tick_stun(delta)
 	_phase_left = maxf(_phase_left - delta, 0.0)
 	_queued_time -= delta
 	if _queued_time <= 0.0:
@@ -648,15 +663,31 @@ func apply_slow(mult: float, secs: float) -> void:
 	_slow_mult = mult
 	_slow_left = maxf(_slow_left, secs)
 
-## Stunned for `secs` (the longer of this and what is left). Safe on any peer: see _stun_left.
+func _tick_stun(delta: float) -> void:
+	_stun_immune = maxf(_stun_immune - delta, 0.0)
+	if _stun_left > 0.0:
+		_stun_left -= delta
+		if _stun_left <= 0.0:
+			_stun_left = 0.0
+			_stun_immune = STUN_IMMUNITY
+
+## Stunned for `secs`. A stun never stacks onto or extends another, and none lands for STUN_IMMUNITY after one wears
+## off, so the longest a player can be held is one stun. Safe on any peer: see _stun_left. Every peer runs the same
+## stun calls in the same order, so they agree on the immunity too.
 func stun(secs: float) -> void:
-	if down or secs <= 0.0:
+	if down or secs <= 0.0 or _stun_left > 0.0 or _stun_immune > 0.0:
 		return
-	if _stun_left <= 0.0:
-		float_text("STUNNED", Color(1.0, 0.95, 0.4), 18)
-		if is_inside_tree():
-			Sfx.play("crown", global_position, -8.0, 1.6)   # the bell clip, high and quiet: a stun "ding"
-	_stun_left = maxf(_stun_left, secs)
+	float_text("STUNNED", Color(1.0, 0.95, 0.4), 18)
+	if is_inside_tree():
+		Sfx.play("crown", global_position, -8.0, 1.6)   # the bell clip, high and quiet: a stun "ding"
+	_stun_left = secs
+
+## Sprite hit-stop: hold the current frame for `secs`. Visual only: movement, timers and the network never pause.
+func hit_freeze(secs: float) -> void:
+	if down or not is_instance_valid(_sprite):
+		return
+	_freeze = maxf(_freeze, secs)
+	_sprite.pause()
 
 func stunned() -> bool:
 	return _stun_left > 0.0
@@ -864,7 +895,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		if not silent and is_local(attacker):
 			_punch = 1.0
 			_flash()
-			hit_fx(self, amount, true)   # our hit on somebody else: the freeze, never a shake
+			hit_fx(self, amount, true, false, false, attacker)   # our hit on somebody else: the freeze, never a shake
 		return true
 	if _iframes > 0.0:
 		return false
@@ -882,7 +913,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		apply_slow(slow[0], slow[1])
 		_punch = 1.0
 		if hp > 0 or not online:   # an online kill gets its bigger impact from _net_died, on every peer
-			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0, is_local(self))
+			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0, is_local(self), attacker)
 	_hit_number(amount)
 	_flash()
 	hp_changed.emit(hp, max_hp)
@@ -950,6 +981,7 @@ func _net_respawn(pos: Vector2) -> void:
 	_dash_time = 0.0
 	_slow_left = 0.0
 	_stun_left = 0.0
+	_stun_immune = 0.0
 	_phase_left = 0.0
 	if _ghost:
 		_end_ghost()
