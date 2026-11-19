@@ -122,8 +122,12 @@ func dir_frames(color: String) -> Array[SpriteFrames]:
 	var d := UNIT_PATH % units[maxi(COLOR_ORDER.find(color), 0) % units.size()]
 	var hit := "Melee" if ResourceLoader.exists(d + "Melee.png") else "Attack1"
 	var hit2 := "Melee2" if hit == "Melee" else "Attack2"
-	return SheetFrames.build_dirs({"idle": [d + "Idle.png", 15, 12.0], "run": [d + "Run.png", 15, 24.0],
-		"cast": [d + hit + ".png", 15, 30.0, false], "cast2": [d + hit2 + ".png", 15, 30.0, false]})
+	var anims := {"idle": [d + "Idle.png", 15, 12.0], "run": [d + "Run.png", 15, 24.0],
+		"cast": [d + hit + ".png", 15, 30.0, false], "cast2": [d + hit2 + ".png", 15, 30.0, false]}
+	for a: String in Player.RUN_ANIMS:   # backpedal / strafe sheets; a unit without one falls back to "run" (Player._run_anim)
+		if not anims.has(a) and ResourceLoader.exists(d + Player.RUN_SHEETS[a]):
+			anims[a] = [d + Player.RUN_SHEETS[a], 15, 24.0]
+	return SheetFrames.build_dirs(anims)
 
 ## Facing the camera (south).
 func frames(color: String) -> SpriteFrames:

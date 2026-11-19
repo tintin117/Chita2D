@@ -817,14 +817,34 @@ func _play_cast(slot: int, spell: Spell) -> void:
 	_sprite.speed_scale = frames.get_frame_count(anim) / frames.get_animation_speed(anim) / _cast_time
 	_sprite.play(anim)
 
+## Locomotion sheets by where the legs go, a quarter turn at a time clockwise from the aim (screen y points down,
+## so clockwise of the facing is the hero's right).
+const RUN_ANIMS := ["run", "strafe_r", "run_back", "strafe_l"]
+const RUN_SHEETS := {"run": "Run.png", "strafe_r": "StrafeRight.png", "run_back": "RunBackwards.png", "strafe_l": "StrafeLeft.png"}
+
+## Always faces the aim (aim_dir is replicated, so puppets and bots show the same facing); the legs pick
+## run / strafe / backpedal from the move direction relative to it, so walking away from the cursor never moonwalks.
 func _animate(move: Vector2) -> void:
-	SheetFrames.face(_sprite, _dirs, move if move != Vector2.ZERO and _cast_time <= 0.0 and not _firing() else aim_dir)
+	SheetFrames.face(_sprite, _dirs, aim_dir)
 	if _cast_time > 0.0:
 		return
 	_sprite.speed_scale = 1.0
-	var anim := "run" if move != Vector2.ZERO and not _firing() else "idle"
-	if _sprite.animation != anim:
+	var anim := "idle" if move == Vector2.ZERO else _run_anim(move)
+	if _sprite.animation == anim:
+		return
+	if anim != "idle" and _sprite.animation in RUN_ANIMS:   # same 15-frame stride: keep the step, only swap the sheet
+		var fr := _sprite.frame
+		var prog := _sprite.frame_progress
 		_sprite.play(anim)
+		_sprite.set_frame_and_progress(fr, prog)
+	else:
+		_sprite.play(anim)
+
+func _run_anim(move: Vector2) -> String:
+	var rel := angle_difference(aim_dir.angle(), move.angle())
+	var q := wrapi(roundi(rel / (PI / 2.0)), 0, 4)
+	var anim: String = RUN_ANIMS[q]
+	return anim if _sprite.sprite_frames.has_animation(anim) else "run"
 
 ## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
 ## Returns true when the hit landed (on other peers: when it looks like it did), so stuns and pulls skip a dodged hit.
