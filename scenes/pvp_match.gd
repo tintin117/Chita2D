@@ -184,6 +184,7 @@ func _ready() -> void:
 	if me:
 		cam.target = me
 		cam.global_position = me.global_position
+		cam.reset_physics_interpolation()
 		var hud := Hud.new()
 		hud.with_sheet = false
 		hud.online = true

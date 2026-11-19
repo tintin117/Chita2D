@@ -12,12 +12,12 @@ var _trauma := 0.0
 func _ready() -> void:
 	add_to_group("camera")
 
-func _process(delta: float) -> void:
+## Follows in physics ticks, like the players it follows: with physics interpolation on, the camera and the players are
+## then interpolated together, so a running hero stays still on screen instead of stepping at the 60 Hz tick rate.
+func _physics_process(delta: float) -> void:
 	if target != null:
 		if is_instance_valid(target):
 			global_position = global_position.lerp(target.global_position, 1.0 - exp(-10.0 * delta))
-		_trauma = maxf(_trauma - delta * 2.5, 0.0)
-		offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * SHAKE_PX * _trauma * _trauma
 		return
 	var alive := get_tree().get_nodes_in_group("players").filter(func(p: Player) -> bool: return not p.down)
 	if not alive.is_empty():
@@ -32,6 +32,8 @@ func _process(delta: float) -> void:
 		var k := 1.0 - exp(-6.0 * delta)
 		zoom = zoom.lerp(Vector2(z, z), k)
 		global_position = global_position.lerp(bounds.get_center(), k)
+
+func _process(delta: float) -> void:
 	_trauma = maxf(_trauma - delta * 2.5, 0.0)
 	offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * SHAKE_PX * _trauma * _trauma
 

@@ -202,17 +202,11 @@ func _setup_online() -> void:
 	sync.replication_interval = 0.033
 	sync.set_multiplayer_authority(get_multiplayer_authority())   # children added after set_multiplayer_authority do not inherit it
 	add_child(sync)
-	var label := Label.new()
-	label.text = display_name
-	label.size = Vector2(160, 20)
-	label.position = Vector2(-80, -78)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.modulate = TEAM_COLORS[team] if team >= 0 else NAME_COLORS[player_index % NAME_COLORS.size()]
-	label.z_index = 50
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_outline_color", Color.BLACK)
-	label.add_theme_constant_override("outline_size", 4)
-	add_child(label)
+	var tag := world_text(display_name, 14, 4)
+	tag.position = Vector2(0, -64)
+	tag.modulate = TEAM_COLORS[team] if team >= 0 else NAME_COLORS[player_index % NAME_COLORS.size()]
+	tag.z_index = 50
+	add_child(tag)
 
 ## Builds the kit, progression and stats from the hero. Called by _ready (callable without a tree, for tests).
 func init_loadout() -> void:
@@ -439,21 +433,25 @@ func _net_emote(idx: int) -> void:
 func float_text(text: String, color: Color, font_size := 18) -> void:
 	if not is_inside_tree():
 		return
-	var l := Label.new()
-	l.text = text
+	var l := world_text(text, font_size, 5)
 	l.modulate = color
 	l.z_index = 100
-	l.size = Vector2(160, 24)
-	l.position = Vector2(-80 + randf_range(-22.0, 22.0), -90)   # jitter so stacked hit numbers stay readable
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", font_size)
-	l.add_theme_color_override("font_outline_color", Color.BLACK)
-	l.add_theme_constant_override("outline_size", 5)
+	l.position = Vector2(randf_range(-22.0, 22.0), -90 + font_size)   # jitter so stacked hit numbers stay readable
 	add_child(l)
-	var t := create_tween().set_parallel()
-	t.tween_property(l, "position:y", -140.0, 1.2)
+	var t := create_tween().set_process_mode(Tween.TWEEN_PROCESS_PHYSICS).set_parallel()   # ticked like the body, so it interpolates with it
+	t.tween_property(l, "position:y", -140.0 + font_size, 1.2)
 	t.tween_property(l, "modulate:a", 0.0, 0.6).set_delay(0.7)
 	t.chain().tween_callback(l.queue_free)
+
+## Outlined text centred on its origin's x, baseline at its y. A Node2D and not a Label: Controls are not physics-
+## interpolated, so a Label riding on a running hero jitters against the smoothly drawn sprite.
+static func world_text(text: String, font_size: int, outline: int) -> Node2D:
+	var n := Node2D.new()
+	var font := ThemeDB.fallback_font
+	n.draw.connect(func() -> void:
+		n.draw_string_outline(font, Vector2(-80, 0), text, HORIZONTAL_ALIGNMENT_CENTER, 160, font_size, outline, Color.BLACK)
+		n.draw_string(font, Vector2(-80, 0), text, HORIZONTAL_ALIGNMENT_CENTER, 160, font_size))
+	return n
 
 func _input(event: InputEvent) -> void:
 	if _puppet or ai != null or (player_index != 0 and not online):
@@ -547,7 +545,11 @@ func _puppet_tick(delta: float) -> void:
 		return
 	var off := net_pos - position
 	var before := position
-	position = net_pos if off.length() > 300.0 else position.lerp(net_pos, 1.0 - exp(-20.0 * delta))
+	if off.length() > 300.0:
+		position = net_pos
+		reset_physics_interpolation()   # a teleport (respawn, blink): no streak across the map
+	else:
+		position = position.lerp(net_pos, 1.0 - exp(-20.0 * delta))
 	velocity = (position - before) / delta   # never moved by physics here; the soft lock leads a puppet by this
 	_animate(off if off.length() > 3.0 else Vector2.ZERO)
 
@@ -722,6 +724,7 @@ func blink_to(dest: Vector2) -> void:
 		target += back
 		tries += 1
 	position = free_spot(target)
+	reset_physics_interpolation()
 	net_pos = position
 	velocity = Vector2.ZERO
 	knock = Vector2.ZERO
@@ -842,8 +845,10 @@ func _animate(move: Vector2) -> void:
 
 func _run_anim(move: Vector2) -> String:
 	var rel := angle_difference(aim_dir.angle(), move.angle())
-	var q := wrapi(roundi(rel / (PI / 2.0)), 0, 4)
-	var anim: String = RUN_ANIMS[q]
+	var cur := RUN_ANIMS.find(_sprite.animation)
+	if cur >= 0 and absf(angle_difference(cur * PI / 2.0, rel)) < PI / 4.0 + SheetFrames.FACE_HYSTERESIS:
+		return _sprite.animation   # still near the current sheet's quarter: no flip-flop on a diagonal
+	var anim: String = RUN_ANIMS[wrapi(roundi(rel / (PI / 2.0)), 0, 4)]
 	return anim if _sprite.sprite_frames.has_animation(anim) else "run"
 
 ## Only the player's own peer applies damage; everyone else's copy of the same hit is a no-op (victim-side hits).
@@ -939,6 +944,7 @@ func _respawn() -> void:
 @rpc("authority", "call_local", "reliable")
 func _net_respawn(pos: Vector2) -> void:
 	position = pos
+	reset_physics_interpolation()
 	net_pos = pos
 	knock = Vector2.ZERO
 	_dash_time = 0.0

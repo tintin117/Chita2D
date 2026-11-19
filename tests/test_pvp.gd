@@ -236,3 +236,15 @@ func test_drop_arrow_helpers() -> void:
 		{"dist": 500.0, "tier": 0}, {"dist": 900.0, "tier": 2}, {"dist": 300.0, "tier": 0}, {"dist": 2000.0, "tier": 0}], 2)
 	assert_eq(ranked.size(), 2)
 	assert_eq(ranked[0].tier, 2, "a far epic outranks a near common")
+
+func test_facing_has_hysteresis_at_the_45_degree_edge() -> void:
+	var dirs := Hero.bonker().dir_frames("Blue")
+	var s := AnimatedSprite2D.new()
+	track(s)
+	s.sprite_frames = dirs[7]   # facing east
+	SheetFrames.face(s, dirs, Vector2.from_angle(deg_to_rad(28.0)))   # just past the 22.5 deg edge toward south-east
+	assert_eq(s.sprite_frames, dirs[7], "a cursor wobbling on the edge must not flip the row")
+	SheetFrames.face(s, dirs, Vector2.from_angle(deg_to_rad(40.0)))
+	assert_eq(s.sprite_frames, dirs[0], "well past the edge it turns to south-east")
+	SheetFrames.face(s, dirs, Vector2.from_angle(deg_to_rad(18.0)))
+	assert_eq(s.sprite_frames, dirs[0], "and coming back it holds south-east until well past the edge")

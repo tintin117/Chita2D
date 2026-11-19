@@ -6,6 +6,8 @@ class_name SheetFrames
 
 const FX := "res://assets/isometric_projecttile/"   ## frame-folder effects for play_once / seq
 
+const FACE_HYSTERESIS := 0.17   ## rad (~10 deg) past a 45 deg facing boundary before the row flips: no flicker on the edge
+
 static var _cache: Dictionary = {}
 
 static func build(anims: Dictionary, row := 0, rows := 1) -> SpriteFrames:
@@ -43,7 +45,10 @@ static func build_dirs(anims: Dictionary) -> Array[SpriteFrames]:
 static func face(s: AnimatedSprite2D, dirs: Array[SpriteFrames], dir: Vector2) -> void:
 	if dir == Vector2.ZERO or dirs.is_empty():
 		return
-	var f := dirs[(roundi(dir.angle() / (PI / 4.0)) + 7) % 8]   # angle 0 (east) is row 7, +45 deg (south-east) row 0
+	var cur := dirs.find(s.sprite_frames)   # row r faces (r + 1) * 45 deg: angle 0 (east) is row 7, +45 deg (south-east) row 0
+	if cur >= 0 and absf(angle_difference((cur + 1) * PI / 4.0, dir.angle())) < PI / 8.0 + FACE_HYSTERESIS:
+		return
+	var f := dirs[(roundi(dir.angle() / (PI / 4.0)) + 7) % 8]
 	if s.sprite_frames == f:
 		return
 	var anim := s.animation
