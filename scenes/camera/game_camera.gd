@@ -9,6 +9,9 @@ const SHAKE_PX := 36.0    ## offset at full trauma; it scales with trauma square
 var target: Node2D        ## online: follow just this player at a fixed zoom instead of fitting everyone
 var _trauma := 0.0
 
+func _init() -> void:
+	process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS   # physics interpolation needs it; set before the tree warns about it
+
 func _ready() -> void:
 	add_to_group("camera")
 
