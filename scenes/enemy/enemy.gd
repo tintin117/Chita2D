@@ -3,8 +3,8 @@ class_name Enemy extends CharacterBody2D
 
 signal died(enemy: Enemy)
 
-const UNITS := "res://assets/tiny_swords/units/%s/%s/%s"
-const ARROW := "res://assets/tiny_swords/units/Red/Archer/Arrow.png"
+const UNITS := "res://assets/isometric_character/%s/%s"
+const ARROW := "res://assets/isometric_projecttile/Arrows/Arrow/0015.png"
 
 @export_enum("grunt", "archer", "lancer", "boss") var kind := "grunt"
 var hp_mult := 1.0       ## set by the spawner (scales with player count)
@@ -27,32 +27,32 @@ var _pattern := 0
 var _hit_r := 46.0
 var _charge_speed := 720.0
 var _sprite: AnimatedSprite2D
+var _dirs: Array[SpriteFrames] = []   ## one per facing, see SheetFrames.face
 
 func _ready() -> void:
 	add_to_group("enemies")
 	collision_layer = 4
 	collision_mask = 1 | 4
-	var color := "Red"
+	var unit := "7DeathKnight"
 	var scale_f := 1.0
 	var anims := {}
 	match kind:
 		"grunt":
 			max_hp = 40; speed = 120.0
-			anims = {"idle": [UNITS % [color, "Warrior", "Warrior_Idle.png"], 8, 8.0], "run": [UNITS % [color, "Warrior", "Warrior_Run.png"], 6, 10.0],
-				"attack": [UNITS % [color, "Warrior", "Warrior_Attack1.png"], 4, 12.0, false]}
+			anims = {"attack": [UNITS % [unit, "Melee.png"], 15, 30.0, false]}
 		"archer":
 			max_hp = 25; speed = 100.0
-			anims = {"idle": [UNITS % [color, "Archer", "Archer_Idle.png"], 6, 8.0], "run": [UNITS % [color, "Archer", "Archer_Run.png"], 4, 10.0],
-				"attack": [UNITS % [color, "Archer", "Archer_Shoot.png"], 8, 16.0, false]}
+			unit = "5CamoArcher"
+			anims = {"attack": [UNITS % [unit, "Attack1.png"], 15, 30.0, false]}
 		"lancer", "boss":
 			if kind == "boss":
-				color = "Black"; scale_f = 2.0
+				scale_f = 2.0
 				max_hp = 700; speed = 95.0; bar_y = -150.0; _hit_r = 95.0; _charge_speed = 820.0
 				add_to_group("boss")
 			else:
 				max_hp = 60; speed = 130.0; bar_y = -70.0
-			anims = {"idle": [UNITS % [color, "Lancer", "Lancer_Idle.png"], 12, 8.0], "run": [UNITS % [color, "Lancer", "Lancer_Run.png"], 6, 10.0],
-				"attack": [UNITS % [color, "Lancer", "Lancer_Right_Attack.png"], 3, 8.0]}
+			unit = "8DarkLord"
+			anims = {"attack": [UNITS % [unit, "Attack1.png"], 15, 20.0]}
 	_base_speed = speed
 	_base_max_hp = int(max_hp * hp_mult)
 	max_hp = int(_base_max_hp * RuleSet.current.hp)
@@ -66,9 +66,12 @@ func _ready() -> void:
 	shape.position = Vector2(0, 14) * scale_f
 	add_child(shape)
 	_sprite = AnimatedSprite2D.new()
-	_sprite.sprite_frames = SheetFrames.build(anims)
-	_sprite.offset = Vector2(0, -4)
-	_sprite.scale = Vector2.ONE * scale_f
+	anims["idle"] = [UNITS % [unit, "Idle.png"], 15, 12.0]
+	anims["run"] = [UNITS % [unit, "Run.png"], 15, 20.0]
+	_dirs = SheetFrames.build_dirs(anims)
+	_sprite.sprite_frames = _dirs[1]
+	_sprite.offset = Vector2(0, -16)   # feet on the collider, same as Player
+	_sprite.scale = Vector2.ONE * scale_f * Player.SPRITE_SCALE
 	add_child(_sprite)
 	_sprite.play("idle")
 	var bar := OverheadHpBar.new()
@@ -98,7 +101,7 @@ func _physics_process(delta: float) -> void:
 	match _state:
 		"chase":
 			if target:
-				_sprite.flip_h = dir.x < 0.0
+				SheetFrames.face(_sprite, _dirs, dir)
 				_chase(dir, dist)
 		"windup":
 			if _t <= 0.0:
@@ -159,7 +162,7 @@ func _enraged() -> bool:
 func _strike() -> void:
 	_sprite.modulate = Color.WHITE
 	_sprite.play("attack")
-	_sprite.flip_h = _dir.x < 0.0
+	SheetFrames.face(_sprite, _dirs, _dir)
 	match kind:
 		"grunt":
 			for p: Player in get_tree().get_nodes_in_group("players"):
@@ -193,7 +196,7 @@ func _strike() -> void:
 						g.hp_mult = hp_mult
 						g.position = global_position + Vector2.from_angle(randf() * TAU) * 150.0
 						get_parent().add_child(g)
-						SheetFrames.play_once(get_parent(), g.position, "res://assets/tiny_swords/fx/Dust_02.png", 10, 20.0, 1.0)
+						SheetFrames.play_once(get_parent(), g.position, SheetFrames.FX + "AoE/DeathAoE/", 0, 30.0, 0.25)
 					_enter("recover", 1.1)
 
 func _start_charge(next_cd: float) -> void:
@@ -249,7 +252,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, _attacker: Nod
 		remove_from_group("boss")
 		died.emit(self)
 		var big := 2.5 if kind == "boss" else 1.0
-		SheetFrames.play_once(get_parent(), global_position, "res://assets/tiny_swords/fx/Dust_02.png", 10, 24.0, big)
+		SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/DeathAoE/", 0, 30.0, 0.25 * big)
 		queue_free()
 
 func _spawn_number(amount: int) -> void:

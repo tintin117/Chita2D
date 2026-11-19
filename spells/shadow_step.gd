@@ -38,13 +38,13 @@ func _init() -> void:
 
 func cast(caster: Node2D, _aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var from := caster.global_position
-	var dust := "res://assets/tiny_swords/fx/Dust_01.png"
-	SheetFrames.play_once(caster.get_parent(), from + Vector2(0, 20), dust, 8, 24.0, 1.0).modulate = Color(0.6, 0.45, 0.9)
+	var dust := SheetFrames.FX + "AoE/DeathAoE/"
+	SheetFrames.play_once(caster.get_parent(), from + Vector2(0, 20), dust, 0, 30.0, 0.25)
 	caster.phase(PHASE)
 	var foe := pick(from, aim_pos, Spell.foes(caster))
 	if foe:
 		Spell.stun(foe, STUN)
 	if caster.owns():   # only the owner moves it; everyone else sees it arrive through the replicated position
 		caster.blink_to(destination(from, aim_pos, Spell.foes(caster)))
-	SheetFrames.play_once(caster.get_parent(), caster.global_position + Vector2(0, 20), dust, 8, 24.0, 1.0).modulate = Color(0.6, 0.45, 0.9)
+	SheetFrames.play_once(caster.get_parent(), caster.global_position + Vector2(0, 20), dust, 0, 30.0, 0.25)
 	return cooldown

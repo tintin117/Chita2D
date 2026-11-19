@@ -4,13 +4,14 @@ class_name Hero extends Resource
 ## Tune attack_range / damage / hp / speed in all() below; everything else follows from them.
 ## A kit is exactly two skills: the basic (LMB) and one signature skill (RMB, rmb_skill). Dash is a shared movement verb, not a skill.
 
-const UNIT_PATH := "res://assets/tiny_swords/units/%s/%s/"
+const UNIT_PATH := "res://assets/isometric_character/%s/"
+const COLOR_ORDER := ["Blue", "Yellow", "Red", "Black"]   ## Player.COLORS; picks units[i % size]
 const MAX_RANGE_FOR_UI := 700.0
 
 @export var id := ""
 @export var display_name := "Hero"
 @export var description := ""
-@export var unit := "Monk"                 ## Tiny Swords unit folder: Monk / Warrior / Archer
+@export var units: Array = ["3Wizard"]      ## isometric_character folders, picked by player colour so look-alikes differ
 @export var attack_type := "ranged"        ## "melee" | "ranged"
 @export var attack_range := 380.0          ## px
 @export var basic_name := "Fire Bolt"
@@ -34,20 +35,20 @@ static var _all: Array[Hero] = []
 static func all() -> Array[Hero]:
 	if _all.is_empty():
 		_all = [
-			_make({"id": "knight", "display_name": "Knight", "unit": "Warrior", "attack_type": "melee", "attack_range": 115.0,
+			_make({"id": "knight", "display_name": "Knight", "units": ["1Knight", "4Paladin"], "attack_type": "melee", "attack_range": 115.0,
 				"description": "Bruiser. Commit to the fight and trade blows: three sweeping slashes, the last one hits hard. Charge in and pin foes on the rocks.",
 				"basic_name": "Flame Slash", "basic_damage": 12, "max_hp": 130, "speed": 255.0, "finisher_mult": 1.8,
 				"rmb_skill": "shield_charge", "rmb_text": "Rush forward and stun. Pinning a foe on a rock or wall stuns longer and hurts more."}),
-			_make({"id": "rogue", "display_name": "Rogue", "unit": "Warrior", "attack_type": "melee", "attack_range": 80.0,
+			_make({"id": "rogue", "display_name": "Rogue", "units": ["7DeathKnight"], "attack_type": "melee", "attack_range": 80.0,
 				"description": "Assassin. Fastest hero, rapid short stabs that hit hard from behind. Flank, burst, vanish. Dies if caught in the open.",
 				"basic_name": "Backstab", "basic_damage": 7, "max_hp": 75, "speed": 310.0, "finisher_mult": 1.4,
-				"basic_cd": 0.3, "arc_angle": 1.7, "back_mult": 1.8, "lunge": 500.0, "tint": Color(0.62, 0.55, 0.85),
+				"basic_cd": 0.3, "arc_angle": 1.7, "back_mult": 1.8, "lunge": 500.0,
 				"rmb_skill": "shadow_step", "rmb_text": "Blink behind your target and stun it. Untargetable for a moment."}),
-			_make({"id": "wizard", "display_name": "Mage", "unit": "Monk", "attack_type": "ranged", "attack_range": 380.0,
+			_make({"id": "wizard", "display_name": "Mage", "units": ["3Wizard", "6Mage"], "attack_type": "ranged", "attack_range": 380.0,
 				"description": "Zoner. Rapid fire bolts, every third cast fans out three. Control the ground and the pickups, peel anyone who gets close.",
 				"basic_name": "Fire Bolt", "basic_damage": 10, "max_hp": 100, "speed": 260.0, "bolt_speed": 900.0, "finisher_spread": 1,
 				"rmb_skill": "ember_field", "rmb_text": "Blast a patch of ground, stunning foes in it. It burns and slows for a while."}),
-			_make({"id": "ranger", "display_name": "Ranger", "unit": "Archer", "attack_type": "ranged", "attack_range": 650.0,
+			_make({"id": "ranger", "display_name": "Ranger", "units": ["2Archer", "9Longbow"], "attack_type": "ranged", "attack_range": 650.0,
 				"description": "Marksman. Piercing arrows from far away. Kite, hold the lines, and launch foes off the island. Fragile up close.",
 				"basic_name": "Flame Arrow", "basic_damage": 9, "max_hp": 80, "speed": 270.0, "bolt_speed": 1200.0, "bolt_pierce": 1, "finisher_spread": 0, "finisher_mult": 2.2,
 				"rmb_skill": "snipe_shot", "rmb_text": "Charge a heavy arrow: it stuns longer the farther it flies. Slow while aiming."}),
@@ -60,7 +61,7 @@ static var _bonker: Hero
 
 static func bonker() -> Hero:
 	if _bonker == null:
-		_bonker = _make({"id": "bonker", "display_name": "Bonker", "unit": "Warrior", "attack_type": "melee", "attack_range": 95.0,
+		_bonker = _make({"id": "bonker", "display_name": "Bonker", "units": ["4Paladin", "1Knight", "7DeathKnight", "8DarkLord"], "attack_type": "melee", "attack_range": 95.0,
 			"description": "Everyone's the same. A short bonk and a hook: the loot decides who wins.",
 			"basic_name": "Bonk", "basic_damage": 9, "max_hp": 110, "speed": 265.0, "finisher_mult": 1.4,
 			"basic_cd": 0.4, "arc_angle": 2.0, "lunge": 500.0,
@@ -116,17 +117,17 @@ static func make_skill(skill_id: String) -> Spell:
 func make_kit() -> Array[Spell]:
 	return [make_basic(), make_skill(rmb_skill)]
 
+## One SpriteFrames per facing (see SheetFrames.face). Sword units swing Melee/Melee2, the rest Attack1/Attack2.
+func dir_frames(color: String) -> Array[SpriteFrames]:
+	var d := UNIT_PATH % units[maxi(COLOR_ORDER.find(color), 0) % units.size()]
+	var hit := "Melee" if ResourceLoader.exists(d + "Melee.png") else "Attack1"
+	var hit2 := "Melee2" if hit == "Melee" else "Attack2"
+	return SheetFrames.build_dirs({"idle": [d + "Idle.png", 15, 12.0], "run": [d + "Run.png", 15, 24.0],
+		"cast": [d + hit + ".png", 15, 30.0, false], "cast2": [d + hit2 + ".png", 15, 30.0, false]})
+
+## Facing the camera (south).
 func frames(color: String) -> SpriteFrames:
-	var d := UNIT_PATH % [color, unit]
-	match unit:
-		"Warrior":
-			return SheetFrames.build({"idle": [d + "Warrior_Idle.png", 8, 8.0], "run": [d + "Warrior_Run.png", 6, 12.0],
-				"cast": [d + "Warrior_Attack1.png", 4, 22.0, false], "cast2": [d + "Warrior_Attack2.png", 4, 22.0, false]})
-		"Archer":
-			return SheetFrames.build({"idle": [d + "Archer_Idle.png", 6, 8.0], "run": [d + "Archer_Run.png", 4, 10.0],
-				"cast": [d + "Archer_Shoot.png", 8, 36.0, false]})
-	return SheetFrames.build({"idle": [d + "Idle.png", 6, 8.0], "run": [d + "Run.png", 4, 10.0],
-		"cast": [d + "Heal.png", 11, 44.0, false]})
+	return dir_frames(color)[1]
 
 ## First idle frame, for the hero-select cards.
 func portrait(color: String) -> Texture2D:

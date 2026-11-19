@@ -109,6 +109,8 @@ var _emote_text := ""
 var _emote_until := 0
 var _shape: CircleShape2D
 var _sprite: AnimatedSprite2D
+var _dirs: Array[SpriteFrames] = []   ## one per facing, see SheetFrames.face
+const SPRITE_SCALE := 1.5   ## the isometric sheets are 128 px frames with a ~60 px body
 
 ## True when this peer simulates this player: it is ours, or a bot we run.
 func owns() -> bool:
@@ -132,8 +134,8 @@ static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, sha
 	if not victim.is_inside_tree():
 		return
 	var heavy := amount > KNOCK_LIGHT_DMG
-	var fx := "res://assets/tiny_swords/fx/%s.png" % ("Explosion_01" if heavy else "Dust_02")
-	SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 8 if heavy else 10, 30.0, 0.5 if heavy else 1.0).z_index = 20
+	var fx := SheetFrames.FX + ("AoE/FireAoE/" if heavy else "AoE/SwordAoE/")
+	SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 0, 40.0, 0.25 if heavy else 0.4).z_index = 20
 	var cam := victim.get_tree().get_first_node_in_group("camera") as GameCamera
 	if cam and shaken:
 		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
@@ -178,8 +180,9 @@ func _ready() -> void:
 	shape.position = Vector2(0, 14)
 	add_child(shape)
 	_sprite = AnimatedSprite2D.new()
-	_sprite.sprite_frames = hero.frames(TEAM_SPRITES[team] if team >= 0 else COLORS[player_index % COLORS.size()])
-	_sprite.offset = Vector2(0, -4)  # sprite art sits slightly below frame center
+	_dirs = hero.dir_frames(TEAM_SPRITES[team] if team >= 0 else COLORS[player_index % COLORS.size()])
+	_sprite.sprite_frames = _dirs[1]
+	_sprite.offset = Vector2(0, -16)  # feet sit 41 px below the 128 px frame centre; at SPRITE_SCALE that lands them on the collider
 	add_child(_sprite)
 	_sprite.play("idle")
 	add_child(OverheadHpBar.new())
@@ -555,7 +558,7 @@ func _update_sink(delta: float) -> bool:
 	if water_check.call(global_position + Vector2(0, 14)):
 		if _sink == 0.0:
 			Sfx.play("splash", global_position)
-			SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 1.0).modulate = Color(0.55, 0.75, 1.0)
+			SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), SheetFrames.FX + "AoE/IceAoE/", 0, 30.0, 0.25).modulate = Color(0.55, 0.75, 1.0)
 		_sink += delta
 	else:
 		_sink = 0.0
@@ -583,7 +586,7 @@ func _apply_look() -> void:
 	_shape.radius = 14.0 * maxf(s, 1.0)   # a giant is also harder to miss
 	var sink := clampf(_sink / SINK_TIME, 0.0, 1.0)
 	_punch = move_toward(_punch, 0.0, get_physics_process_delta_time() * 7.0)
-	_sprite.scale = Vector2(1.0 + 0.3 * _punch, 1.0 - 0.3 * _punch) * s * (1.0 - 0.7 * sink)
+	_sprite.scale = Vector2(1.0 + 0.3 * _punch, 1.0 - 0.3 * _punch) * s * (1.0 - 0.7 * sink) * SPRITE_SCALE
 	_sprite.position = Vector2(0, -(s - 1.0) * 20.0)   # keep the feet on the ground while resizing
 	_sprite.self_modulate = Color(tint, (1.0 - sink) * (0.35 if _phase_left > 0.0 else 1.0))
 
@@ -735,7 +738,7 @@ func _start_dash(move: Vector2) -> void:
 	_ghost = true
 	collision_mask = WALL_MASK   # rocks are passable for the dash; the room walls still hold
 	_iframes = maxf(_iframes, DASH_TIME + 0.05)
-	SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 0.8)
+	SheetFrames.play_once(get_parent(), global_position + Vector2(0, 20), SheetFrames.FX + "AoE/IceAoE/", 0, 30.0, 0.18).modulate = Color(1, 1, 1, 0.6)
 
 ## True while an attack button is held or the cast anim is still playing (no gap between rapid taps).
 func _firing() -> bool:
@@ -815,7 +818,7 @@ func _play_cast(slot: int, spell: Spell) -> void:
 	_sprite.play(anim)
 
 func _animate(move: Vector2) -> void:
-	_sprite.flip_h = aim_dir.x < 0.0
+	SheetFrames.face(_sprite, _dirs, move if move != Vector2.ZERO and _cast_time <= 0.0 and not _firing() else aim_dir)
 	if _cast_time > 0.0:
 		return
 	_sprite.speed_scale = 1.0

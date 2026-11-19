@@ -10,9 +10,14 @@ const GRID := Vector2i(4, 3)            ## chamber zones
 const ZONE := Vector2i(32, 26)          ## cells per zone
 const SIZE := Vector2i(128, 78)         ## cells = GRID * ZONE (8192 x 4992 px)
 const INSET := 64.0                     ## shore collider reaches this far onto the land: the tree-line cell is solid
-const TILESET := "res://assets/tiny_swords/terrain/Tilemap_color1.png"
-const WATER := "res://assets/tiny_swords/terrain/Water Background color.png"
-const TERRAIN := "res://assets/tiny_swords/terrain/"
+const ISO := "res://assets/isometric_tileset/separated_images/tile_%03d.png"
+const ISO_SCALE := 2.0                  ## 32 px tiles drawn as 64 x 32 px diamonds
+const GRASS := [22, 24, 37, 38, 39, 22, 24, 23]
+const WATER_TILES := [104, 105, 106, 107, 108]
+const TREE_TILES := [29, 31, 33, 35]   ## leafy blocks: the tree line
+const BUSH_TILES := [41, 42, 43, 44]
+const ROCK_TILES := [53, 54, 55, 58]
+const COVER_TILES := [64, 65, 68, 61]
 
 const CHAMBER_R := Vector2(7.0, 9.5)    ## chamber radius range (cells)
 const SPAWN_R := 8.5
@@ -391,36 +396,15 @@ func _build() -> void:
 	add_child(ground)
 	_owned.append(ground)
 
-	var water := Sprite2D.new()
-	water.texture = load(WATER)
-	water.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	water.centered = false
-	water.region_enabled = true
-	water.region_rect = Rect2(0, 0, bounds.size.x + 2400, bounds.size.y + 1600)
-	water.position = Vector2(-1200, -800)
-	ground.add_child(water)
-
-	var src := TileSetAtlasSource.new()
-	src.texture = load(TILESET)
-	src.texture_region_size = Vector2i(TILE, TILE)
-	for x in 3:
-		for y in 3:
-			src.create_tile(Vector2i(x, y))
-	var ts := TileSet.new()
-	ts.tile_size = Vector2i(TILE, TILE)
-	ts.add_source(src)
-	var layer := TileMapLayer.new()
-	layer.tile_set = ts
+	var lo := Vector2i(SIZE)
+	var hi := Vector2i.ZERO
 	for y in SIZE.y:
 		for x in SIZE.x:
-			var c := Vector2i(x, y)
-			if not is_land(c):
-				continue
-			# nine-patch: edge tile on the sides that face water; concave corners just use the fill tile
-			var cx := 0 if not is_land(c + Vector2i.LEFT) else (2 if not is_land(c + Vector2i.RIGHT) else 1)
-			var cy := 0 if not is_land(c + Vector2i.UP) else (2 if not is_land(c + Vector2i.DOWN) else 1)
-			layer.set_cell(c, 0, Vector2i(cx, cy))
-	ground.add_child(layer)
+			if is_land(Vector2i(x, y)):
+				lo = lo.min(Vector2i(x, y))
+				hi = hi.max(Vector2i(x + 1, y + 1))
+	var area := Rect2(Vector2(lo * TILE), Vector2((hi - lo) * TILE)).grow_individual(1200, 800, 1200, 800)
+	iso_ground(ground, area, func(p: Vector2) -> bool: return not is_water(p))
 
 	var walls := StaticBody2D.new()
 	walls.collision_layer = 1 | Player.WALL_MASK   # walls also sit on the wall layer: a dash passes rocks but never these
@@ -439,17 +423,8 @@ func _build() -> void:
 			_add_rect(walls, Rect2(x0 * TILE - INSET, y * TILE - INSET, (x - x0) * TILE + 2 * INSET, TILE + 2 * INSET))
 
 	for d in _decor:
-		var s := Sprite2D.new()
-		match d.kind:
-			"tree":
-				s.texture = load(TERRAIN + "Tree%d.png" % d.variant)
-				s.hframes = 8
-			"bush":
-				s.texture = load(TERRAIN + "Bushes/Bushe%d.png" % d.variant)
-				s.hframes = 8
-			_:
-				s.texture = load(TERRAIN + "Rocks/Rock%d.png" % d.variant)
-		s.offset.y = -0.36 * s.texture.get_height() if d.kind != "bush" else -0.3 * s.texture.get_height()
+		var tiles: Array = {"tree": TREE_TILES, "bush": BUSH_TILES}.get(d.kind, ROCK_TILES)
+		var s := _iso_sprite(tiles[d.variant - 1], ISO_SCALE)
 		s.position = d.pos
 		add_child(s)
 		_owned.append(s)
@@ -466,11 +441,7 @@ func _build_cover() -> void:
 		circle.radius = COVER_R
 		cs.shape = circle
 		rock.add_child(cs)
-		var s := Sprite2D.new()
-		s.texture = load(TERRAIN + "Rocks/Rock%d.png" % (1 + i % 4))
-		s.scale = Vector2.ONE * 3.2
-		s.offset.y = -0.3 * s.texture.get_height()
-		rock.add_child(s)
+		rock.add_child(_iso_sprite(COVER_TILES[i % 4], 4.0))
 		add_child(rock)
 		_owned.append(rock)
 
@@ -490,3 +461,43 @@ func _add_rect(body: StaticBody2D, r: Rect2) -> void:
 	cs.shape = rs
 	cs.position = r.get_center()
 	body.add_child(cs)
+
+## A tileset piece standing on its node's position (the tile's ground diamond sits 4-20 px down a 32 px image).
+static func _iso_sprite(tile: int, sc: float) -> Sprite2D:
+	var s := Sprite2D.new()
+	s.texture = load(ISO % tile)
+	s.scale = Vector2.ONE * sc
+	s.offset.y = -8.0
+	return s
+
+## Isometric ground over `area` (world px): grass where land.call(pos) is true, water elsewhere. Land is its own
+## y-sorted layer above the water, so the shore shows the cliff faces. Visual only: is_water() still decides ring-outs.
+static func iso_ground(parent: Node, area: Rect2, land: Callable) -> void:
+	var ts := TileSet.new()
+	ts.tile_shape = TileSet.TILE_SHAPE_ISOMETRIC
+	ts.tile_size = Vector2i(32, 16)
+	for id: int in GRASS + WATER_TILES:
+		if ts.has_source(id):
+			continue
+		var src := TileSetAtlasSource.new()
+		src.texture = load(ISO % id)
+		src.texture_region_size = Vector2i(32, 32)
+		src.create_tile(Vector2i.ZERO)
+		ts.add_source(src, id)
+		src.get_tile_data(Vector2i.ZERO, 0).texture_origin = Vector2i(0, -4)   # top diamond (y 4..20) on the cell
+	var water := TileMapLayer.new()
+	var ground := TileMapLayer.new()
+	for l: TileMapLayer in [water, ground]:
+		l.tile_set = ts
+		l.scale = Vector2.ONE * ISO_SCALE
+		l.position = area.position
+		parent.add_child(l)
+	ground.y_sort_enabled = true
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for cy in int(area.size.y / (8.0 * ISO_SCALE)) + 2:
+		for cx in int(area.size.x / (32.0 * ISO_SCALE)) + 2:
+			var c := Vector2i(cx, cy)
+			var on_land: bool = land.call(area.position + ground.map_to_local(c) * ISO_SCALE)
+			var pick: Array = GRASS if on_land else WATER_TILES
+			(ground if on_land else water).set_cell(c, pick[rng.randi() % pick.size()], Vector2i.ZERO)

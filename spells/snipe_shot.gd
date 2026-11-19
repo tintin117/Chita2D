@@ -3,7 +3,7 @@ class_name SnipeShot extends Spell
 ## The line is locked when you press, so it can be sidestepped. Whoever it hits is stunned, longer the farther the arrow
 ## flew (STUN_NEAR at point blank up to STUN_FAR at full LENGTH), so the long shot is the one worth lining up.
 
-const ARROW := "res://assets/tiny_swords/units/Blue/Archer/Arrow.png"
+const ARROW := "res://assets/isometric_projecttile/Arrows/FireArrow/0015.png"
 const SPEED := 1700.0
 const CHARGE := 0.6
 const LENGTH := 1100.0

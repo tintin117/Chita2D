@@ -52,7 +52,7 @@ class Zone extends Node2D:
 
 	func _burst() -> void:
 		Sfx.play("explosion", global_position)
-		SheetFrames.play_once(get_parent(), global_position, "res://assets/tiny_swords/fx/Explosion_02.png", 10, 22.0, RADIUS / 60.0)
+		SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 22.0, RADIUS / 140.0)
 		var cam := get_tree().get_first_node_in_group("camera") as GameCamera
 		if cam:
 			cam.shake(0.25)

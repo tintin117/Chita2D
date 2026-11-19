@@ -1,10 +1,8 @@
 class_name Room extends Node2D
-## Grass island on water, built from the Tiny Swords tileset (3x3 nine-patch). Origin = top-left of island.
+## Grass island on water, built from the isometric tileset (see WorldMap.iso_ground). Origin = top-left of island.
 
 const TILE := 64
 const INSET := 44.0  ## wall inset from island edge (px)
-const TILESET := "res://assets/tiny_swords/terrain/Tilemap_color1.png"
-const WATER := "res://assets/tiny_swords/terrain/Water Background color.png"
 
 @export var size_tiles := Vector2i(22, 13)
 
@@ -17,32 +15,7 @@ func center() -> Vector2:
 func _ready() -> void:
 	z_index = -10
 	var px := pixel_size()
-	var water := Sprite2D.new()
-	water.texture = load(WATER)
-	water.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	water.centered = false
-	water.region_enabled = true
-	water.region_rect = Rect2(0, 0, px.x + 2400, px.y + 1600)
-	water.position = Vector2(-1200, -800)
-	add_child(water)
-
-	var src := TileSetAtlasSource.new()
-	src.texture = load(TILESET)
-	src.texture_region_size = Vector2i(TILE, TILE)
-	for x in 3:
-		for y in 3:
-			src.create_tile(Vector2i(x, y))
-	var ts := TileSet.new()
-	ts.tile_size = Vector2i(TILE, TILE)
-	ts.add_source(src)
-	var layer := TileMapLayer.new()
-	layer.tile_set = ts
-	for x in size_tiles.x:
-		for y in size_tiles.y:
-			var cx := 0 if x == 0 else (2 if x == size_tiles.x - 1 else 1)
-			var cy := 0 if y == 0 else (2 if y == size_tiles.y - 1 else 1)
-			layer.set_cell(Vector2i(x, y), 0, Vector2i(cx, cy))
-	add_child(layer)
+	WorldMap.iso_ground(self, Rect2(-1200, -800, px.x + 2400, px.y + 1600), Rect2(Vector2.ZERO, px).has_point)
 
 	var walls := StaticBody2D.new()
 	walls.collision_layer = 1 | Player.WALL_MASK   # a dash passes rocks but never the room walls

@@ -142,7 +142,7 @@ func _spawn_wave(kinds: Array) -> void:
 				pos = Vector2(inner.end.x - 200.0, inner.get_center().y)
 			if _players.all(func(p: Player) -> bool: return p.global_position.distance_to(pos) > 380.0):
 				break
-		SheetFrames.play_once(self, pos, "res://assets/tiny_swords/fx/Dust_02.png", 10, 14.0, 2.0 if k == "boss" else 1.2)
+		SheetFrames.play_once(self, pos, SheetFrames.FX + "AoE/DeathAoE/", 0, 20.0, 0.5 if k == "boss" else 0.3)
 		spawned.append([k, pos])
 	await get_tree().create_timer(0.7).timeout
 	for s in spawned:

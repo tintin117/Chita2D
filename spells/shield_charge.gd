@@ -54,5 +54,5 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	r.dir = aim_dir.normalized()
 	r.dmg = damage
 	caster.get_tree().current_scene.add_child(r)
-	SheetFrames.play_once(caster.get_parent(), caster.global_position + Vector2(0, 20), "res://assets/tiny_swords/fx/Dust_01.png", 8, 24.0, 0.9)
+	SheetFrames.play_once(caster.get_parent(), caster.global_position + Vector2(0, 20), SheetFrames.FX + "AoE/SwordAoE/", 0, 30.0, 0.4)
 	return cooldown
