@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://eqjbhdy7b627"
-path="res://.godot/imported/arena-backdrop.webp-283a2e86050251eef58adf605a3d5905.ctex"
+uid="uid://fvw5id3xrgf7"
+path="res://.godot/imported/button-primary.png-09649155768e7715961327ee593428a5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/arena-backdrop.webp"
-dest_files=["res://.godot/imported/arena-backdrop.webp-283a2e86050251eef58adf605a3d5905.ctex"]
+source_file="res://assets/ui/button-primary.png"
+dest_files=["res://.godot/imported/button-primary.png-09649155768e7715961327ee593428a5.ctex"]
 
 [params]
 

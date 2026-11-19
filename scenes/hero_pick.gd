@@ -20,18 +20,18 @@ var _stats: Label
 func _ready() -> void:
 	_online = not Net.roster.is_empty()
 	theme = ArenaUi.THEME
-	ArenaUi.backdrop(self, 0.76)
+	ArenaUi.backdrop(self, 0.92)
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	var box := VBoxContainer.new()
-	box.custom_minimum_size.x = 866
+	box.custom_minimum_size.x = 904
 	box.add_theme_constant_override("separation", 12)
 	center.add_child(box)
 
 	var header := HBoxContainer.new()
-	var title := ArenaUi.heading("Choose Your Hero", 38)
+	var title := ArenaUi.heading("Choose a fighter", 44)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	if _online:
@@ -43,9 +43,13 @@ func _ready() -> void:
 	box.add_child(cards)
 	var group := ButtonGroup.new()
 	var selected := Hero.by_id(Net.my_hero)
+	var color := Player.COLORS[0]
+	if _online and Net.roster.has(Net.local_id()):
+		var info: Dictionary = Net.roster[Net.local_id()]
+		color = Player.TEAM_SPRITES[info.team] if Net.is_team_mode() else Player.COLORS[info.slot % Player.COLORS.size()]
 	var initial: Button
 	for hero in Hero.all():
-		var card := _card(hero, group, selected.id == hero.id)
+		var card := _card(hero, color, group, selected.id == hero.id)
 		cards.add_child(card)
 		if selected.id == hero.id:
 			initial = card
@@ -58,7 +62,9 @@ func _ready() -> void:
 	var hero_header := HBoxContainer.new()
 	_name_label = ArenaUi.heading("", 26)
 	_role_label = ArenaUi.label("", 19, ArenaUi.MOSS)
+	_role_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_stats = ArenaUi.label("", 18, ArenaUi.MUTED)
+	_stats.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hero_header.add_child(_name_label)
@@ -106,7 +112,7 @@ func _ready() -> void:
 	if is_instance_valid(initial) and not initial.disabled:
 		ArenaUi.defer_focus(initial)
 
-func _card(hero: Hero, group: ButtonGroup, selected: bool) -> Button:
+func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> Button:
 	var card := ArenaUi.button("", func() -> void:
 		Net.set_hero(hero.id)
 		_show_hero(hero))
@@ -114,15 +120,15 @@ func _card(hero: Hero, group: ButtonGroup, selected: bool) -> Button:
 	card.button_group = group
 	card.button_pressed = selected
 	card.tooltip_text = hero.display_name
-	card.custom_minimum_size = Vector2(186, 188)
+	card.custom_minimum_size = Vector2(186, 192)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.text = hero.display_name
 	card.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	card.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card.expand_icon = true
-	card.add_theme_constant_override("icon_max_width", 138)
+	card.expand_icon = false
+	card.add_theme_constant_override("icon_max_width", 144)
 	card.add_theme_font_size_override("font_size", 22)
-	card.icon = ArenaUi.portrait(hero.id)
+	card.icon = ArenaUi.portrait(hero, color)
 	_hero_buttons.append(card)
 	return card
 

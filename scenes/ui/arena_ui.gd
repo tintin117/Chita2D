@@ -1,38 +1,56 @@
 class_name ArenaUi extends RefCounted
 
 const THEME := preload("res://assets/ui/arena_theme.tres")
-const BODY := preload("res://assets/ui/SourceSans3.ttf")
-const DISPLAY := preload("res://assets/ui/Cinzel.ttf")
-const BACKDROP := preload("res://assets/ui/arena-backdrop.webp")
-const LOGO := preload("res://assets/ui/chita-logo.png")
+const BODY := preload("res://assets/ui/PixelifySans.ttf")
+const DISPLAY := BODY
+const BACKDROP := preload("res://assets/ui/arena-diorama.png")
+const LOGO := preload("res://assets/ui/chita-mark.png")
 const ABILITIES := preload("res://assets/ui/ability-icons.png")
 const EQUIPMENT := preload("res://assets/ui/equipment-icons.png")
-const PORTRAITS := preload("res://assets/ui/hero-portraits.png")
+const PORTRAITS := preload("res://assets/ui/fighter-sprites.png")
 const CROWN := preload("res://assets/ui/crown.png")
 const SWORDS := preload("res://assets/ui/crossed-swords.png")
-const GOLD := Color("#f8d890")
-const INK := Color("#eeeee0")
-const MUTED := Color("#becdbd")
-const SHADE := Color("#101d1e")
-const MOSS := Color("#a7cf78")
+const GOLD := Color("#e2b668")
+const INK := Color("#e7e7cd")
+const MUTED := Color("#acbcb7")
+const SHADE := Color("#182127")
+const SLATE := Color("#263742")
+const EDGE := Color("#546771")
+const MOSS := Color("#c5df77")
+const DANGER := Color("#d86e51")
+const NIGHT := Color("#10191f")
 
-const PORTRAIT_CELLS := {"knight": 0, "ranger": 1, "wizard": 2, "bonker": 3, "rogue": 6}
+# Atlas order matches the numbered isometric character folders.
+const PORTRAIT_CELLS := {
+	"1Knight": 0, "2Archer": 1, "3Wizard": 2, "4Paladin": 3, "5CamoArcher": 4,
+	"6Mage": 5, "7DeathKnight": 6, "8DarkLord": 7, "9Longbow": 8,
+}
 const BASIC_CELLS := {"wizard": 1, "ranger": 2}
 const SIGNATURE_CELLS := {"knight": 3, "rogue": 4, "wizard": 5, "ranger": 2}
 
 static var _skills: Dictionary[int, Texture2D] = {}
 
 static func backdrop(root: Control, veil := 0.0) -> void:
+	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var background := ColorRect.new()
+	background.color = NIGHT
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(background)
 	var art := picture(BACKDROP, Vector2.ZERO)
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.stretch_mode = TextureRect.STRETCH_SCALE
+	art.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	art.offset_left = -640
+	art.offset_top = -360
+	art.offset_right = 640
+	art.offset_bottom = 360
 	root.add_child(art)
 	if veil > 0.0:
 		scrim(root, veil)
 
 static func scrim(root: Control, opacity: float) -> void:
 	var shade := ColorRect.new()
-	shade.color = Color(SHADE, opacity)
+	shade.color = Color(NIGHT, opacity)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(shade)
@@ -40,6 +58,7 @@ static func scrim(root: Control, opacity: float) -> void:
 static func picture(texture: Texture2D, extent: Vector2) -> TextureRect:
 	var art := TextureRect.new()
 	art.texture = texture
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	art.custom_minimum_size = extent
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -47,7 +66,7 @@ static func picture(texture: Texture2D, extent: Vector2) -> TextureRect:
 	return art
 
 static func heading(text: String, px: int) -> Label:
-	var node := label(text, px, GOLD)
+	var node := label(text, px)
 	node.theme_type_variation = &"DisplayLabel"
 	return node
 
@@ -87,8 +106,9 @@ static func focusable(node: Control) -> Array[Control]:
 			items.append_array(focusable(child))
 	return items
 
-static func portrait(hero_id: String) -> Texture2D:
-	return _atlas_cell(PORTRAITS, PORTRAIT_CELLS.get(hero_id, 0), 3)
+static func portrait(hero: Hero, color: String) -> Texture2D:
+	var variant := maxi(Hero.COLOR_ORDER.find(color), 0) % hero.units.size()
+	return _atlas_cell(PORTRAITS, PORTRAIT_CELLS.get(hero.units[variant], 0), 3)
 
 static func skill_icon(hero: Hero, slot: int) -> Texture2D:
 	if hero.id == "bonker" and slot == 0:
