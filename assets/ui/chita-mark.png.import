@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ch20vs36gvo17"
-path="res://.godot/imported/hero-portraits.png-bde6e41fa2cde25076eea435380d1121.ctex"
+uid="uid://c1pdxqwr6w5bf"
+path="res://.godot/imported/chita-mark.png-b67fec9b2f2332746f35cd88581e3de0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/hero-portraits.png"
-dest_files=["res://.godot/imported/hero-portraits.png-bde6e41fa2cde25076eea435380d1121.ctex"]
+source_file="res://assets/ui/chita-mark.png"
+dest_files=["res://.godot/imported/chita-mark.png-b67fec9b2f2332746f35cd88581e3de0.ctex"]
 
 [params]
 

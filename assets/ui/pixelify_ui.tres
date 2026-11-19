@@ -1,0 +1,10 @@
+[gd_resource type="FontVariation" load_steps=2 format=3]
+
+[ext_resource type="FontFile" path="res://assets/ui/PixelifySans.ttf" id="Pixelify"]
+
+[resource]
+base_font = ExtResource("Pixelify")
+opentype_features = {
+1818847073: 0,
+1668049255: 0
+}

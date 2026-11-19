@@ -1,4 +1,4 @@
-﻿class_name MatchOverlay extends Control
+class_name MatchOverlay extends Control
 
 var pause_tree := false
 var _title: String
@@ -26,7 +26,7 @@ func _ready() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
-	box.add_child(ArenaUi.heading(_title, 33))
+	box.add_child(ArenaUi.heading(_title, 40))
 	if _leave.is_valid() and not pause_tree:
 		box.add_child(ArenaUi.label("The match continues while this menu is open.", 17, ArenaUi.MUTED))
 
@@ -60,12 +60,16 @@ func _ready() -> void:
 	update_display.call()
 	box.add_child(display)
 
-	_resume = ArenaUi.button("Resume" if _leave.is_valid() else "Back", close, true)
-	box.add_child(_resume)
+	box.add_child(HSeparator.new())
+	var actions := HBoxContainer.new()
+	box.add_child(actions)
 	if _leave.is_valid():
-		box.add_child(ArenaUi.button("Leave match", func() -> void:
+		actions.add_child(ArenaUi.button("Leave match", func() -> void:
 			close()
 			_leave.call()))
+	_resume = ArenaUi.button("Resume" if _leave.is_valid() else "Back", close, true)
+	_resume.size_flags_horizontal = SIZE_EXPAND_FILL
+	actions.add_child(_resume)
 
 func open() -> void:
 	_previous_focus = get_viewport().gui_get_focus_owner()

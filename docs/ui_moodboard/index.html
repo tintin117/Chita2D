@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chita | UI mood board</title>
+<link rel="icon" href="data:,">
+<style>
+@font-face{font-family:Pixelify;src:url('../../assets/ui/PixelifySans.ttf')}
+:root{color-scheme:dark;--ink:#182127;--slate:#263742;--edge:#546771;--paper:#e7e7cd;--moss:#c5df77;--brass:#e2b668;--red:#d86e51}
+*{box-sizing:border-box} body{margin:0;background:#111a20;color:var(--paper);font:16px/1.45 system-ui,sans-serif} main{max-width:1140px;margin:auto;padding:36px 30px 42px}
+header{border-bottom:2px solid var(--edge);padding-bottom:20px;margin-bottom:20px} h1,h2,.sample,.wordmark{font-family:Pixelify,monospace;font-variant-ligatures:none;line-height:1} h1{font-size:53px;margin:0 0 10px} h2{font-size:27px;margin:0 0 14px}
+p{margin:0} .quiet{color:#b5c2ba} .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:13px} article{background:var(--ink);border:2px solid var(--edge);padding:14px} h3{font-size:17px;margin:0 0 5px} a{color:var(--moss)} article a{display:inline-block;margin-top:6px;font-size:14px} section+section{margin-top:22px}
+.specimens{display:grid;grid-template-columns:1fr 1.3fr;gap:20px} .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px} .swatch{font:12px/1.25 monospace} .swatch i{height:35px;border:1px solid #78888c;display:block;margin-bottom:4px;background:var(--color)}
+.frame{background:var(--ink);border:2px solid var(--edge);box-shadow:inset 0 2px var(--slate),0 2px #0d151b;padding:16px;position:relative}.frame::before{position:absolute;content:"";width:12px;height:2px;background:var(--paper);left:0;top:0}
+.example{display:grid;gap:8px;grid-template-columns:1fr 1fr;margin-top:10px}.sample{font-size:22px;background:var(--slate);border:2px solid var(--edge);padding:8px 11px;box-shadow:inset 0 2px #687b7d,0 2px #0d151b}.sample.focus{color:var(--moss);outline:2px solid var(--moss);outline-offset:2px}.sample.pressed{background:#2c3b26;border-color:#80985a;box-shadow:inset 0 2px #182127}.sample.disabled{color:#8a9892;background:#202b31}.wordmark{font-size:26px;color:var(--paper)} ol{margin:0;padding-left:23px;display:grid;gap:5px}
+.project-art{display:flex;gap:14px;align-items:center;background:#10191f;border:2px solid var(--edge);padding:10px 14px}.atlas{display:flex;gap:10px;flex-wrap:wrap}.fighter{width:72px;height:72px;background:var(--slate) url('../../assets/ui/fighter-sprites.png') var(--x) var(--y)/216px 216px no-repeat;image-rendering:pixelated}.tile{display:block;width:64px;height:64px;image-rendering:pixelated}.project-art p{max-width:390px}
+@media(max-width:760px){.grid,.specimens{grid-template-columns:1fr}h1{font-size:39px}}
+</style>
+<main>
+<header><h1>Chita UI mood board</h1><p class="quiet">An isometric arena built from Chita’s own grass, clay, cold stone and fighters.</p></header>
+<section aria-labelledby="references"><h2 id="references">References</h2><div class="grid">
+<article><h3>Wargroove</h3><p>Character silhouettes carry the roster. Put the actual fighter sprite in every hero tile.</p><a href="https://store.steampowered.com/app/607050/Wargroove/">Chucklefish screenshots</a></article>
+<article><h3>Into the Breach</h3><p>Short labels and boxed numbers sort information by urgency. Give the timer and standings separate anchors.</p><a href="https://media.gdcvault.com/gdc2019/presentations/Into%20the%20Breach%20Postmortem%20Final.pdf#page=2">Subset Games postmortem, slide 2</a></article>
+<article><h3>Children of Morta</h3><p>Keep compact status clusters at the edges so silhouettes and effects own the middle of the arena.</p><a href="https://www.youtube.com/watch?v=m3HIiLxfMGY">11 bit studios HUD trailer</a></article>
+<article><h3>Stick Fight</h3><p>Let the playfield sell the party brawler. Keep the actions players need to start or rejoin a match.</p><a href="https://landfall.se/stickfightthegame/">Landfall gameplay gallery</a></article>
+<article><h3>Kenney</h3><p>Pixel Adventure and Fantasy UI Borders show fixed corners and clear button states. Both are CC0.</p><a href="https://kenney.nl/assets/ui-pack-pixel-adventure">Pixel Adventure</a> · <a href="https://kenney-assets.itch.io/fantasy-ui-borders">Fantasy UI Borders</a></article>
+<article><h3>Pixelify Sans</h3><p>Use one angular face at distinct sizes. Proportional spacing leaves room for player names. OFL.</p><a href="https://github.com/google/fonts/tree/main/ofl/pixelifysans">Font source and license</a></article>
+</div></section>
+<section class="specimens" aria-label="Palette and components">
+<div><h2>Palette</h2><div class="swatches">
+<div class="swatch" style="--color:#182127"><i></i>Ink<br>#182127</div><div class="swatch" style="--color:#263742"><i></i>Slate<br>#263742</div><div class="swatch" style="--color:#546771"><i></i>Edge<br>#546771</div><div class="swatch" style="--color:#e7e7cd"><i></i>Parchment<br>#E7E7CD</div><div class="swatch" style="--color:#c5df77"><i></i>Grass<br>#C5DF77</div><div class="swatch" style="--color:#e2b668"><i></i>Brass<br>#E2B668</div><div class="swatch" style="--color:#d86e51"><i></i>Danger<br>#D86E51</div>
+</div></div>
+<div><h2>Frame and button states</h2><div class="frame"><p class="wordmark">MATCH LOBBY &nbsp; 04:59</p><div class="example"><div class="sample">Normal</div><div class="sample focus">Focused</div><div class="sample pressed">Pressed</div><div class="sample disabled">Disabled</div></div></div></div>
+</section>
+<section><h2>Chita sprites and terrain</h2><div class="project-art">
+<div class="atlas" role="img" aria-label="Original Knight, Archer, Wizard and Death Knight idle poses">
+<div class="fighter" style="--x:0;--y:0"></div><div class="fighter" style="--x:-72px;--y:0"></div><div class="fighter" style="--x:-144px;--y:0"></div><div class="fighter" style="--x:0;--y:-144px"></div>
+</div>
+<img class="tile" src="../../assets/isometric_tileset/separated_images/tile_038.png" alt="Grass and clay terrain tile"><img class="tile" src="../../assets/isometric_tileset/separated_images/tile_104.png" alt="Blue water terrain tile">
+<p class="quiet">The original idle silhouettes and terrain are the source for the roster, menu composition and UI colors.</p>
+</div></section>
+<section><h2>Rules for Chita</h2><ol>
+<li>Compose the backdrop and portraits from the game’s tiles and idle frames on a whole-pixel grid.</li>
+<li>Use flat fills, one native-pixel seams and fixed 9-slice corners. Reserve bright grass for selection and focus.</li>
+<li>Use simple pixel glyphs for skills and a chunky title silhouette. Give the type room to breathe.</li>
+<li>Prioritize HP, dash, cooldowns, match time and standings in PvP. Keep progression in PvE.</li>
+<li>Group choices by task. Keep one primary action clear and keep keyboard focus visible.</li>
+</ol></section>
+</main>
+</html>
