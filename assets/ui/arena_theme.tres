@@ -1,173 +1,172 @@
-[gd_resource type="Theme" format=3 uid="uid://cropipts7ocey"]
-
-[ext_resource type="FontFile" path="res://assets/ui/SourceSans3.ttf" id="Body"]
-[ext_resource type="Texture2D" uid="uid://xwfyr6822xeg" path="res://assets/ui/button-frame.png" id="ButtonTexture"]
-[ext_resource type="FontFile" path="res://assets/ui/Cinzel.ttf" id="Display"]
-[ext_resource type="Texture2D" uid="uid://c5bmlyinkb55t" path="res://assets/ui/panel-frame.png" id="PanelTexture"]
-
-[sub_resource type="StyleBoxTexture" id="Disabled"]
-content_margin_left = 16.0
-content_margin_top = 7.0
-content_margin_right = 16.0
-content_margin_bottom = 7.0
-texture = ExtResource("ButtonTexture")
-texture_margin_left = 22.0
-texture_margin_top = 22.0
-texture_margin_right = 22.0
-texture_margin_bottom = 22.0
-modulate_color = Color(0.5, 0.5, 0.5, 0.72)
-
-[sub_resource type="StyleBoxFlat" id="Focus"]
-bg_color = Color(0, 0, 0, 0)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 0.89, 0.58, 1)
-expand_margin_left = 3.0
-expand_margin_top = 3.0
-expand_margin_right = 3.0
-expand_margin_bottom = 3.0
-
-[sub_resource type="StyleBoxTexture" id="Hover"]
-content_margin_left = 16.0
-content_margin_top = 7.0
-content_margin_right = 16.0
-content_margin_bottom = 7.0
-texture = ExtResource("ButtonTexture")
-texture_margin_left = 22.0
-texture_margin_top = 22.0
-texture_margin_right = 22.0
-texture_margin_bottom = 22.0
-modulate_color = Color(1.1, 1.16, 1.02, 1)
-
-[sub_resource type="StyleBoxTexture" id="Pressed"]
-content_margin_left = 16.0
-content_margin_top = 7.0
-content_margin_right = 16.0
-content_margin_bottom = 7.0
-texture = ExtResource("ButtonTexture")
-texture_margin_left = 22.0
-texture_margin_top = 22.0
-texture_margin_right = 22.0
-texture_margin_bottom = 22.0
-modulate_color = Color(0.57, 0.71, 0.54, 1)
-
-[sub_resource type="StyleBoxTexture" id="Normal"]
-content_margin_left = 16.0
-content_margin_top = 7.0
-content_margin_right = 16.0
-content_margin_bottom = 7.0
-texture = ExtResource("ButtonTexture")
-texture_margin_left = 22.0
-texture_margin_top = 22.0
-texture_margin_right = 22.0
-texture_margin_bottom = 22.0
-modulate_color = Color(0.73, 0.77, 0.71, 1)
-
-[sub_resource type="StyleBoxFlat" id="Fill"]
-bg_color = Color(0.37, 0.55, 0.28, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.64, 0.75, 0.42, 1)
-
-[sub_resource type="StyleBoxFlat" id="Track"]
-bg_color = Color(0.09, 0.16, 0.14, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.32, 0.4, 0.33, 1)
-
-[sub_resource type="StyleBoxFlat" id="Field"]
-content_margin_left = 10.0
-content_margin_top = 10.0
-content_margin_right = 10.0
-content_margin_bottom = 10.0
-bg_color = Color(0.055, 0.09, 0.085, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.39, 0.44, 0.32, 1)
+[gd_resource type="Theme" load_steps=19 format=3]
+[ext_resource type="FontVariation" path="res://assets/ui/pixelify_ui.tres" id="Pixelify"]
+[ext_resource type="Texture2D" path="res://assets/ui/panel-frame.png" id="PanelTexture"]
+[ext_resource type="Texture2D" path="res://assets/ui/button-frame.png" id="NormalTexture"]
+[ext_resource type="Texture2D" path="res://assets/ui/button-hover.png" id="HoverTexture"]
+[ext_resource type="Texture2D" path="res://assets/ui/button-pressed.png" id="PressedTexture"]
+[ext_resource type="Texture2D" path="res://assets/ui/button-disabled.png" id="DisabledTexture"]
+[ext_resource type="Texture2D" path="res://assets/ui/button-primary.png" id="PrimaryTexture"]
 
 [sub_resource type="StyleBoxTexture" id="Panel"]
-content_margin_left = 20.0
-content_margin_top = 15.0
-content_margin_right = 20.0
-content_margin_bottom = 15.0
 texture = ExtResource("PanelTexture")
-texture_margin_left = 22.0
-texture_margin_top = 22.0
-texture_margin_right = 22.0
-texture_margin_bottom = 22.0
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+texture_margin_left = 6.0
+content_margin_left = 20.0
+texture_margin_right = 6.0
+content_margin_right = 20.0
+texture_margin_top = 6.0
+content_margin_top = 18.0
+texture_margin_bottom = 6.0
+content_margin_bottom = 18.0
+
+[sub_resource type="StyleBoxTexture" id="Normal"]
+texture = ExtResource("NormalTexture")
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+texture_margin_left = 6.0
+content_margin_left = 14.0
+texture_margin_right = 6.0
+content_margin_right = 14.0
+texture_margin_top = 6.0
+content_margin_top = 6.0
+texture_margin_bottom = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="Hover"]
+texture = ExtResource("HoverTexture")
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+texture_margin_left = 6.0
+content_margin_left = 14.0
+texture_margin_right = 6.0
+content_margin_right = 14.0
+texture_margin_top = 6.0
+content_margin_top = 6.0
+texture_margin_bottom = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="Pressed"]
+texture = ExtResource("PressedTexture")
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+texture_margin_left = 6.0
+content_margin_left = 14.0
+texture_margin_right = 6.0
+content_margin_right = 14.0
+texture_margin_top = 6.0
+content_margin_top = 6.0
+texture_margin_bottom = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="Disabled"]
+texture = ExtResource("DisabledTexture")
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+texture_margin_left = 6.0
+content_margin_left = 14.0
+texture_margin_right = 6.0
+content_margin_right = 14.0
+texture_margin_top = 6.0
+content_margin_top = 6.0
+texture_margin_bottom = 6.0
+content_margin_bottom = 6.0
 
 [sub_resource type="StyleBoxTexture" id="Primary"]
-content_margin_left = 16.0
-content_margin_top = 7.0
-content_margin_right = 16.0
-content_margin_bottom = 7.0
-texture = ExtResource("ButtonTexture")
-texture_margin_left = 22.0
-texture_margin_top = 22.0
-texture_margin_right = 22.0
-texture_margin_bottom = 22.0
-modulate_color = Color(1.2, 1.39, 0.94, 1)
+texture = ExtResource("PrimaryTexture")
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+texture_margin_left = 6.0
+content_margin_left = 14.0
+texture_margin_right = 6.0
+content_margin_right = 14.0
+texture_margin_top = 6.0
+content_margin_top = 6.0
+texture_margin_bottom = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="Focus"]
+bg_color = Color(0.0941, 0.1294, 0.1529, 1)
+border_color = Color(0.7725, 0.8745, 0.4667, 1)
+border_width_left = 2
+expand_margin_left = 2.0
+border_width_right = 2
+expand_margin_right = 2.0
+border_width_top = 2
+expand_margin_top = 2.0
+border_width_bottom = 2
+expand_margin_bottom = 2.0
+draw_center = false
+
+[sub_resource type="StyleBoxFlat" id="Track"]
+bg_color = Color(0.0627, 0.0980, 0.1216, 1)
+border_color = Color(0.3294, 0.4039, 0.4431, 1)
+border_width_left = 2
+content_margin_left = 3.0
+border_width_right = 2
+content_margin_right = 3.0
+border_width_top = 2
+content_margin_top = 3.0
+border_width_bottom = 2
+content_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxFlat" id="Fill"]
+bg_color = Color(0.5176, 0.5961, 0.3412, 1)
+border_color = Color(0.7725, 0.8745, 0.4667, 1)
+border_width_left = 2
+border_width_right = 2
+border_width_top = 2
+border_width_bottom = 2
+
+[sub_resource type="StyleBoxFlat" id="Field"]
+bg_color = Color(0.0627, 0.0980, 0.1216, 1)
+border_color = Color(0.3294, 0.4039, 0.4431, 1)
+border_width_left = 2
+content_margin_left = 6.0
+border_width_right = 2
+content_margin_right = 6.0
+border_width_top = 2
+content_margin_top = 6.0
+border_width_bottom = 2
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxLine" id="Seam"]
+color = Color(0.3294, 0.4039, 0.4431, 1)
+thickness = 2
 
 [resource]
-default_font = ExtResource("Body")
+default_font = ExtResource("Pixelify")
 default_font_size = 20
-Button/colors/font_color = Color(0.96, 0.94, 0.84, 1)
-Button/colors/font_disabled_color = Color(0.74, 0.75, 0.69, 1)
-Button/colors/font_focus_color = Color(1, 0.96, 0.79, 1)
-Button/colors/font_hover_color = Color(1, 0.98, 0.89, 1)
-Button/colors/font_pressed_color = Color(1, 0.94, 0.69, 1)
-Button/styles/disabled = SubResource("Disabled")
-Button/styles/focus = SubResource("Focus")
-Button/styles/hover = SubResource("Hover")
-Button/styles/hover_pressed = SubResource("Pressed")
-Button/styles/normal = SubResource("Normal")
-Button/styles/pressed = SubResource("Pressed")
-CheckButton/colors/font_color = Color(0.96, 0.94, 0.84, 1)
-CheckButton/colors/font_disabled_color = Color(0.74, 0.75, 0.69, 1)
-CheckButton/colors/font_focus_color = Color(1, 0.96, 0.79, 1)
-CheckButton/colors/font_hover_color = Color(1, 0.98, 0.89, 1)
-CheckButton/colors/font_pressed_color = Color(1, 0.94, 0.69, 1)
-CheckButton/styles/disabled = SubResource("Disabled")
-CheckButton/styles/focus = SubResource("Focus")
-CheckButton/styles/hover = SubResource("Hover")
-CheckButton/styles/hover_pressed = SubResource("Pressed")
-CheckButton/styles/normal = SubResource("Normal")
-CheckButton/styles/pressed = SubResource("Pressed")
-DisplayLabel/base_type = &"Label"
-DisplayLabel/colors/font_color = Color(0.98, 0.86, 0.57, 1)
-DisplayLabel/fonts/font = ExtResource("Display")
-GridContainer/constants/h_separation = 14
-GridContainer/constants/v_separation = 12
-HBoxContainer/constants/separation = 10
-HSlider/styles/grabber_area = SubResource("Fill")
-HSlider/styles/grabber_area_highlight = SubResource("Fill")
-HSlider/styles/slider = SubResource("Track")
-Label/colors/font_color = Color(0.95, 0.94, 0.85, 1)
-LineEdit/styles/focus = SubResource("Focus")
-LineEdit/styles/normal = SubResource("Field")
-OptionButton/colors/font_color = Color(0.96, 0.94, 0.84, 1)
-OptionButton/colors/font_disabled_color = Color(0.74, 0.75, 0.69, 1)
-OptionButton/colors/font_focus_color = Color(1, 0.96, 0.79, 1)
-OptionButton/colors/font_hover_color = Color(1, 0.98, 0.89, 1)
-OptionButton/colors/font_pressed_color = Color(1, 0.94, 0.69, 1)
-OptionButton/styles/disabled = SubResource("Disabled")
-OptionButton/styles/focus = SubResource("Focus")
-OptionButton/styles/hover = SubResource("Hover")
-OptionButton/styles/hover_pressed = SubResource("Pressed")
-OptionButton/styles/normal = SubResource("Normal")
-OptionButton/styles/pressed = SubResource("Pressed")
 Panel/styles/panel = SubResource("Panel")
 PanelContainer/styles/panel = SubResource("Panel")
+Button/constants/h_separation = 8
+Button/constants/outline_size = 0
+Button/styles/normal = SubResource("Normal")
+Button/styles/hover = SubResource("Hover")
+Button/styles/pressed = SubResource("Pressed")
+Button/styles/hover_pressed = SubResource("Pressed")
+Button/styles/disabled = SubResource("Disabled")
+Button/styles/focus = SubResource("Focus")
+Button/colors/font_color = Color(0.9059, 0.9059, 0.8039, 1)
+Button/colors/font_hover_color = Color(0.9059, 0.9059, 0.8039, 1)
+Button/colors/font_pressed_color = Color(0.7725, 0.8745, 0.4667, 1)
+Button/colors/font_focus_color = Color(0.9059, 0.9059, 0.8039, 1)
+Button/colors/font_disabled_color = Color(0.5216, 0.5843, 0.5529, 1)
 PrimaryButton/base_type = &"Button"
 PrimaryButton/styles/normal = SubResource("Primary")
+PrimaryButton/colors/font_color = Color(0.7725, 0.8745, 0.4667, 1)
+DisplayLabel/base_type = &"Label"
+DisplayLabel/colors/font_color = Color(0.9059, 0.9059, 0.8039, 1)
+Label/colors/font_color = Color(0.9059, 0.9059, 0.8039, 1)
+HSeparator/styles/separator = SubResource("Seam")
+VBoxContainer/constants/separation = 10
+HBoxContainer/constants/separation = 10
+GridContainer/constants/h_separation = 12
+GridContainer/constants/v_separation = 10
+LineEdit/styles/normal = SubResource("Field")
+LineEdit/styles/focus = SubResource("Focus")
+HSlider/styles/slider = SubResource("Track")
+HSlider/styles/grabber_area = SubResource("Fill")
+HSlider/styles/grabber_area_highlight = SubResource("Fill")
 ProgressBar/styles/background = SubResource("Track")
 ProgressBar/styles/fill = SubResource("Fill")
-VBoxContainer/constants/separation = 10
