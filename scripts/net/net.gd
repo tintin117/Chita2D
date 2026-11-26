@@ -108,8 +108,6 @@ func local_id() -> int:
 func start_solo(bots: int, skill: float) -> void:
 	if not roster.is_empty() and not solo:
 		return   # a real lobby is open
-	if not multiplayer.has_multiplayer_peer():
-		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()   # leave() drops the peer; without one this peer is no host and the match waits forever
 	roster.clear()
 	settings = DEFAULT_SETTINGS.duplicate()
 	_add(1, my_name, my_hero)
@@ -448,7 +446,7 @@ func _reset(message: String) -> void:
 	roster_changed.emit()
 	if multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer.close()
-	multiplayer.multiplayer_peer = null
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()   # the engine's startup default: with null, every RPC (gym attacks) fails
 	if get_tree().current_scene == null or get_tree().current_scene.scene_file_path != MENU_SCENE:
 		get_tree().change_scene_to_file(MENU_SCENE)
 	if message != "":

@@ -5,6 +5,8 @@ extends Control
 enum Screen { MAIN, ONLINE, JOIN, SOLO }
 const DIFFICULTY := [["Easy", 0.3], ["Normal", 0.6], ["Hard", 0.9]]
 var _difficulty := 1
+const BOT_COUNTS := [3, 7]
+var _bot_count := 0
 const TEAM_COLORS := [Color(1, 0.4, 0.35), Color(0.4, 0.65, 1.0)]
 const TIME_OPTIONS := [[180, "3 min"], [300, "5 min"], [480, "8 min"], [0, "No limit"]]
 const KILL_OPTIONS := [[10, "10"], [15, "15"], [25, "25"], [0, "No limit"]]
@@ -136,9 +138,9 @@ func _main() -> void:
 		button.custom_minimum_size.y = 52
 		button.add_theme_font_size_override("font_size", 24)
 		_box.add_child(button)
-	var settings := _button("Settings", _settings.open)
-	settings.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_box.add_child(settings)
+	for button: Button in [_button("Settings", _settings.open), _button("Exit", get_tree().quit)]:
+		button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_box.add_child(button)
 
 func _solo() -> void:
 	_box.add_child(ArenaUi.heading("Practice vs Bots", 33))
@@ -149,16 +151,17 @@ func _solo() -> void:
 		_difficulty = (_difficulty + 1) % DIFFICULTY.size()
 		_refresh())
 	_box.add_child(_setting("Bot skill", skill))
+	var count := _button(str(BOT_COUNTS[_bot_count]), func() -> void:
+		_bot_count = (_bot_count + 1) % BOT_COUNTS.size()
+		_refresh())
+	_box.add_child(_setting("Bots", count))
 	_box.add_child(HSeparator.new())
-	var choices := HBoxContainer.new()
-	for n in [3, 7]:
-		var start := ArenaUi.button("Fight %d bots" % n, func() -> void: Net.start_solo(n, DIFFICULTY[_difficulty][1]), n == 3)
-		start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		choices.add_child(start)
-	_box.add_child(choices)
-	var back := _button("Back", _go_back)
-	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_box.add_child(back)
+	var actions := HBoxContainer.new()
+	actions.add_child(_button("Back", _go_back))
+	var play := ArenaUi.button("Play", func() -> void: Net.start_solo(BOT_COUNTS[_bot_count], DIFFICULTY[_difficulty][1]), true)
+	play.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(play)
+	_box.add_child(actions)
 
 func _setting(title: String, value: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()

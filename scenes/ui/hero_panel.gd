@@ -12,6 +12,7 @@ const SLOT := 48.0
 const SLOT_POS := Vector2(272, 25)
 const SKILL_COLUMN_WIDTH := 76.0
 const SKILL_COLUMN_GAP := 6.0
+const TIP_WIDTH := 320.0
 var player: Player
 var mirror := false
 var _portrait: Texture2D
@@ -29,6 +30,45 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for slot: String in Item.SLOTS:
 		_gear_icons.append(ArenaUi.gear_icon(slot))
+
+## Index into columns() of the skill tile under `at` (panel coordinates), -1 when there is none.
+func column_at(at: Vector2) -> int:
+	for c in columns().size():
+		if column_rect(c).has_point(at):
+			return c
+	return -1
+
+## Hovering a skill tile opens its details above the panel, centred on that tile and kept on screen (Godot's own
+## tooltip opens at the cursor and runs off the bottom of the screen).
+func _draw_tooltip() -> void:
+	var c := column_at(get_local_mouse_position())
+	if c < 0:
+		return
+	var text := skill_detail(columns()[c])
+	var f := ArenaUi.BODY
+	var width := TIP_WIDTH - 28.0
+	var body := f.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, width, 16)
+	var x := clampf(column_rect(c).get_center().x - TIP_WIDTH / 2.0, 8.0 - position.x,
+		get_viewport_rect().size.x - position.x - TIP_WIDTH - 8.0)
+	var box := Rect2(roundf(x), -body.y - 28.0, TIP_WIDTH, body.y + 20.0)
+	ArenaUi.panel(self, box)
+	draw_multiline_string(f, box.position + Vector2(14, 10 + f.get_ascent(16)), text, HORIZONTAL_ALIGNMENT_LEFT, width, 16, -1, ArenaUi.INK)
+
+## Key, name and text of a column from columns(); a held weapon replaces the skill it covers.
+func skill_detail(column: Variant) -> String:
+	var slot: int = 2 if column is String else (3 if column == Player.ULT_SLOT else column)
+	var key := ArenaUi.skill_key(slot, 0 if player.online else player.player_index)
+	if slot < 2 and player.weapon_active(slot):
+		var w: FsWeapon = player.weapons[slot]
+		return "%s  /  %s\nHeld weapon: %d uses left, %d s." % [key, w.display_name, w.uses, ceili(w.seconds_left())]
+	var info := ArenaUi.skill_info(player.hero, slot)
+	var text := "%s  /  %s\n%s" % [key, info[0], info[1]]
+	if slot == 1:
+		text += "\nCooldown: %.1f s" % player.spells[slot].cooldown
+	return text
+
+func column_rect(c: int) -> Rect2:
+	return Rect2(SLOT_POS + Vector2(c * (SKILL_COLUMN_WIDTH + SKILL_COLUMN_GAP), 0), Vector2(SLOT, SLOT))
 
 func _process(delta: float) -> void:
 	var vp := get_viewport().get_visible_rect().size
@@ -60,6 +100,7 @@ func _draw() -> void:
 	_draw_skills()
 	if not player.online:
 		_draw_progression()
+	_draw_tooltip()
 
 func _draw_portrait() -> void:
 	if _portrait == null:
@@ -121,8 +162,7 @@ func _draw_skills() -> void:
 	var hints: Array = Hud.HINTS[0 if player.online else player.player_index % 2]
 	var cols := columns()
 	for c in cols.size():
-		var column_x := c * (SKILL_COLUMN_WIDTH + SKILL_COLUMN_GAP)
-		var r := Rect2(SLOT_POS + Vector2(column_x, 0), Vector2(SLOT, SLOT))
+		var r := column_rect(c)
 		draw_rect(r, ArenaUi.SHADE)
 		if cols[c] is String:
 			_draw_passive(r)
