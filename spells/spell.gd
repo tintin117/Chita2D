@@ -14,9 +14,38 @@ func cast(_caster: Node2D, _aim_dir: Vector2, _aim_pos: Vector2) -> float:
 var cast_pitch := 1.0   ## pitch / extra dB of the cast sound; a spell may change them per cast (HeroBasic: rising combo pitch)
 var cast_vol := 0.0
 
+## False when a press should do nothing. Every skill casts now (a cursor out of range casts at full range), so this is
+## true; kept as the seam if a skill ever needs it. Asked by the caster's owner only.
+func can_cast(_caster: Node2D, _aim_pos: Vector2) -> bool:
+	return true
+
+## Bots: is this cast worth it right now (an ult with somebody it would actually catch)? Players never see this.
+func worth_casting(_caster: Node2D, _aim_pos: Vector2) -> bool:
+	return true
+
+## Ults: seconds after the cast during which nothing charges the next ult. Ults that last override it with their
+## duration, so their own damage never pays for the next one.
+func ult_lock() -> float:
+	return 1.5
+
 ## How far a basic attack of this spell can reach a locked foe; 0 = not a lock-on attack (no hold-to-chase).
 func reach() -> float:
 	return 0.0
+
+## Hold-and-release spells (Power Shot): seconds of holding for a full charge; 0 = a normal press-to-cast spell.
+## While held the Player draws (see Player._tick_charge), the aim stays free, and the cast goes out on release.
+func charge_time() -> float:
+	return 0.0
+
+## Hold-and-release spells: the longest hold before the cast goes out by itself.
+func max_hold() -> float:
+	return 0.0
+
+## Hold-and-release spells: draws the aim line on the caster (`canvas`, local coords) while drawn to `p` (0..1).
+func draw_charge(_canvas: CanvasItem, _dir: Vector2, _p: float) -> void:
+	pass
+
+var power := 1.0  ## 0..1 charge of a hold-and-release cast (1 for every other spell); set by the Player around cast() on every peer
 
 var lock: Node2D  ## the foe this one cast is locked onto (see target()); set by the Player around cast(), null otherwise
 
@@ -71,8 +100,8 @@ static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius
 	var cone_off := max_angle
 	for e: Node2D in foes(caster):
 		var off: Vector2 = e.global_position - caster.global_position
-		if off.length() > max_dist:
-			continue
+		if off.length() > max_dist or (e.has_method("veiled") and e.veiled()):
+			continue   # out of reach, or unseen in a Smoke Screen: nothing to lock onto
 		var d := e.global_position.distance_to(aim_pos)
 		if d < near_d:
 			near_d = d
@@ -88,3 +117,9 @@ static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius
 static func stun(foe: Node, secs: float) -> void:
 	if foe.has_method("stun"):
 		foe.stun(secs)
+
+## Freezes a foe that can be frozen (see Player.freeze): rooted and facing locked, but it can still attack. Same rules as
+## stun(): call it on every peer, only for a hit that landed.
+static func freeze(foe: Node, secs: float) -> void:
+	if foe.has_method("freeze"):
+		foe.freeze(secs)

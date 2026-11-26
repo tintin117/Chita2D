@@ -1,7 +1,8 @@
 class_name EmberField extends Spell
-## Mage right click: marks a patch of ground at the cursor. After a short telegraph it erupts (damage + a stun, which
-## holds a foe still for your bolts), then smoulders for a few seconds, slowing and burning anyone inside.
-## Standing it on a pickup denies the pickup. Never hurts its caster.
+## Mage right click: marks a patch of ground at the cursor. After a short telegraph it erupts (damage + a heavy slow that
+## outlasts the field, so a foe cannot just walk off your bolts), then smoulders for a few seconds, slowing and burning
+## anyone inside. No stun (the stun diet: see docs/design_pillars_and_crown_mode.md). Every tick is a hit, so with
+## Kindling (Mage passive) a foe that stays in the fire stacks Burn fast. Standing it on a pickup denies it. Never hurts its caster.
 
 const MAX_RANGE := 460.0
 const RADIUS := 125.0
@@ -10,7 +11,7 @@ const LINGER := 3.5
 const SLOW := 0.55          ## move speed multiplier inside the field
 const TICK := 0.5
 const TICK_DAMAGE := 4
-const STUN := 1.0
+const BURST_SLOW := [0.4, 1.4]   ## [speed multiplier, seconds] on everyone the eruption hits
 
 class Zone extends Node2D:
 	var caster: Node2D
@@ -57,8 +58,8 @@ class Zone extends Node2D:
 		if cam:
 			cam.shake(0.25)
 		for e in inside():
-			if e.take_damage(dmg, global_position, false, caster):
-				Spell.stun(e, STUN)
+			if e.take_damage(dmg, global_position, false, caster) and e.has_method("apply_slow"):
+				e.apply_slow(BURST_SLOW[0], BURST_SLOW[1])   # every peer may call it; only the victim's own peer moves it
 
 	func _draw() -> void:
 		if not _boomed:

@@ -1,6 +1,8 @@
 class_name HeroBasic extends Spell
-## Fast 3-cast combo basic. mode "arc": instant cone sweep (melee). mode "bolt": projectile(s) (ranged).
-## The 3rd cast is the finisher: bigger damage, and extra bolts for spread heroes. Built by Hero.make_basic().
+## Every hero's basic, shaped per archetype by Hero.make_basic(). mode "arc": a cone sweep (Knight cleave, Rogue stab).
+## mode "bolt": a projectile (Ranger arrow); with `splash` > 0 it is an orb that flies to the cursor and bursts there
+## (Mage). With `combo` on, the 3rd cast in a row is a finisher (bigger hit, a launch, extra bolts for spread heroes);
+## heroes without it hit the same every time. No auto-lunge: a locked swing only steps in with PlaySettings.melee_step.
 
 const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 px slide with its own knockback)
 
@@ -19,6 +21,42 @@ const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 p
 @export var finisher_spread := 1     ## extra bolt pairs on the finisher
 @export var finisher_mult := 1.0
 @export var finisher_cd_mult := 1.5  ## longer recovery after the finisher
+@export var combo := true            ## false: no finisher, every cast is the same
+@export var splash := 0.0            ## bolt: > 0 = an orb that bursts in this radius at the cursor or on the first thing it touches
+@export var fx_color := Color(1.0, 0.5, 0.15)   ## sweep / orb colour, so each hero's basic reads apart
+@export var arrow_tex := ""          ## bolt: arrow sprite ("" = the default spell sprite)
+@export var might := 0.0             ## + this x the caster's current HP as damage (Paladin Holy Might)
+@export var focus_hits := 0          ## the Nth hit in a row on one target crits (Shade Focus); 0 = off
+@export var crit_mult := 2.5
+const EMPOWER_MULT := 2.5            ## Tumble (Scout): the next shot's damage
+const EMPOWER_PIERCE := 2
+
+var _focus_target: Node = null
+var _focus := 0
+
+## Focus (Shade): one more hit on `e`. Returns the damage multiplier: crit_mult on the focus_hits-th hit in a row on the
+## same target (then it starts over), 1 otherwise. A different target starts the count again. Deterministic: no dice.
+func focus_mult(e: Node) -> float:
+	if focus_hits <= 0:
+		return 1.0
+	if e != _focus_target:
+		_focus_target = e
+		_focus = 0
+	_focus += 1
+	if _focus >= focus_hits:
+		_focus = 0
+		return crit_mult
+	return 1.0
+
+## Riposte: the next hit on `e` is the crit.
+func prime_focus(e: Node) -> void:
+	if focus_hits > 0:
+		_focus_target = e
+		_focus = focus_hits - 1
+
+## Hits landed in a row on the current focus target (for the HUD / tests).
+func focus_count() -> int:
+	return _focus
 
 var _combo := 0
 var _last_msec := 0
@@ -37,6 +75,8 @@ class Sweep extends Node2D:
 	var lunge_time := 0.08
 	var lock: Node2D      ## lock-on: the swing turns to this foe when it goes live
 	var back_mult := 1.0
+	var color := Color(1.0, 0.5, 0.15)
+	var basic: HeroBasic   ## the spell that swung it (Focus counts on it)
 	var _age := 0.0
 	var _lunged := false
 	var _hit: Array[Node] = []
@@ -62,10 +102,16 @@ class Sweep extends Node2D:
 			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0 + atan2(20.0, off.length()):   # the edge of the cone counts the foe's body, not just its centre
 				_hit.append(e)
 				var hit := dmg
-				if back_mult > 1.0 and Sweep.from_behind(e, position):
+				var unseen: bool = caster.has_method("veiled") and caster.veiled()   # Smoke Screen: every stab is from behind
+				if back_mult > 1.0 and (unseen or Sweep.from_behind(e, position)):
 					hit = roundi(dmg * back_mult)
 					if e.has_method("float_text"):
 						e.float_text("BACKSTAB", Color(1.0, 0.45, 0.9), 22)
+				var crit := basic.focus_mult(e) if basic else 1.0
+				if crit > 1.0:
+					hit = roundi(hit * crit)
+					if e.has_method("float_text"):
+						e.float_text("CRIT", Color(0.4, 1.0, 0.6), 24)
 				e.take_damage(hit, position, false, caster)   # the hit sound plays from take_damage, only when the hit lands
 				if finisher:
 					Spell.shove(e, dir * FINISHER_SHOVE)   # the 3rd hit launches; hits 1-2 only flinch, so the combo keeps landing
@@ -88,12 +134,12 @@ class Sweep extends Node2D:
 			var w := _age / windup
 			for i in 13:
 				pts.append(Vector2.from_angle(base + angle * i / 12.0) * reach * (0.5 + 0.5 * w))
-			draw_polyline(pts.slice(1), Color(1, 0.8, 0.5, 0.25 + 0.4 * w), 2.0)
+			draw_polyline(pts.slice(1), Color(color.lightened(0.4), 0.25 + 0.4 * w), 2.0)
 			return
 		var t := clampf((_age - windup) / (active + 0.08), 0.0, 1.0)
 		for i in 13:
 			pts.append(Vector2.from_angle(base + angle * i / 12.0) * reach)
-		draw_colored_polygon(pts, Color(1.0, 0.5, 0.15, 0.55 * (1.0 - t)))
+		draw_colored_polygon(pts, Color(color, (0.7 if finisher else 0.55) * (1.0 - t)))
 		draw_polyline(pts.slice(1), Color(1, 1, 1, 0.8 * (1.0 - t)), 3.0)
 
 const LOCK_RADIUS := 150.0   ## a foe this close to the cursor is the target (was 110: a moving foe slipped out from under a casual cursor)
@@ -101,7 +147,9 @@ const LOCK_STEP := 250.0     ## melee: a locked swing reaches this far beyond th
 const LOCK_LUNGE := 1000.0   ## step-in speed of a locked swing (px/s), so the gap closes inside ~0.27 s
 
 func reach() -> float:
-	return radius + LOCK_STEP if mode == "arc" else bolt_speed * bolt_life
+	if mode == "arc":
+		return radius + (LOCK_STEP if PlaySettings.melee_step else 0.0)
+	return bolt_speed * bolt_life
 
 ## Lock-on (point and click): the foe under the cursor, or failing that the one in the aim cone. A locked bolt homes
 ## and a locked swing steps in to reach; a dash or a phase shakes it off. Bots aim for themselves: no lock.
@@ -116,16 +164,25 @@ func aim(caster: Node2D, dir: Vector2) -> Vector2:
 		return Spell.assist_dir(caster, dir, assist_angle, radius + 40.0)
 	return Spell.assist_dir(caster, dir, assist_angle, bolt_speed * bolt_life, 0.0 if caster.get("ai") else bolt_speed)
 
-func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
+## Orb: seconds of flight to burst on `aim_pos` (at least a short throw, at most the full range).
+func orb_life(from: Vector2, aim_pos: Vector2) -> float:
+	return clampf(from.distance_to(aim_pos), 90.0, bolt_speed * bolt_life) / bolt_speed
+
+func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var now := Time.get_ticks_msec()
 	if now - _last_msec > 900:
 		_combo = 0
 	_last_msec = now
-	var finisher := _combo == 2
+	var finisher := combo and _combo == 2
 	cast_pitch = 0.8 if finisher else 0.95 + 0.1 * _combo   # the swing sound climbs 1-2-3, then the finisher lands deep and loud
 	cast_vol = 3.0 if finisher else 0.0
-	_combo = 0 if finisher else _combo + 1
+	_combo = 0 if finisher or not combo else _combo + 1
 	var dmg := int(damage * (finisher_mult if finisher else 1.0))
+	if caster.has_method("focus_firing") and caster.focus_firing():   # Focus Fire: many arrows, each lighter
+		dmg = maxi(roundi(dmg * FocusFire.DAMAGE_MULT), 1)
+	if might > 0.0 and "hp" in caster:   # Holy Might: the healthier the Paladin, the harder it hits
+		dmg += roundi(caster.hp * might)
+	var empowered: bool = mode == "bolt" and caster.has_method("consume_empower") and caster.consume_empower()
 	var scene := caster.get_tree().current_scene
 	if mode == "arc":
 		var fx := Sweep.new()
@@ -140,7 +197,9 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		fx.lunge_speed = lunge_speed * (2.0 if finisher else 1.0)   # finisher steps in harder
 		fx.lunge_time = 0.12 if finisher else 0.08
 		fx.lock = lock
-		if lock and fx.lunge_speed > 0.0:   # step in far enough to put the target inside the blade (up to ~LOCK_STEP)
+		fx.color = fx_color
+		fx.basic = self
+		if lock and PlaySettings.melee_step:   # step in far enough to put the target inside the blade (up to ~LOCK_STEP)
 			var gap := caster.global_position.distance_to(lock.global_position) - radius * 0.8
 			if gap < 12.0:
 				fx.lunge_speed = 0.0   # already inside the blade: no step-in (players do not collide, so it would run through the target)
@@ -160,6 +219,19 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 			p.radius = bolt_radius
 			p.life = bolt_life
 			p.pierce = bolt_pierce
+			p.arrow_tex = arrow_tex
+			p.color = fx_color
+			if empowered:   # Tumble: a big piercing shot
+				p.damage = roundi(dmg * EMPOWER_MULT)
+				p.pierce += EMPOWER_PIERCE
+				p.radius = bolt_radius + 6.0
+				p.tex_scale = 1.6
+				p.trail = 160.0
+				p.color = Color(1.0, 0.85, 0.3)
+				p.impact_scale = 0.35
+			if splash > 0.0:   # an orb: lands on the cursor (never past the range) and bursts there
+				p.splash = splash
+				p.life = orb_life(caster.global_position, aim_pos)
 			if lock and i == extra:   # only the middle bolt of a fan homes
 				p.target = lock
 				p.life = bolt_life * 1.5   # room to catch a target that is running away

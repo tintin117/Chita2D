@@ -60,6 +60,37 @@ func _ready() -> void:
 	update_display.call()
 	box.add_child(display)
 
+	# playtest feel toggles (local only, saved per machine: see PlaySettings)
+	PlaySettings.load_once()
+	box.add_child(ArenaUi.label("Playtest", 18, ArenaUi.MUTED))
+	var aim_btn := ArenaUi.button("", Callable())
+	var aim_text := func() -> void:
+		aim_btn.text = "Attack aim: Facing (move direction)" if PlaySettings.aim_facing else "Attack aim: Mouse"
+	aim_btn.pressed.connect(func() -> void:
+		PlaySettings.aim_facing = not PlaySettings.aim_facing
+		PlaySettings.save()
+		aim_text.call())
+	aim_text.call()
+	box.add_child(aim_btn)
+	var step_btn := ArenaUi.button("", Callable())
+	var step_text := func() -> void:
+		step_btn.text = "Melee step-in: On" if PlaySettings.melee_step else "Melee step-in: Off"
+	step_btn.pressed.connect(func() -> void:
+		PlaySettings.melee_step = not PlaySettings.melee_step
+		PlaySettings.save()
+		step_text.call())
+	step_text.call()
+	box.add_child(step_btn)
+	var bot_btn := ArenaUi.button("", Callable())
+	var bot_text := func() -> void:
+		bot_btn.text = "Bot state labels: On" if PlaySettings.bot_debug else "Bot state labels: Off"
+	bot_btn.pressed.connect(func() -> void:
+		PlaySettings.bot_debug = not PlaySettings.bot_debug
+		PlaySettings.save()
+		bot_text.call())
+	bot_text.call()
+	box.add_child(bot_btn)
+
 	box.add_child(HSeparator.new())
 	var actions := HBoxContainer.new()
 	box.add_child(actions)

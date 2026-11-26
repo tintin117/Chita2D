@@ -20,6 +20,12 @@ var stun_dist := 1.0
 var target: Node2D           ## lock-on: steers at this foe until it dashes, phases or goes down. Cover still blocks the shot
 var _flown := 0.0
 var arrow_tex := ""
+var splash := 0.0           ## > 0: an orb. No direct hit: it bursts (this radius) on the first body it touches or when its life runs out
+var trail := 0.0            ## length of a glowing streak drawn behind it (Power Shot), 0 = none
+var tex_scale := 1.0
+var impact_scale := 0.12    ## size of the burst where it stops
+var slow := Vector2.ZERO    ## (speed multiplier, seconds) on a hit that lands (Stifling Dagger); zero = none        ## extra size of the sprite (Power Shot grows with the draw)
+var _burst_done := false
 var color := Color(1.0, 0.55, 0.15)
 var _hit: Array[Node] = []
 static var _used: Dictionary = {}   ## texture -> opaque rect, so the streak's tip sits on the hitbox
@@ -44,6 +50,18 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 
 func _draw() -> void:
+	if trail > 0.0:   # the streak sits behind the tip, along the flight
+		draw_set_transform(Vector2.ZERO, velocity.angle(), Vector2.ONE)
+		draw_line(Vector2(-trail, 0), Vector2.ZERO, Color(color, 0.25), radius * 2.2)
+		draw_line(Vector2(-trail * 0.6, 0), Vector2.ZERO, Color(1, 1, 1, 0.6), 3.0)
+	if splash > 0.0:   # an orb: a glowing ball, not a bolt sprite, so the Mage's basic never reads as a gun
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.03)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_circle(Vector2.ZERO, radius * (1.5 + 0.2 * pulse), Color(color, 0.25))
+		draw_circle(Vector2.ZERO, radius, color)
+		draw_circle(Vector2(-3, -3), radius * 0.45, Color(1, 1, 0.9, 0.9))
+		draw_line(Vector2.ZERO, -velocity.normalized() * radius * 2.5, Color(color, 0.4), radius)
+		return
 	var path := arrow_tex
 	if path == "":
 		path = SPELL % ("Ice" if color.b > color.r else ("Death" if color.b > 0.6 else "Fire"))
@@ -51,7 +69,7 @@ func _draw() -> void:
 	if not _used.has(tex):
 		_used[tex] = Rect2(tex.get_image().get_used_rect())
 	var r: Rect2 = _used[tex]
-	var k := ARROW_SCALE if arrow_tex != "" else 1.0
+	var k := (ARROW_SCALE if arrow_tex != "" else 1.0) * tex_scale
 	draw_set_transform(Vector2.ZERO, velocity.angle(), Vector2.ONE * k)
 	draw_texture_rect_region(tex, Rect2(Vector2(radius / k - r.size.x, -r.size.y / 2.0), r.size), r)
 
@@ -64,20 +82,30 @@ func _physics_process(delta: float) -> void:
 			queue_redraw()
 	position += velocity * delta
 	_flown += velocity.length() * delta
+	if splash > 0.0:
+		queue_redraw()   # the orb pulses
 	life -= delta
 	if life <= 0.0:
-		queue_free()
+		if splash > 0.0:
+			_burst()   # an orb that reached the cursor goes off there
+		else:
+			queue_free()
 
 func _on_body_entered(body: Node) -> void:
 	if body == source or ("down" in body and body.down):   # never the caster; downed players are walked through
 		return
 	if body.has_method("phased") and body.phased():   # a Shadow Step is untargetable
 		return
+	if splash > 0.0:   # an orb bursts on the first foe or rock it meets; the burst does the damage
+		_burst()
+		return
 	if body.has_method("take_damage"):
 		if body in _hit:
 			return
 		_hit.append(body)
 		var landed: bool = body.take_damage(damage, global_position, silent and from_player, source) == true   # PvE enemies return nothing
+		if landed and slow.y > 0.0 and body.has_method("apply_slow"):
+			body.apply_slow(slow.x, slow.y)
 		if landed and maxf(stun, stun_far) > 0.0:
 			Spell.stun(body, lerpf(stun, maxf(stun, stun_far), clampf(_flown / stun_dist, 0.0, 1.0)))
 		if body == target:
@@ -87,5 +115,19 @@ func _on_body_entered(body: Node) -> void:
 		if pierce > 0:
 			pierce -= 1
 			return
-	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, 0.12)
+	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, impact_scale)
+	queue_free()
+
+## Orb burst: everyone hostile within `splash` takes `damage` once (the one it touched included). Runs on every peer;
+## damage lands on each victim's own peer like any hit.
+func _burst() -> void:
+	if _burst_done:
+		return
+	_burst_done = true
+	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 34.0, splash / 120.0)
+	Sfx.play("explosion", global_position, -9.0, 1.5)
+	if is_instance_valid(source) and source is Node2D and source.is_inside_tree():
+		for e in Spell.foes(source):
+			if e.global_position.distance_to(global_position) <= splash + 14.0:
+				e.take_damage(damage, global_position, silent, source)
 	queue_free()

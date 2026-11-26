@@ -28,7 +28,8 @@ const EXTRA_LOOPS := 3                  ## corridors beyond the spanning tree
 const DECOR_BUSH := 0.03                ## per open cell
 const DECOR_ROCK := 0.012
 const ARENA_SEED := 1337                ## the fixed PvP map: every peer builds the identical arena from this
-const ARENA_HALF := Vector2(16.0, 11.5) ## cells; the plateau is a rounded rectangle (superellipse) this big: 2048 x 1472 px, ~7 s to cross
+const ARENA_HALF := Vector2(19.2, 11.3) ## cells; the Colosseum's floor is about this big (2450 x 1450 px): the radar sizes itself from it
+const ISLAND_HALF := Vector2(16.0, 11.5) ## cells; the old island arena (generate_island): a superellipse plateau, 2048 x 1472 px
 const COVER_R := 50.0
 const GYM_HALF := Vector2(11.0, 8.0)  ## cells; the training room
 
@@ -43,6 +44,15 @@ var spawn_points: Array[Vector2] = []   ## arena only: respawn spots round the r
 var cover: Array[Vector2] = []          ## arena only: solid rocks (COVER_R) to fight around
 var open_shore := false                 ## arena only: no shore walls, so the water is deadly (see is_water)
 var chambers: Array[Dictionary] = []    ## {c: Vector2 (cells), r: float, kind: spawn|gate|camp|alcove}
+var colosseum: Colosseum = null         ## the main arena's exact shapes (is_water reads them); null on every other map
+var rails: Array[PackedVector2Array] = []   ## Colosseum: low rails [a, b] (block walking on Player.LOW_MASK, not shots)
+var water_spots: Array[Vector2] = []    ## Colosseum: centres of the deadly-water cells inside the stands (for the radar)
+var _wall_inset := INSET
+var cover_r := COVER_R                  ## collision radius of the cover (the Colosseum's braziers are bigger)
+var nav: AStarGrid2D = null             ## Colosseum: walking grid for bots (water, rails and braziers are solid); null elsewhere
+var _nav_origin := Vector2.ZERO
+const NAV_CELL := 32.0
+const NAV_MARGIN := 16.0                ## a cell this close to water, a rail or a brazier is solid: paths keep a body's width off
 
 var _land := PackedByteArray()
 var _core := PackedByteArray()          ## land with land on all 8 sides: the walkable inside, the rest is the tree line
@@ -72,11 +82,43 @@ func generate(new_seed: int, build_visuals := true) -> void:
 	if build_visuals:
 		_build()
 
-## The fixed PvP arena (Overthrow-style): a rounded-rectangle plateau, 8 rim spawns, a pillar ring in the middle
-## and symmetric rock cover. Same result on every call, so all peers can build it independently.
+## The main PvP map: the Colosseum (see Colosseum). Walls round the stands, deadly pools and moat inside, a centre circle
+## reached by bridges, rails, braziers. Same result on every call, so all peers build it independently.
 func generate_arena(build_visuals := true) -> void:
+	open_shore = false
+	_begin_fixed(ARENA_HALF)
+	colosseum = Colosseum.new(spawn_point)
+	_wall_inset = 6.0   # the wall sits on the stands' edge, not a cell into the sand
+	water_spots.clear()
+	for y in SIZE.y:
+		for x in SIZE.x:
+			var c := Vector2i(x, y)
+			var at := center_of(c)
+			_land[y * SIZE.x + x] = 1 if colosseum.floor_at(at) else 0
+			if colosseum.water_at(at):
+				water_spots.append(at)
+	_core = _land.duplicate()   # the walls are exact here (no tree-line ring): every floor cell is walkable
+	spawn_points = colosseum.spawns()
+	cover = colosseum.braziers()
+	cover_r = Colosseum.BRAZIER_HALF * Colosseum.S
+	rails = colosseum.rails()
+	_bfs(cell_of(spawn_point))
+	_decor.clear()
+	_free.clear()
+	for y in SIZE.y:
+		for x in SIZE.x:
+			var c := Vector2i(x, y)
+			if _is_core(c) and _dist[y * SIZE.x + x] >= 0 and _open2(c):
+				_free.append(c)
+	_build_nav()
+	if build_visuals:
+		_build()
+
+## The old fixed arena (Overthrow-style island): a rounded-rectangle plateau in deadly water, 8 rim spawns, a pillar
+## ring in the middle and symmetric rock cover. Kept for comparison; no mode uses it.
+func generate_island(build_visuals := true) -> void:
 	open_shore = true
-	var mid := _begin_fixed(ARENA_HALF)
+	var mid := _begin_fixed(ISLAND_HALF)
 	spawn_points.clear()
 	for k in 8:
 		spawn_points.append(center_of(Vector2i(mid + Vector2.from_angle(k * TAU / 8.0) * Vector2(13.0, 8.5))))
@@ -106,6 +148,12 @@ func _begin_fixed(half: Vector2) -> Vector2:
 	objective_sites.clear()
 	spawn_points.clear()
 	cover.clear()
+	colosseum = null
+	rails.clear()
+	water_spots.clear()
+	_wall_inset = INSET
+	cover_r = COVER_R
+	nav = null
 	_land.resize(SIZE.x * SIZE.y)
 	_land.fill(0)
 	var mid := Vector2(SIZE) / 2.0
@@ -131,9 +179,18 @@ func cell_of(pos: Vector2) -> Vector2i:
 func center_of(c: Vector2i) -> Vector2:
 	return (Vector2(c) + Vector2(0.5, 0.5)) * TILE
 
-## True over water (outside the plateau). Position is in world px.
+## True over water (outside the plateau; in the Colosseum: the pools and the moat, exactly). Position is in world px.
 func is_water(pos: Vector2) -> bool:
+	if colosseum:   # the deadly water only (pools, moat); beyond the stands is wall, see off_ground
+		return colosseum.water_at(pos)
 	return not is_land(cell_of(pos))
+
+## No standing ground: deadly water, or (Colosseum) beyond the stands. Where a dash or a leap must not end: a dash at a
+## pool by the wall is cut short on the sand instead of being stopped by the wall in the middle of the pool.
+func off_ground(pos: Vector2) -> bool:
+	if colosseum:
+		return not colosseum.inside(pos) or colosseum.water_at(pos)
+	return is_water(pos)
 
 func is_land(c: Vector2i) -> bool:
 	return c.x >= 0 and c.y >= 0 and c.x < SIZE.x and c.y < SIZE.y and _land[c.y * SIZE.x + c.x] == 1
@@ -404,7 +461,13 @@ func _build() -> void:
 				lo = lo.min(Vector2i(x, y))
 				hi = hi.max(Vector2i(x + 1, y + 1))
 	var area := Rect2(Vector2(lo * TILE), Vector2((hi - lo) * TILE)).grow_individual(1200, 800, 1200, 800)
-	iso_ground(ground, area, func(p: Vector2) -> bool: return not is_water(p))
+	if colosseum:
+		var art := ColosseumArt.new()
+		art.shape = colosseum
+		art.position = colosseum.center
+		ground.add_child(art)
+	else:
+		iso_ground(ground, area, func(p: Vector2) -> bool: return not is_water(p))
 
 	var walls := StaticBody2D.new()
 	walls.collision_layer = 1 | Player.WALL_MASK   # walls also sit on the wall layer: a dash passes rocks but never these
@@ -420,7 +483,7 @@ func _build() -> void:
 			var x0 := x
 			while x < SIZE.x and _shore_water(Vector2i(x, y)):
 				x += 1
-			_add_rect(walls, Rect2(x0 * TILE - INSET, y * TILE - INSET, (x - x0) * TILE + 2 * INSET, TILE + 2 * INSET))
+			_add_rect(walls, Rect2(x0 * TILE - _wall_inset, y * TILE - _wall_inset, (x - x0) * TILE + 2 * _wall_inset, TILE + 2 * _wall_inset))
 
 	for d in _decor:
 		var tiles: Array = {"tree": TREE_TILES, "bush": BUSH_TILES}.get(d.kind, ROCK_TILES)
@@ -429,6 +492,26 @@ func _build() -> void:
 		add_child(s)
 		_owned.append(s)
 	_build_cover()
+	_build_rails()
+
+## Colosseum rails: thin solid bars on Player.LOW_MASK only. Players bump into them; projectiles (mask 1 | 2) fly over,
+## and a dash or a leap (collision mask = WALL_MASK only) goes across.
+func _build_rails() -> void:
+	if rails.is_empty():
+		return
+	var body := StaticBody2D.new()
+	body.collision_layer = Player.LOW_MASK
+	body.collision_mask = 0
+	for seg in rails:
+		var cs := CollisionShape2D.new()
+		var rs := RectangleShape2D.new()
+		rs.size = Vector2(seg[0].distance_to(seg[1]) + Colosseum.RAIL_W, Colosseum.RAIL_W)
+		cs.shape = rs
+		cs.position = (seg[0] + seg[1]) / 2.0
+		cs.rotation = (seg[1] - seg[0]).angle()
+		body.add_child(cs)
+	add_child(body)
+	_owned.append(body)
 
 func _build_cover() -> void:
 	for i in cover.size():
@@ -438,14 +521,23 @@ func _build_cover() -> void:
 		rock.position = cover[i]
 		var cs := CollisionShape2D.new()
 		var circle := CircleShape2D.new()
-		circle.radius = COVER_R
+		circle.radius = cover_r
 		cs.shape = circle
 		rock.add_child(cs)
-		rock.add_child(_iso_sprite(COVER_TILES[i % 4], 4.0))
+		if colosseum == null:   # the Colosseum draws its braziers itself (ColosseumArt)
+			rock.add_child(_iso_sprite(COVER_TILES[i % 4], 4.0))
 		add_child(rock)
 		_owned.append(rock)
 
 func _shore_water(c: Vector2i) -> bool:
+	if colosseum:   # only the stands are wall: every cell outside them that touches the inside (sand or water)
+		if colosseum.inside(center_of(c)):
+			return false   # the pools and the moat are open water you can be knocked into
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				if colosseum.inside(center_of(c + Vector2i(dx, dy))):
+					return true
+		return false
 	if is_land(c):
 		return false
 	for dy in range(-1, 2):
@@ -501,3 +593,170 @@ static func iso_ground(parent: Node, area: Rect2, land: Callable) -> void:
 			var on_land: bool = land.call(area.position + ground.map_to_local(c) * ISO_SCALE)
 			var pick: Array = GRASS if on_land else WATER_TILES
 			(ground if on_land else water).set_cell(c, pick[rng.randi() % pick.size()], Vector2i.ZERO)
+
+# --- bot navigation (Colosseum) ---------------------------------------------------------------------------------
+
+## A 32 px grid over the floor. A cell is solid when its middle, or any point NAV_MARGIN round it, is not standing
+## ground, or it is within NAV_MARGIN of a rail or a brazier. Bots walk it with nav_step(); a dash or a leap still
+## goes over rails, which the grid does not model.
+func _build_nav() -> void:
+	if colosseum == null:
+		return
+	var lo := colosseum.to_world(Colosseum.FLOOR.position)
+	var hi := colosseum.to_world(Colosseum.FLOOR.end)
+	_nav_origin = lo
+	var cells := Vector2i(ceili((hi.x - lo.x) / NAV_CELL), ceili((hi.y - lo.y) / NAV_CELL))
+	nav = AStarGrid2D.new()
+	nav.region = Rect2i(Vector2i.ZERO, cells)
+	nav.cell_size = Vector2(NAV_CELL, NAV_CELL)
+	nav.offset = lo + Vector2(NAV_CELL, NAV_CELL) / 2.0
+	nav.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	nav.update()
+	var probes: Array[Vector2] = [Vector2.ZERO, Vector2(NAV_MARGIN, 0), Vector2(-NAV_MARGIN, 0), Vector2(0, NAV_MARGIN), Vector2(0, -NAV_MARGIN)]
+	for y in cells.y:
+		for x in cells.x:
+			var at := nav_point(Vector2i(x, y))
+			var solid := false
+			for o in probes:
+				if not colosseum.floor_at(at + o):
+					solid = true
+					break
+			if not solid:
+				for c in cover:
+					if at.distance_to(c) < cover_r + NAV_MARGIN:
+						solid = true
+						break
+			if not solid:
+				for seg in rails:
+					if Geometry2D.get_closest_point_to_segment(at, seg[0], seg[1]).distance_to(at) < Colosseum.RAIL_W / 2.0 + NAV_MARGIN:
+						solid = true
+						break
+			nav.set_point_solid(Vector2i(x, y), solid)
+
+func nav_point(c: Vector2i) -> Vector2:
+	return _nav_origin + (Vector2(c) + Vector2(0.5, 0.5)) * NAV_CELL
+
+func nav_cell(at: Vector2) -> Vector2i:
+	return Vector2i(((at - _nav_origin) / NAV_CELL).floor())
+
+func nav_open(c: Vector2i) -> bool:
+	return nav != null and nav.is_in_boundsv(c) and not nav.is_point_solid(c)
+
+## The open cell nearest `at` (searching outward a few rings), or (-1, -1).
+func _nav_nearest_open(at: Vector2) -> Vector2i:
+	var c := nav_cell(at)
+	if nav_open(c):
+		return c
+	for r in range(1, 6):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) == r and nav_open(c + Vector2i(dx, dy)):
+					return c + Vector2i(dx, dy)
+	return Vector2i(-1, -1)
+
+const NAV_BODY := 12.0   ## half the width of the strip a straight walk must keep clear (a body, not a thin line)
+
+## True if walking straight from a to b stays on open cells, for the whole width of a body: the centre line and both
+## edges (NAV_BODY either side), so a shortcut never clips a rail end or a brazier corner and grinds against it.
+func nav_clear(a: Vector2, b: Vector2) -> bool:
+	if nav == null:
+		return true
+	var d := b - a
+	var side := d.orthogonal().normalized() * NAV_BODY if d.length() > 1.0 else Vector2.ZERO
+	var n := maxi(int(a.distance_to(b) / (NAV_CELL * 0.5)), 1)
+	for i in n + 1:
+		var p := a.lerp(b, float(i) / n)
+		for q in [p, p + side, p - side]:
+			if not nav_open(nav_cell(q)):
+				return false
+	return true
+
+## The next step along the route, no shortcuts: toward the first waypoint at least half a cell away. For unsticking.
+func nav_next(from: Vector2, to: Vector2) -> Vector2:
+	var path := nav_path(from, to)
+	for p in path:
+		if p.distance_to(from) > NAV_CELL * 0.5:
+			return (p - from).normalized()
+	return (to - from).normalized() if to.distance_to(from) > 1.0 else Vector2.ZERO
+
+## Walking path from `from` to `to` (world points, nearest open cells at both ends); empty if none.
+func nav_path(from: Vector2, to: Vector2) -> PackedVector2Array:
+	if nav == null:
+		return PackedVector2Array()
+	var a := _nav_nearest_open(from)
+	var b := _nav_nearest_open(to)
+	if a.x < 0 or b.x < 0:
+		return PackedVector2Array()
+	return nav.get_point_path(a, b, true)
+
+## Which way to walk from `from` to reach `to`: straight if the line is clear, else toward the farthest waypoint of the
+## path that can be walked to in a straight line. Maps without a grid (and unreachable goals): straight.
+func nav_step(from: Vector2, to: Vector2) -> Vector2:
+	var straight := (to - from).normalized() if to.distance_to(from) > 1.0 else Vector2.ZERO
+	if nav == null or nav_clear(from, to):
+		return straight
+	var path := nav_path(from, to)
+	if path.size() < 2:
+		return straight
+	if not nav_open(nav_cell(from)) and path[0].distance_to(from) > 4.0:
+		return (path[0] - from).normalized()   # pushed against a rail or the shore: step back onto the route first
+	var goal := path[1]
+	for i in range(mini(path.size() - 1, 6), 0, -1):
+		if nav_clear(from, path[i]):
+			goal = path[i]
+			break
+	return (goal - from).normalized() if goal.distance_to(from) > 1.0 else straight
+
+## The direction to the nearest dry ground round `feet` (a knocked-in or sliding bot's way out); zero if all dry or none found.
+func dry_dir(feet: Vector2) -> Vector2:
+	for r in [40.0, 90.0, 160.0, 260.0]:
+		for k in 16:
+			var d := Vector2.from_angle(k * TAU / 16.0)
+			if not is_water(feet + d * r) and (colosseum == null or colosseum.inside(feet + d * r)):
+				return d
+	return Vector2.ZERO
+
+## Length of the walking route from `from` to `to` (straight if the line is clear; INF if there is none).
+func nav_length(from: Vector2, to: Vector2) -> float:
+	if nav == null or nav_clear(from, to):
+		return from.distance_to(to)
+	var path := nav_path(from, to)
+	if path.size() < 2:
+		return INF
+	var total := from.distance_to(path[0])
+	for i in range(1, path.size()):
+		total += path[i - 1].distance_to(path[i])
+	return total + path[path.size() - 1].distance_to(to)
+
+## A dash that saves a long walk: the direction to dash from `from` toward `to`, or zero. A dash goes through rails
+## and braziers (its mask is the room walls only) and can jump a water channel as long as it lands dry, so this covers
+## hopping a rail onto a platform, cutting past a brazier, and jumping the moat (plus its rail) onto the crown circle.
+## Conditions: the straight walk is blocked; the dash (up to `dash_px`) lands on an open nav cell; every point of it is
+## inside the stands (walls stop dashes) and its water stretch is jumped, not landed in; and it cuts the walk to `to` by a
+## third or more (or the walk has no route at all and the landing is closer).
+func dash_shortcut(from: Vector2, to: Vector2, dash_px := 220.0) -> Vector2:
+	if nav == null or nav_clear(from, to):
+		return Vector2.ZERO
+	var d := (to - from).normalized()
+	var land := from + d * minf(dash_px, from.distance_to(to))
+	if not nav_open(nav_cell(land)) or is_water(land + Vector2(0, 14)) or is_water(from + Vector2(0, 14)):
+		return Vector2.ZERO
+	if colosseum:
+		for i in 9:
+			if not colosseum.inside(from.lerp(land, i / 8.0) + Vector2(0, 14)):
+				return Vector2.ZERO   # would hit the wall mid-dash
+	var walk := nav_length(from, to)
+	var hop := from.distance_to(land) + nav_length(land, to)
+	if walk == INF:
+		return d if land.distance_to(to) < from.distance_to(to) - 60.0 else Vector2.ZERO
+	return d if hop < walk * 0.67 else Vector2.ZERO
+
+## Old name (rails were the first shortcut): see dash_shortcut.
+func rail_hop(from: Vector2, to: Vector2, dash_px := 220.0) -> Vector2:
+	return dash_shortcut(from, to, dash_px)
+
+## Crown holder's zone: the Colosseum's centre circle (inside its rail, off the moat), elsewhere a circle round the middle.
+func hold_radius() -> float:
+	if colosseum:
+		return (Colosseum.MOAT.x - 45.0) * Colosseum.S
+	return 300.0

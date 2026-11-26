@@ -58,7 +58,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 24)
 	box.add_child(row)
 
-	var slots := range(_player.spells.size())
+	var slots := range(mini(Progression.SLOTS, _player.spells.size()))   # the ult has no ranks
 	slots.shuffle()
 	for n in mini(3, slots.size()):
 		var spell: Spell = _player.spells[slots[n]]

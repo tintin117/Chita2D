@@ -1,16 +1,25 @@
 class_name PvpPickup extends Area2D
-## Arena power-up. Only the owning peer of the player who touches it reports it (`touched`); the host decides who got it first.
+## Arena power-up. A player takes it by channelling on it (stand still, no attack, `channel_time` seconds; walk over it
+## when the mode sets no channel). Only the owning peer of the taker reports it (`touched`); the host decides who got it
+## first. The host also despawns it after `life` seconds (every peer shows the ring shrinking).
+## Classic table (docs/design_pillars_and_crown_mode.md §6.3): nothing here changes damage numbers. Double damage, giant,
+## chicken, the hot potato and the mystery box are Friendslop-only.
 
 signal touched(id: int, peer: int)
 
-const KINDS := ["heal", "damage", "speed", "mystery", "giant", "chicken", "bomb"]
-const WEIGHTS := {"heal": 6.0, "damage": 3.0, "speed": 5.0, "mystery": 3.0, "giant": 1.0, "chicken": 0.5, "bomb": 0.5}   ## how often the host spawns each kind (epics ~10%)
+const KINDS := ["heal", "speed", "shield", "ult", "reset", "warcry"]   ## the Classic / Crown table
+const WEIGHTS := {"heal": 3.0, "speed": 4.0, "shield": 5.0, "ult": 5.0, "reset": 3.0, "warcry": 1.0}   ## how often the host spawns each kind (epics ~5%)
+const SHIELD_HP := 25          ## shield drop: damage absorbed
+const ULT_SPARK := 0.5         ## ult drop: share of the ult cost granted
+const HEAL_FRACTION := 0.3     ## heal drop: share of max HP (Friendslop keeps HEAL_FRACTION_FS)
+const HEAL_FRACTION_FS := 0.5
+const WARCRY_KNOCK := 2.0      ## warcry drop: knockback multiplier on the taker's hits
 ## Drop tiers, same 0..2 scale as Item rarity so loot code can share them.
 enum Tier { COMMON, RARE, EPIC }
 const TIER_NAMES := ["Common", "Rare", "Epic"]
 const TIER_COLORS := [Color(0.85, 0.95, 0.85), Color(0.4, 0.7, 1.0), Color(1.0, 0.72, 0.2)]
-const KIND_TIER := {"heal": Tier.COMMON, "speed": Tier.COMMON, "damage": Tier.RARE, "mystery": Tier.RARE,
-	"giant": Tier.EPIC, "chicken": Tier.EPIC, "bomb": Tier.EPIC,
+const KIND_TIER := {"heal": Tier.COMMON, "speed": Tier.COMMON, "shield": Tier.COMMON, "ult": Tier.COMMON, "reset": Tier.RARE, "warcry": Tier.EPIC,
+	"damage": Tier.RARE, "mystery": Tier.RARE, "giant": Tier.EPIC, "chicken": Tier.EPIC, "bomb": Tier.EPIC,
 	"slingshot": Tier.COMMON, "firecracker": Tier.COMMON, "hammer": Tier.RARE, "frost_gun": Tier.RARE, "boomerang": Tier.RARE,
 	"bomb_launcher": Tier.RARE, "rocket": Tier.EPIC, "meteor": Tier.EPIC, "gatling": Tier.EPIC}
 ## Friendslop weapon pickups (the gameplay lives in FsWeapon.DEFS; a test keeps the two lists in step).
@@ -27,17 +36,20 @@ const TIER_LOOK := [
 	{"beam": 520.0, "width": 14.0, "rings": 2, "sparkles": 5, "corners": 4, "radius": 21.0},
 	{"beam": 900.0, "width": 20.0, "rings": 3, "sparkles": 8, "corners": 8, "radius": 26.0},
 ]
-const OUTCOMES := ["heal", "damage", "speed", "giant", "chicken", "bomb"]   ## what a mystery box can turn into
+const OUTCOMES := ["heal", "damage", "speed", "giant", "chicken", "bomb"]   ## what a mystery box can turn into (Friendslop)
 const COLORS := {"heal": Color(0.35, 1.0, 0.45), "damage": Color(1.0, 0.3, 0.25), "speed": Color(0.3, 0.9, 1.0),
+	"shield": Color(0.92, 0.95, 1.0), "ult": Color(0.85, 0.5, 1.0), "reset": Color(0.4, 0.95, 0.9), "warcry": Color(1.0, 0.4, 0.2),
 	"mystery": Color(0.75, 0.45, 1.0), "giant": Color(1.0, 0.65, 0.2), "chicken": Color(1.0, 0.95, 0.3), "bomb": Color(0.95, 0.25, 0.55),
 	"slingshot": Color(0.8, 0.65, 0.4), "firecracker": Color(1.0, 0.55, 0.3), "hammer": Color(0.7, 0.72, 0.85), "frost_gun": Color(0.5, 0.85, 1.0),
 	"boomerang": Color(0.4, 0.9, 0.5), "bomb_launcher": Color(0.9, 0.4, 0.2), "rocket": Color(1.0, 0.35, 0.3), "meteor": Color(1.0, 0.5, 0.15),
 	"gatling": Color(1.0, 0.9, 0.4)}
 const LABELS := {"heal": "Heal", "damage": "Double damage", "speed": "Speed boost", "mystery": "Mystery box",
+	"shield": "Shield", "ult": "Ult spark", "reset": "RESET", "warcry": "WARCRY!",
 	"giant": "GIANT!", "chicken": "Chicken curse", "bomb": "Hot potato!",
 	"slingshot": "Slingshot", "firecracker": "Firecracker", "hammer": "War Hammer", "frost_gun": "Frost Gun", "boomerang": "Boomerang",
 	"bomb_launcher": "Bomb Launcher", "rocket": "ROCKET LAUNCHER", "meteor": "METEOR STORM", "gatling": "GATLING GUN"}
 const ICONS := {"heal": "+", "damage": "x2", "speed": ">>", "mystery": "?", "giant": "XL", "chicken": "bk", "bomb": "!!",
+	"shield": "()", "ult": "F", "reset": "cd", "warcry": "!>",
 	"slingshot": "sl", "firecracker": "fc", "hammer": "HM", "frost_gun": "ice", "boomerang": "bm", "bomb_launcher": "BL",
 	"rocket": "RK", "meteor": "MT", "gatling": "GT"}
 const FALL_TIME := 0.55   ## spawn-in: the badge drops from the sky this long
@@ -88,27 +100,35 @@ static func mystery_outcome(r: float, with_weapons := false) -> String:
 	var pool: Array = OUTCOMES + FS_WEAPONS if with_weapons else OUTCOMES
 	return pool[clampi(int(r * pool.size()), 0, pool.size() - 1)]
 
+const RADIUS := 40.0          ## stand within this of the badge to take it
+const CLAIM_RETRY := 0.6      ## seconds a finished channel waits for the host before it can report again
+const BLINK_LAST := 3.0       ## the despawn ring blinks for its last seconds
+
 var id := 0
 var kind := "heal"
+var channel_time := 0.0       ## seconds of standing still to take it (0 = walk over it); set by the match before add_child
+var life := 0.0               ## seconds until the host despawns it (0 = never); set by the match before add_child
+var life_left := 0.0          ## ticked on every peer for the ring; only the host acts on it
 var _t := randf() * TAU
 var _age := 0.0
 var _landed := false
 var _tier := Tier.COMMON
 var _look: Dictionary
+var _claim_wait := 0.0
 
 func _ready() -> void:
 	z_index = 5  # beam and icon stay readable over trees
 	add_to_group("pvp_pickups")
 	_tier = tier_of(kind)
 	_look = TIER_LOOK[_tier]
+	life_left = life
 	collision_layer = 0
 	collision_mask = 2
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
-	circle.radius = 40.0
+	circle.radius = RADIUS
 	shape.shape = circle
 	add_child(shape)
-	body_entered.connect(_on_body)
 	if _tier == Tier.EPIC:
 		add_child(_rising_particles())
 	if is_inside_tree() and Sfx:
@@ -116,10 +136,36 @@ func _ready() -> void:
 			Tier.EPIC: Sfx.play("crown", Vector2.INF, 2.0)
 			Tier.RARE: Sfx.play("respawn", position, -4.0)
 
-func _on_body(body: Node) -> void:
-	var p := body as Player
-	if p and p.owns() and not p.down:
-		touched.emit(id, p.peer_id)
+## True once the badge has landed: a drop still falling cannot be taken.
+func landed() -> bool:
+	return _age >= FALL_TIME
+
+## Every peer: offers the channel to its own living players standing on the badge (Player.start_channel keeps the state
+## and calls `finish_channel` when the bar is full; a step, a swing, a hit or a dash drops it). No channel in the mode:
+## stepping on it is the claim.
+func _physics_process(delta: float) -> void:
+	_claim_wait = maxf(_claim_wait - delta, 0.0)
+	if life > 0.0:
+		life_left = maxf(life_left - delta, 0.0)
+	if not landed() or _claim_wait > 0.0:
+		return
+	for body in get_overlapping_bodies():
+		var p := body as Player
+		if p == null or not p.owns() or p.down:
+			continue
+		if channel_time <= 0.0:
+			_report(p)
+		elif p.channel_target() == null and p.can_channel():
+			p.start_channel(self)
+
+## A player's channel on this drop is full: claim it (the host answers with the real take, or somebody else got it).
+func finish_channel(p: Player) -> void:
+	if _claim_wait <= 0.0 and p.owns() and not p.down:
+		_report(p)
+
+func _report(p: Player) -> void:
+	_claim_wait = CLAIM_RETRY
+	touched.emit(id, p.peer_id)
 
 ## Epic only: embers drifting up the beam.
 func _rising_particles() -> CPUParticles2D:
@@ -207,6 +253,14 @@ func _draw() -> void:
 	if _age < 1.0:   # spawn ping ring
 		var k := _age
 		draw_arc(Vector2.ZERO, 30.0 + k * 220.0, 0.0, TAU, 40, Color(c, 1.0 - k), 5.0 * (1.0 - k) + 1.0)
+	if life > 0.0 and _landed:   # despawn ring: shrinks with the time left, blinks at the end
+		var left := life_left / life
+		var blink := life_left < BLINK_LAST and fmod(life_left, 0.3) < 0.15
+		var ring_r := 48.0 + 40.0 * left
+		draw_arc(Vector2.ZERO, ring_r, -PI / 2.0, -PI / 2.0 + TAU * left, 40, Color(1, 1, 1, 0.25 if blink else 0.6), 2.0)
+		if life_left < BLINK_LAST:
+			draw_string_outline(ThemeDB.fallback_font, Vector2(-40, ring_r + 16), "%ds" % ceili(life_left), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, 4, Color.BLACK)
+			draw_string(ThemeDB.fallback_font, Vector2(-40, ring_r + 16), "%ds" % ceili(life_left), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color(1, 1, 1, 0.5 if blink else 1.0))
 	# orbiting sparkles (rare/epic)
 	var n: int = _look.sparkles
 	for i in n:

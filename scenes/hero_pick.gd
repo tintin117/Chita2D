@@ -2,7 +2,6 @@ extends Control
 ## Gym and online hero selection. The host starts the battle when everyone is ready or time runs out.
 
 const PICK_TIME := 30.0
-const ROLE := {"knight": "Bruiser", "rogue": "Assassin", "wizard": "Zoner", "ranger": "Marksman"}
 
 var _online := false
 var _time_left := PICK_TIME
@@ -14,8 +13,12 @@ var _hero_buttons: Array[Button] = []
 var _name_label: Label
 var _role_label: Label
 var _description: Label
-var _signature: Label
 var _stats: Label
+var _tiles: Array[SkillTile] = []
+var _skill_name: Label
+var _skill_text: Label
+var _hero: Hero
+var _skill := 1            ## kit slot whose text is open; hovering a tile previews it without changing this
 
 func _ready() -> void:
 	_online = not Net.roster.is_empty()
@@ -39,7 +42,8 @@ func _ready() -> void:
 		header.add_child(_timer_label)
 	box.add_child(header)
 
-	var cards := HBoxContainer.new()
+	var cards := GridContainer.new()   # 8 heroes: two rows of four
+	cards.columns = 4
 	box.add_child(cards)
 	var group := ButtonGroup.new()
 	var selected := Hero.by_id(Net.my_hero)
@@ -74,9 +78,37 @@ func _ready() -> void:
 	_description = ArenaUi.label("", 19)
 	_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	data.add_child(_description)
-	_signature = ArenaUi.label("", 18, ArenaUi.GOLD)
-	_signature.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	data.add_child(_signature)
+	# The kit: one icon per slot, the open one's name and text beside the row. Hover previews, click keeps it open.
+	var kit := HBoxContainer.new()
+	kit.add_theme_constant_override("separation", 10)
+	data.add_child(kit)
+	var group_skill := ButtonGroup.new()
+	for slot in ArenaUi.SKILL_SLOTS:
+		var tile := SkillTile.new()
+		tile.slot = slot
+		tile.toggle_mode = true
+		tile.button_group = group_skill
+		tile.button_pressed = slot == _skill
+		tile.focus_mode = Control.FOCUS_NONE
+		tile.custom_minimum_size = Vector2(72, 82)
+		tile.pressed.connect(func() -> void:
+			_skill = slot
+			_show_skill(slot))
+		tile.mouse_entered.connect(_show_skill.bind(slot))
+		tile.mouse_exited.connect(func() -> void: _show_skill(_skill))
+		kit.add_child(tile)
+		_tiles.append(tile)
+	var words := VBoxContainer.new()
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_theme_constant_override("separation", 2)
+	kit.add_child(words)
+	_skill_name = ArenaUi.label("", 19, ArenaUi.GOLD)
+	words.add_child(_skill_name)
+	_skill_text = ArenaUi.label("", 17)
+	_skill_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_skill_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_skill_text.custom_minimum_size.y = 60
+	words.add_child(_skill_text)
 	_show_hero(selected)
 
 	if _online:
@@ -120,13 +152,15 @@ func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> But
 	card.button_group = group
 	card.button_pressed = selected
 	card.tooltip_text = hero.display_name
-	card.custom_minimum_size = Vector2(186, 192)
+	card.custom_minimum_size = Vector2(186, 132)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.text = hero.display_name
 	card.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	card.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card.expand_icon = false
-	card.add_theme_constant_override("icon_max_width", 144)
+	card.add_theme_constant_override("icon_max_width", 96)
+	if hero.base_id != "":
+		card.modulate = hero.tint.lerp(Color.WHITE, 0.4)   # heroes 5-8 share sprite layouts with 1-4: the tint tells them apart
 	card.add_theme_font_size_override("font_size", 22)
 	card.icon = ArenaUi.portrait(hero, color)
 	_hero_buttons.append(card)
@@ -134,10 +168,36 @@ func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> But
 
 func _show_hero(hero: Hero) -> void:
 	_name_label.text = hero.display_name
-	_role_label.text = ROLE[hero.id]
-	_description.text = hero.description.trim_prefix(ROLE[hero.id] + ". ")
+	_role_label.text = hero.archetype
+	_description.text = hero.description.trim_prefix(hero.archetype + ". ")
 	_stats.text = "%d HP   /   %d SPEED   /   %d RANGE" % [hero.max_hp, hero.speed, hero.attack_range]
-	_signature.text = "%s  /  %s" % [Hero.make_skill(hero.rmb_skill).display_name, hero.rmb_text]
+	_hero = hero
+	for tile in _tiles:
+		tile.hero = hero
+		tile.queue_redraw()
+	_show_skill(_skill)
+
+func _show_skill(slot: int) -> void:
+	var info := ArenaUi.skill_info(_hero, slot)
+	_skill_name.text = "%s  /  %s" % [ArenaUi.skill_key(slot, 0), info[0]]
+	_skill_name.add_theme_color_override("font_color", ArenaUi.skill_color(slot))
+	_skill_text.text = info[1]
+
+## One kit slot as a toggle button: the icon tile on top, its key under it. The theme draws the button frame,
+## the tile is drawn over it.
+class SkillTile extends Button:
+	var slot := 0
+	var hero: Hero
+
+	func _draw() -> void:
+		if hero == null:
+			return
+		var r := Rect2(Vector2(roundf(size.x / 2.0 - 24.0), 8.0), Vector2(48, 48))
+		ArenaUi.draw_skill(self, hero, slot, r)
+		if button_pressed:
+			draw_rect(r, ArenaUi.skill_color(slot), false, 3.0)
+		draw_string(ArenaUi.BODY, Vector2(0, size.y - 8.0), ArenaUi.skill_key(slot, 0), HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
+			ArenaUi.INK if button_pressed else ArenaUi.MUTED)
 
 func _go_back() -> void:
 	if _online:

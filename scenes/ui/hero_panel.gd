@@ -3,6 +3,9 @@ class_name HeroPanel extends Control
 ## Positions itself (bottom-left, or bottom-right when mirror). Hud.add_player creates one per player.
 
 const SIZE_PX := Vector2(438, 132)
+const ULT_EXTRA := 82.0   ## the panel grows by one skill column for a hero with an ult, and one more for a passive
+const PASSIVE_COLOR := ArenaUi.PASSIVE_COLOR
+const ULT_COLOR := ArenaUi.ULT_COLOR
 const GOLD := ArenaUi.GOLD
 const BAR := Rect2(98, 45, 154, 20)
 const SLOT := 48.0
@@ -18,6 +21,10 @@ var _hooked := false
 
 func _ready() -> void:
 	size = SIZE_PX if player.online else SIZE_PX + Vector2(0, 10)
+	if player.spells.size() > Player.ULT_SLOT or player.hero.ult_skill != "":
+		size.x += ULT_EXTRA
+	if player.hero.passive_name != "":
+		size.x += ULT_EXTRA
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for slot: String in Item.SLOTS:
@@ -101,12 +108,31 @@ func _draw_dash() -> void:
 		draw_rect(pip, ArenaUi.EDGE)
 		draw_rect(pip.grow(-2), Color("#8ecad1") if i < player.dash_charges else ArenaUi.NIGHT)
 
+## The kit as the player knows it: LMB, RMB, PASSIVE (no button), ULT. Column -> what it shows.
+func columns() -> Array:
+	var out: Array = [0, 1]
+	if player.hero.passive_name != "":
+		out.append("passive")
+	if player.spells.size() > Player.ULT_SLOT:
+		out.append(Player.ULT_SLOT)
+	return out
+
 func _draw_skills() -> void:
 	var hints: Array = Hud.HINTS[0 if player.online else player.player_index % 2]
-	for i in 2:
-		var column_x := i * (SKILL_COLUMN_WIDTH + SKILL_COLUMN_GAP)
+	var cols := columns()
+	for c in cols.size():
+		var column_x := c * (SKILL_COLUMN_WIDTH + SKILL_COLUMN_GAP)
 		var r := Rect2(SLOT_POS + Vector2(column_x, 0), Vector2(SLOT, SLOT))
 		draw_rect(r, ArenaUi.SHADE)
+		if cols[c] is String:
+			_draw_passive(r)
+			_text(r.position + Vector2(0, SLOT + 17), "PASSIVE", 12, ArenaUi.MUTED, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+			continue
+		var i: int = cols[c]
+		if i == Player.ULT_SLOT:
+			_draw_ult(r)
+			_text(r.position + Vector2(0, SLOT + 17), hints[i], 15, Color(0.9, 0.9, 0.9), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+			continue
 		var spell: Spell = player.spells[i] if i < player.spells.size() else null
 		var border := ArenaUi.EDGE
 		if spell:
@@ -127,6 +153,37 @@ func _draw_skills() -> void:
 		draw_rect(r, border, false, 2.0)
 		_draw_weapon(i, r)
 		_text(r.position + Vector2(0, SLOT + 17), hints[i], 15, Color(0.9, 0.9, 0.9), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+
+## The ult: no icon sheet row for it yet, so a charge bar filling the slot from the bottom; it pulses once ready.
+func _draw_ult(r: Rect2) -> void:
+	var spell: Spell = player.spells[Player.ULT_SLOT]
+	var frac := player.ult_fraction()
+	var full := player.ult_ready()
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+	var fill := roundf(SLOT * frac)
+	draw_rect(Rect2(r.position + Vector2(0, SLOT - fill), Vector2(SLOT, fill)), Color(ULT_COLOR, 0.85 if full else 0.45))
+	_text(r.position + Vector2(0, 30), "ULT" if full else "%d%%" % int(frac * 100.0), 16 if full else 14,
+		Color.WHITE if full else ArenaUi.MUTED, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	draw_rect(r, Color(ULT_COLOR, 0.6 + 0.4 * pulse) if full else ArenaUi.EDGE, false, 3.0 if full else 2.0)
+	_draw_skill_caption(r, spell.display_name, ULT_COLOR if full else ArenaUi.MUTED)
+
+## The passive: no button and no cooldown, so a gold-edged tile with its initials; it lights up while it is doing
+## something you can see (Ranger: Steady Aim doubling the draw right now).
+func _draw_passive(r: Rect2) -> void:
+	var h := player.hero
+	var lit := h.steady_aim and player.charge_show > 0.0 and player.draw_rate() > 1.0
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+	var words := h.passive_name.split(" ")
+	var initials := ""
+	for w in words:
+		if w != "":
+			initials += w[0]
+	draw_rect(r.grow(-4), Color(PASSIVE_COLOR, 0.35 + 0.35 * pulse) if lit else Color(PASSIVE_COLOR, 0.12))
+	_text(r.position + Vector2(0, 31), initials.to_upper(), 20, Color.WHITE if lit else PASSIVE_COLOR, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	if lit:
+		_text(r.position + Vector2(0, 46), "x2", 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	draw_rect(r, Color(PASSIVE_COLOR, 0.6 + 0.4 * pulse) if lit else Color(PASSIVE_COLOR, 0.7), false, 2.0)
+	_draw_skill_caption(r, h.passive_name, PASSIVE_COLOR if lit else ArenaUi.MUTED)
 
 func _draw_skill_caption(slot: Rect2, caption: String, color: Color) -> void:
 	var at := slot.end + Vector2(-(SLOT + SKILL_COLUMN_WIDTH) * 0.5, 34)

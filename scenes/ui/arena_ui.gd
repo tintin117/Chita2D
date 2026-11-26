@@ -111,7 +111,7 @@ static func portrait(hero: Hero, color: String) -> Texture2D:
 	return _atlas_cell(PORTRAITS, PORTRAIT_CELLS.get(hero.units[variant], 0), 3)
 
 static func skill_icon(hero: Hero, slot: int) -> Texture2D:
-	var column: int = SKILL_COLUMNS_BY_HERO.get(hero.id, 0)
+	var column: int = SKILL_COLUMNS_BY_HERO.get(hero.base_id if hero.base_id != "" else hero.id, 0)   # a placeholder borrows its base's icons
 	var cell := column + slot * SKILL_COLUMNS
 	if not _skills.has(cell):
 		_skills[cell] = _atlas_cell(ABILITIES, cell, SKILL_COLUMNS)
@@ -130,3 +130,57 @@ static func _atlas_cell(texture: Texture2D, cell: int, columns: int) -> AtlasTex
 	atlas.region = Rect2((cell % columns) * side, (cell / columns) * side, side, side)
 	atlas.filter_clip = true
 	return atlas
+
+# Kit slots on the pick screens: 0 basic (LMB), 1 signature skill (RMB), 2 passive, 3 ult (F).
+const SKILL_SLOTS := 4
+const PASSIVE_COLOR := Color(0.95, 0.8, 0.4)
+const ULT_COLOR := Color(0.75, 0.4, 1.0)
+
+static func skill_color(slot: int) -> Color:
+	return [INK, GOLD, PASSIVE_COLOR, ULT_COLOR][slot]
+
+## Key hint under a kit slot: P1 keyboard+mouse, P2 gamepad (Hud.HINTS), the passive has no key.
+static func skill_key(slot: int, player_index: int) -> String:
+	if slot == 2:
+		return "PASSIVE"
+	return Hud.HINTS[player_index % 2][slot if slot < 2 else 2]
+
+## [name, one-line text] of kit slot `slot` for the pick screens.
+static func skill_info(hero: Hero, slot: int) -> Array[String]:
+	if slot == 0:
+		var kind := "Melee" if hero.attack_type == "melee" else ("Mid range" if hero.attack_range < 500.0 else "Long range")
+		var text := "%s basic attack: %d damage, %d reach." % [kind, hero.basic_damage, int(hero.attack_range)]
+		if hero.combo:
+			text += " The third cast in a row is a finisher."
+		return [hero.basic_name, text]
+	if slot == 1:
+		return [Hero.make_skill(hero.rmb_skill).display_name, hero.rmb_text]
+	if slot == 2:
+		if hero.passive_name == "":
+			return ["No passive", "This hero has no passive."]
+		return [hero.passive_name, hero.passive_text]
+	if hero.ult_skill == "":
+		return ["No ult yet", "This hero has no ult."]
+	return [Hero.make_skill(hero.ult_skill).display_name, hero.ult_text]
+
+## Draws kit slot `slot` as a tile in `r`: the icon sheet for the basic and RMB; the passive and the ult have no art
+## yet, so the same initials / ULT tiles the in-game HUD uses.
+static func draw_skill(canvas: CanvasItem, hero: Hero, slot: int, r: Rect2) -> void:
+	var font := ThemeDB.fallback_font
+	canvas.draw_rect(r, SHADE)
+	match slot:
+		0, 1:
+			canvas.draw_texture_rect(skill_icon(hero, slot), r.grow(-r.size.x / 6.0), false)
+		2:
+			var initials := ""
+			for w in hero.passive_name.split(" "):
+				if w != "":
+					initials += w[0]
+			canvas.draw_rect(r.grow(-4.0), Color(PASSIVE_COLOR, 0.15))
+			canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 7), initials.to_upper() if initials != "" else "-",
+				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 18, PASSIVE_COLOR)
+		3:
+			canvas.draw_rect(r.grow(-4.0), Color(ULT_COLOR, 0.25))
+			canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 6), "ULT" if hero.ult_skill != "" else "-",
+				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16, ULT_COLOR)
+	canvas.draw_rect(r, EDGE, false, 2.0)

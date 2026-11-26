@@ -3,8 +3,8 @@ extends Node2D
 ## Kills are counted on every peer from the same reliable Player.fragged events; only the host decides when the match ends.
 
 const CAM_ZOOM := 0.8             ## <1 = camera higher; at 0.8 a 1280x720 view shows 1600x900 px of the 2048x1472 arena
-const PICKUP_EVERY := 12.0
-const MAX_PICKUPS := 3
+const PICKUP_EVERY := 15.0        ## Classic defaults (GameMode.CONFIG rules; these back the tests and the fallbacks)
+const MAX_PICKUPS := 2
 const PICKUP_SPAWN_CLEAR := 380.0 ## pickups never appear this close to a player spawn (the short axis of the spawn ring is only 544 px from the centre)
 const PICKUP_COVER_CLEAR := 120.0
 const PICKUP_APART := 300.0
@@ -17,6 +17,8 @@ const BOUNTY := 2                 ## kills toward the limit for killing the crow
 const VERBS_HIT := ["bonked", "deleted", "humbled", "launched", "clapped", "sent to the shadow realm"]
 const LINES_FALL := ["%s took a swim", "%s forgot how to walk", "%s tried to fly", "%s found the water"]
 const LINES_BOMB := ["%s was blown up by the potato", "%s got the hot potato", "%s went out with a bang"]
+const LINES_METEOR := ["%s looked up too late", "%s was flattened by a meteor", "%s caught a falling star"]
+const LINES_REFLECT := ["%s cut himself on %s", "%s hit %s a little too hard", "%s bled out on %s's blademail"]
 
 var _cfg := GameMode.cfg(GameMode.CLASSIC)   ## the mode's row (set in _ready from Net.mode)
 var _kill_limit := 15
@@ -39,10 +41,19 @@ var _banner: Label
 var _board: MatchHud.Board
 var _feed: MatchHud.KillFeed
 var _match_menu: MatchOverlay
-var _crown := 0             ## peer wearing the crown, 0 = nobody
+var _crown := 0             ## peer wearing the crown, 0 = nobody (Classic: the kill leader; Crown mode: whoever picked it up)
+var _cm := false            ## Crown mode: the score is seconds worn, the crown is a pickup (see docs/design_pillars_and_crown_mode.md)
+var _score := {}            ## Crown mode: peer -> points (a point per second worn, plus the bounty for killing the king)
+var _crown_obj: CrownPickup ## Crown mode: the crown lying on the ground, null while somebody wears it (or before it appears)
+var _crown_spawn_in := INF  ## host, Crown mode: seconds until the crown first appears
+var _crown_free := 0.0      ## host, Crown mode: seconds the crown has lain unworn (it returns to the centre after crown_reset)
 var _kill_count := 0        ## every death so far; picks the kill-feed wording the same way on every peer
 var _stats := {}            ## peer -> {streak, best, falls, bombs, pickups, emotes, crown}
 var _killed_by := {}        ## Vector2i(killer, victim) -> times
+var _drops_open := false    ## host: the death gate (drop_after_deaths) has opened, drops fall from now on
+var _event := MatchEvent.NONE   ## the match event (MatchEvent), rolled by the host at FIGHT and sent to every peer
+var _meteor_timer := 0.0    ## host, Meteor Shower: seconds to the next strike
+var _event_card: MatchHud.EventCard
 
 ## Kills per team from the per-peer kills; `teams` is peer -> 0/1.
 static func team_totals(values: Dictionary, teams: Dictionary) -> Array[int]:
@@ -105,6 +116,10 @@ static func kill_line(cause: String, killer: String, victim: String, n: int) -> 
 			return text if killer == "" else "%s (pushed by %s)" % [text, killer]
 		"bomb":
 			return LINES_BOMB[n % LINES_BOMB.size()] % victim
+		"meteor":
+			return LINES_METEOR[n % LINES_METEOR.size()] % victim
+		"reflect":   # Blademail: the victim hit `killer` and bled for it
+			return LINES_REFLECT[n % LINES_REFLECT.size()] % [victim, killer if killer != "" else "a blademail"]
 	return "%s %s %s" % [killer, VERBS_HIT[n % VERBS_HIT.size()], victim]
 
 static func new_stats() -> Dictionary:
@@ -162,8 +177,11 @@ static func awards(stats: Dictionary, kills: Dictionary, deaths: Dictionary, kil
 func _ready() -> void:
 	_cfg = GameMode.cfg(Net.mode)
 	_fs = GameMode.is_friendslop(Net.mode)
-	_kill_limit = Net.settings.kill_limit   # the lobby's limits rule in every mode
+	_cm = GameMode.is_crown(Net.mode)
+	_kill_limit = 0 if _cm else Net.settings.kill_limit   # the lobby's limits rule in every mode; Crown mode ends on points
 	_pickup_timer = _cfg.first_pickup
+	_drops_open = int(_cfg.drop_after_deaths) <= 0
+	MatchEvent.current = MatchEvent.NONE
 	_map = WorldMap.new()
 	_map.name = "Arena"   # fixed names: RPC and replication paths must match on every peer
 	add_child(_map)
@@ -204,6 +222,8 @@ func _ready() -> void:
 	ui.add_child(arrows)
 	_feed = MatchHud.KillFeed.new()
 	ui.add_child(_feed)
+	_event_card = MatchHud.EventCard.new()
+	ui.add_child(_event_card)
 	_banner = ArenaUi.heading("", 44)
 	_banner.theme = ArenaUi.THEME
 	_banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -248,13 +268,17 @@ func _spawn(id: int, info: Dictionary) -> void:
 		p.set_multiplayer_authority(id)
 	p.respawn_point = _pick_spawn.bind(id)
 	p.water_check = _map.is_water
+	p.ground_check = _map.off_ground
 	p.fragged.connect(_on_fragged)
 	p.bomb_touch.connect(_on_bomb_touch.bind(p))
 	_map.add_child(p)
 	_players[id] = p
 	_kills[id] = 0
 	_deaths[id] = 0
+	_score[id] = 0.0
 	_stats[id] = new_stats()
+	if _cm:
+		p.crown_speed = _cfg.crown_speed
 	p.emoted.connect(_on_emoted)
 
 func _pick_spawn(id: int) -> Vector2:
@@ -274,7 +298,24 @@ func _on_go() -> void:
 	_running = true
 	_set_players_active(true)
 	Sfx.play("fight")
-	_say("FIGHT!   grab the drops!" if _fs else "FIGHT!   (1-4: emotes)", 1.6)
+	if _cm:
+		_say("FIGHT!   the crown drops in %d s" % int(_cfg.crown_delay), 1.6)
+		if multiplayer.is_server():
+			_crown_spawn_in = _cfg.crown_delay
+	else:
+		_say("FIGHT!   grab the drops!" if _fs else "FIGHT!   (1-4: emotes)", 1.6)
+	if multiplayer.is_server() and bool(_cfg.get("events", false)):
+		_net_event.rpc(MatchEvent.roll(randf()))   # the host's dice; the rule itself is fixed (docs §6.4)
+
+## The match event on every peer: the FIGHT card, the HUD chip (reads MatchEvent.current) and the host's timers.
+@rpc("authority", "call_local", "reliable")
+func _net_event(id: String) -> void:
+	_event = id if MatchEvent.valid(id) else MatchEvent.NONE
+	MatchEvent.current = _event
+	_meteor_timer = MatchEvent.METEOR_EVERY
+	if _event != MatchEvent.NONE:
+		_event_card.show_event(_event)
+		Sfx.play("crown", Vector2.INF, -2.0, 0.8)
 
 func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
 	var vid := victim.peer_id
@@ -300,18 +341,25 @@ func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
 	var killer_name := _name_of(killer_peer) if credited else ""
 	var line := kill_line(cause, killer_name, _name_of(vid), _kill_count)
 	_kill_count += 1
+	if multiplayer.is_server() and not _over:
+		_on_death_for_drops()
 	if credited:
 		var reign := vid == _crown   # decided before the credit: killing the king pays a bounty
-		_kills[killer_peer] += BOUNTY if reign else 1
+		if _cm:
+			_kills[killer_peer] += 1   # kills stay on the board, but only the king's death pays points
+			if reign:
+				_score[killer_peer] = _score.get(killer_peer, 0.0) + float(_cfg.crown_bounty)
+		else:
+			_kills[killer_peer] += BOUNTY if reign else 1
 		_killed_by[Vector2i(killer_peer, vid)] = _killed_by.get(Vector2i(killer_peer, vid), 0) + 1
 		var ks: Dictionary = _stats[killer_peer]
 		ks.streak += 1
 		ks.best = maxi(ks.best, ks.streak)
 		Sfx.play("kill")
 		if reign:
-			line += "   (+%d bounty!)" % BOUNTY
+			line += "   (+%d bounty!)" % (int(_cfg.crown_bounty) if _cm else BOUNTY)
 			_say("%s ended %s's reign!" % [killer_name, _name_of(vid)], 1.8)
-		var limit: int = Net.settings.kill_limit
+		var limit: int = _kill_limit
 		if multiplayer.is_server() and limit > 0 and not _over:
 			if _tdm:
 				var totals := team_totals(_kills, _teams)
@@ -320,7 +368,11 @@ func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
 			elif _kills[killer_peer] >= limit:
 				_end.rpc(killer_peer, -1)
 	_feed.add(line, _color_of(killer_peer if credited else vid))
-	_update_crown()
+	if _cm:
+		if vid == _crown and multiplayer.is_server() and not _over:
+			_net_crown.rpc(0, victim.global_position, _cfg.crown_grace)   # the crown falls where the king fell
+	else:
+		_update_crown()
 
 func _name_of(id: int) -> String:
 	var p: Player = _players.get(id)
@@ -358,6 +410,8 @@ func _on_player_left(id: int) -> void:
 	if p:
 		if p.has_bomb and multiplayer.is_server():
 			_net_bomb_boom.rpc(id)
+		if _cm and id == _crown and multiplayer.is_server() and not _over:
+			_net_crown.rpc(0, p.global_position, _cfg.crown_grace)   # a king who leaves drops the crown where he stood
 		p.queue_free()
 		_players.erase(id)
 	if not multiplayer.is_server() or _over:
@@ -376,8 +430,15 @@ func _process(delta: float) -> void:
 		_time_left = maxf(_time_left - delta, 0.0)
 		if _crown != 0 and _stats.has(_crown):
 			_stats[_crown].crown += delta
+			if _cm:
+				_score[_crown] = _score.get(_crown, 0.0) + delta   # every peer counts the same seconds; only the host calls the end
+		if _cm and multiplayer.is_server():
+			_tick_crown(delta)
 		if _time_left <= 0.0 and multiplayer.is_server():
-			if _tdm:
+			if _cm:
+				var top := _leader()
+				_end.rpc(top, _teams.get(top, -1))
+			elif _tdm:
 				_end.rpc(0, leading_team(_kills, _deaths, _teams))
 			else:
 				_end.rpc(_leader(), -1)
@@ -386,25 +447,53 @@ func _process(delta: float) -> void:
 				var carrier: Player = _players[id]
 				if carrier.has_bomb and carrier.bomb_left <= 0.0:
 					_net_bomb_boom.rpc(id)
-			_pickup_timer -= delta
-			if _pickup_timer <= 0.0:
-				_pickup_timer = _cfg.pickup_every
-				if _pickups.size() < _cfg.max_pickups:
-					_host_drop()
+			if _drops_open:
+				_pickup_timer -= delta
+				if _pickup_timer <= 0.0:
+					_pickup_timer = _cfg.pickup_every
+					if _pickups.size() < _cfg.max_pickups:
+						_host_drop()
+			for pk: PvpPickup in _pickups.values():
+				if pk.life > 0.0 and pk.life_left <= 0.0:
+					_net_despawn_pickup.rpc(pk.id)   # the host's clock is the one that counts
+					break
+			if _event == MatchEvent.METEOR:
+				_meteor_timer -= delta
+				if _meteor_timer <= 0.0:
+					_meteor_timer = MatchEvent.METEOR_EVERY
+					var none: Array[Vector2] = []
+					_net_meteor.rpc(pick_pickup_pos(_map, none, 0.0, 0.0))
 
-## Host only: rolls and places the next drop. Classic: a classic kind somewhere central. Friendslop: any kind anywhere, and a
-## drop sometimes falls near whoever is trailing with a slightly better tier (the catch-up; never announced, just a nudge).
-## The kind and the position travel in the spawn RPC, so peers never touch the map's RNG or the dice.
+## Host only, on every death: the drop gate (no drops until drop_after_deaths players have died) and the forced drop
+## (one more every drop_per_deaths deaths after that). Kills pace the drops, not only the clock.
+func _on_death_for_drops() -> void:
+	var after := int(_cfg.drop_after_deaths)
+	var per := int(_cfg.drop_per_deaths)
+	if not _drops_open:
+		if _kill_count >= after:
+			_drops_open = true
+			_pickup_timer = _cfg.first_pickup
+		return
+	if per > 0 and (_kill_count - after) % per == 0 and _pickups.size() < _cfg.max_pickups:
+		_host_drop()
+		_pickup_timer = _cfg.pickup_every
+
+## Host only: rolls and places the next drop. Classic: the kinds of the Classic table; rares and epics on the centre circle
+## when the mode says so; a drop sometimes falls near whoever is trailing (the catch-up: first option, never a better kind).
+## Friendslop: any kind anywhere, and the catch-up also tilts the kind a tier up. Double Drop (event): the drop comes in a
+## pair, on opposite sides of the centre. The kind and the position travel in the spawn RPC, so peers never touch the
+## map's RNG or the dice.
 func _host_drop() -> void:
 	var taken: Array[Vector2] = []
 	for pk: PvpPickup in _pickups.values():
 		taken.append(pk.position)
 	var kind: String
 	var pos: Vector2
+	var cu := catchup(_living_kills())
+	var trailer: Player = _players.get(cu.peer)
+	var near_trailer: bool = trailer != null and not trailer.down and randf() < CATCHUP_NEAR_CHANCE * float(cu.boost)
 	if _fs:
-		var cu := catchup(_living_kills())
-		var trailer: Player = _players.get(cu.peer)
-		if trailer != null and not trailer.down and randf() < CATCHUP_NEAR_CHANCE * cu.boost:
+		if near_trailer:
 			kind = PvpPickup.roll_fs(randf(), cu.boost)
 			pos = pick_pickup_pos_near(_map, taken, trailer.global_position, _cfg.spawn_clear, _cfg.apart)
 		else:
@@ -412,8 +501,24 @@ func _host_drop() -> void:
 			pos = pick_pickup_pos(_map, taken, _cfg.spawn_clear, _cfg.apart)
 	else:
 		kind = PvpPickup.roll(randf())
-		pos = pick_pickup_pos(_map, taken)
+		if bool(_cfg.get("centre_rares", false)) and PvpPickup.tier_of(kind) >= PvpPickup.Tier.RARE:
+			pos = pick_pickup_pos_centre(_map, taken)
+		elif near_trailer:
+			pos = pick_pickup_pos_near(_map, taken, trailer.global_position)
+		else:
+			pos = pick_pickup_pos(_map, taken)
 	_net_spawn_pickup.rpc(_next_pickup, kind, pos)
+	if _event == MatchEvent.DOUBLE and _pickups.size() < _cfg.max_pickups:
+		taken.append(pos)
+		var mirror := _map.spawn_point * 2.0 - pos   # the other side of the centre
+		var pos2 := mirror if _map.is_reachable(mirror) and not _map.is_water(mirror) and _clear_of(mirror, taken, _cfg.apart) else pick_pickup_pos(_map, taken, _cfg.spawn_clear, _cfg.apart)
+		_net_spawn_pickup.rpc(_next_pickup, PvpPickup.roll(randf()), pos2)
+
+## Meteor Shower (event): every peer shows the telegraph and runs the same blast; damage still lands on each victim's own peer.
+@rpc("authority", "call_local", "reliable")
+func _net_meteor(pos: Vector2) -> void:
+	_map.add_child(Explosion.new().setup(pos, MatchEvent.METEOR_RADIUS, MatchEvent.METEOR_DAMAGE, MatchEvent.METEOR_DELAY, null).as_meteor())
+	Sfx.play("crown", pos, -4.0, 0.6)   # the Mage's meteor toll: something is coming
 
 func _living_kills() -> Dictionary:
 	var out := {}
@@ -453,6 +558,16 @@ static func pick_pickup_pos_near(map: WorldMap, taken: Array[Vector2], near: Vec
 			return p
 	return pick_pickup_pos(map, taken, spawn_clear, apart)
 
+## A spot on the centre circle (inside the map's hold radius), off the cover and other drops: where rares and epics fall,
+## so the beam says "come to the fort". Falls back to any open spot.
+static func pick_pickup_pos_centre(map: WorldMap, taken: Array[Vector2]) -> Vector2:
+	var r := map.hold_radius() - 40.0
+	for i in 150:
+		var p := map.random_open_point()
+		if p.distance_to(map.spawn_point) <= r and _clear_of(p, map.cover, PICKUP_COVER_CLEAR) and _clear_of(p, taken, 120.0):
+			return p
+	return map.spawn_point if _clear_of(map.spawn_point, taken, 60.0) else pick_pickup_pos(map, taken)
+
 static func _clear_of(p: Vector2, points: Array[Vector2], dist: float) -> bool:
 	for q in points:
 		if p.distance_to(q) < dist:
@@ -466,6 +581,8 @@ func _net_spawn_pickup(id: int, kind: String, pos: Vector2) -> void:
 	pk.id = id
 	pk.kind = kind
 	pk.position = pos
+	pk.channel_time = GameMode.channel_time(Net.mode, PvpPickup.tier_of(kind))
+	pk.life = float(_cfg.get("pickup_life", 0.0))
 	pk.touched.connect(_on_pickup_touched)
 	_map.add_child(pk)
 	_pickups[id] = pk
@@ -474,6 +591,15 @@ func _net_spawn_pickup(id: int, kind: String, pos: Vector2) -> void:
 		_say("EPIC DROP!  %s" % PvpPickup.LABELS[kind], 2.2)
 	else:
 		_say("%s appeared!" % PvpPickup.LABELS[kind], 1.5)
+
+## A drop nobody took in time: gone on every peer (the host's clock decides).
+@rpc("authority", "call_local", "reliable")
+func _net_despawn_pickup(id: int) -> void:
+	var pk: PvpPickup = _pickups.get(id)
+	if pk == null:
+		return
+	_pickups.erase(id)
+	pk.queue_free()
 
 func _on_pickup_touched(id: int, peer: int) -> void:
 	_claim.rpc_id(1, id, peer)
@@ -549,11 +675,89 @@ func _net_bomb_boom(peer: int) -> void:
 	_map.add_child(Explosion.new().setup(p.global_position, 150.0, 70, 0.05, null))
 
 func _leader() -> int:
+	if _cm:
+		return score_leader(_score, _kills, _players.keys())
 	var best := 0
 	for id: int in _players:
 		if best == 0 or _kills[id] > _kills[best] or (_kills[id] == _kills[best] and _deaths[id] < _deaths[best]):
 			best = id
 	return best
+
+## Crown mode: the present peer with the most points, then kills, then the lowest id; 0 when `present` is empty.
+static func score_leader(score: Dictionary, kills: Dictionary, present: Array) -> int:
+	var best := 0
+	for id: int in present:
+		if best == 0:
+			best = id
+			continue
+		var s: float = score.get(id, 0.0)
+		var bs: float = score.get(best, 0.0)
+		if s > bs or (s == bs and (kills.get(id, 0) > kills.get(best, 0) or (kills.get(id, 0) == kills.get(best, 0) and id < best))):
+			best = id
+	return best
+
+# --- Crown mode: the crown is a pickup, the score is seconds worn; the host owns every state change
+
+## Host only: the first appearance, the win check and the return to the centre of a crown nobody picks up.
+func _tick_crown(delta: float) -> void:
+	if _over:
+		return
+	if _crown_spawn_in != INF:
+		_crown_spawn_in -= delta
+		if _crown_spawn_in <= 0.0:
+			_crown_spawn_in = INF
+			_net_crown.rpc(0, _map.spawn_point, 0.0)
+		return
+	if _crown != 0:
+		if _score.get(_crown, 0.0) >= float(_cfg.score_limit):
+			_end.rpc(_crown, _teams.get(_crown, -1))   # in a team match the king's team wins
+		return
+	if _crown_obj == null:
+		return
+	_crown_free += delta
+	if _crown_free >= float(_cfg.crown_reset):
+		_crown_free = 0.0
+		if _crown_obj.position.distance_to(_map.spawn_point) > 50.0:
+			_net_crown.rpc(0, _map.spawn_point, 0.0)   # every peer announces it from the RPC
+
+func _on_crown_touched(peer: int) -> void:
+	_crown_claim.rpc_id(1, peer)
+
+## The host serialises claims: the first living player to touch a free crown wears it.
+@rpc("any_peer", "call_local", "reliable")
+func _crown_claim(taker: int) -> void:
+	if not multiplayer.is_server() or _over or _crown != 0 or _crown_obj == null or _crown_obj.grace > 0.0:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != taker and not Net.solo:
+		return   # a peer can only claim for its own player (a solo match has the one peer claiming for its bots too)
+	var p: Player = _players.get(taker)
+	if p == null or p.down:
+		return
+	_net_crown.rpc(taker, Vector2.INF, 0.0)
+
+## The crown's new state on every peer: worn by `holder`, or (holder 0) lying at `pos`, untouchable for `grace` seconds.
+@rpc("authority", "call_local", "reliable")
+func _net_crown(holder: int, pos: Vector2, grace: float) -> void:
+	if _crown_obj != null:
+		_crown_obj.queue_free()
+		_crown_obj = null
+	_crown = holder
+	_crown_free = 0.0
+	for id: int in _players:
+		_players[id].crowned = id == holder
+	if holder != 0:
+		Sfx.play("crown")
+		_say("%s took the crown!" % _name_of(holder), 1.8)
+		return
+	_crown_obj = CrownPickup.new()
+	_crown_obj.position = pos
+	_crown_obj.grace = grace
+	_crown_obj.touched.connect(_on_crown_touched)
+	_map.add_child(_crown_obj)
+	if grace <= 0.0:
+		Sfx.play("crown")
+		_say("The crown is up!   grab it!", 1.8)
 
 @rpc("authority", "call_local", "reliable")
 func _end(winner: int, win_team: int) -> void:
@@ -586,6 +790,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_match_menu.open()
 
+func _exit_tree() -> void:
+	MatchEvent.current = MatchEvent.NONE   # the event is this match's; the next scene starts clean
+
 func _continue_from_results() -> void:
 	if Net.solo:
 		get_tree().reload_current_scene()
@@ -617,6 +824,16 @@ class Radar extends Control:
 
 	func _draw() -> void:
 		ArenaUi.panel(self, Rect2(Vector2.ZERO, size))
+		if MatchEvent.is_on(MatchEvent.FOG):   # Fog: the radar stays (vanishing looks like a bug) but shows nothing
+			var fog := MatchEvent.color(MatchEvent.FOG)
+			draw_rect(Rect2(Vector2.ZERO, size), Color(fog, 0.12))
+			draw_string(ArenaUi.DISPLAY, Vector2(0, size.y / 2.0 + 8.0), "FOG", HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, Color(fog, 0.8))
+			return
+		var cell := maxf(WorldMap.TILE * _scale, 1.0)
+		for w: Vector2 in arena._map.water_spots:   # Colosseum: the deadly water
+			draw_rect(Rect2(_to_radar(w) - Vector2(cell, cell) / 2.0, Vector2(cell, cell)), Color(0.15, 0.45, 0.65, 0.9))
+		for seg in arena._map.rails:
+			draw_line(_to_radar(seg[0]), _to_radar(seg[1]), Color(0.7, 0.68, 0.62), 1.5)
 		for c: Vector2 in arena._map.cover:
 			draw_circle(_to_radar(c), 2.5, Color(0.55, 0.55, 0.5))
 		for pk: PvpPickup in arena._pickups.values():
@@ -631,6 +848,10 @@ class Radar extends Control:
 				draw_arc(p, r + 3.0, 0.0, TAU, 20, PvpPickup.TIER_COLORS[tier], 1.5)
 			if tier == PvpPickup.Tier.EPIC:
 				draw_arc(p, r + 6.0, 0.0, TAU, 24, PvpPickup.TIER_COLORS[tier], 1.5)
+		if arena._crown_obj != null:   # Crown mode: the crown on the ground is the objective, so it is the loudest mark
+			var cp := _to_radar(arena._crown_obj.position)
+			draw_circle(cp, 5.0, CrownPickup.GOLD)
+			draw_arc(cp, 8.0 + 2.0 * sin(Time.get_ticks_msec() * 0.006), 0.0, TAU, 24, CrownPickup.GOLD, 2.0)
 		var me_id := Net.local_id()
 		for id: int in arena._players:
 			var pl: Player = arena._players[id]

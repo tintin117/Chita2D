@@ -39,6 +39,8 @@ static func rank(entries: Array, cap: int) -> Array:
 	return out.slice(0, cap)
 
 func _draw() -> void:
+	if MatchEvent.is_on(MatchEvent.FOG):
+		return   # Fog: no arrows; the beams in the world are all you get
 	var view := get_viewport_rect().size
 	var xf := get_viewport().get_canvas_transform()
 	var origin: Vector2 = player.global_position if is_instance_valid(player) else (xf.affine_inverse() * (view / 2.0))

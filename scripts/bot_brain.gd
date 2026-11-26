@@ -13,19 +13,27 @@ class_name BotBrain extends RefCounted
 ##     (cover blocks bolts), and use the hero's signature the way it is meant: charge to pin, blink behind, zone a pickup, snipe.
 ## `skill` (0..1) scales reaction time, aim error and how often it dodges, through `_sharp` (skill squared) so Easy and
 ## Normal are beatable by a newcomer while Hard stays close to the old curve. Rocks are steered around, and a bot that stops
-## making progress backs off sideways and dashes.
+## making progress backs off sideways and dashes. On the Colosseum they walk a nav grid (WorldMap.nav_step) round the
+## moat, pools and rails, and when knocked toward water they head for the nearest dry ground, not the middle.
+## WHAT it is doing is a small state machine (next_state: Roam, Engage, Retreat, Objective, Hold, Potato; urgent ones
+## switch at once, the rest hold MIN_STATE_TIME); each state sets how brave the tactics are (STATE_FEAR).
+## Where to stand in a fight is BotTactics' job (Monte Carlo position search: sample spots, roll each out a short way,
+## score danger, ring-out lines, range, objective); a rail in the way of a long detour gets hopped with a dash. The crown
+## holder (Crown mode) keeps to the centre circle.
 
-const REACT_SLOW := 0.42      ## seconds between decisions at skill 0 (was 0.32)
+const REACT_SLOW := 0.35      ## seconds between decisions at skill 0 (fast pace: was 0.42)
 const REACT_FAST := 0.07      ## ... at skill 1
 const EDGE_PROBE := 130.0     ## px: how far ahead the bot looks for water
 const EDGE_FAR := 330.0       ## px: a softer, earlier nudge toward the middle
 const DASH_SPEED_PX := 240.0  ## what one dash covers (Player.DASH_SPEED * DASH_TIME)
-const PICKUP_VALUE := {"heal": 1.0, "damage": 1.6, "speed": 0.9, "mystery": 1.1, "giant": 1.4, "chicken": -1.0, "bomb": -1.0}
+const PICKUP_VALUE := {"heal": 1.0, "damage": 1.6, "speed": 0.9, "mystery": 1.1, "giant": 1.4, "chicken": -1.0, "bomb": -1.0,
+	"shield": 1.0, "ult": 1.1, "reset": 1.3, "warcry": 1.5}
+const CHANNEL_STAND := 22.0   ## px: this close to a drop the bot stops and channels (Player.can_channel wants no input)
 
 # --- what Player reads
 var move := Vector2.ZERO
 var aim_pos := Vector2.ZERO
-var held: Array[bool] = [false, false]
+var held: Array[bool] = [false, false, false]   ## per Player.SLOTS: basic, skill, ult
 var skill := 0.6
 var _sharp := 0.36   ## skill squared: the reaction / aim / dodge curves (Normal 0.6 -> 0.36, Hard 0.9 -> 0.81)
 
@@ -52,6 +60,23 @@ var _mark_t := 0.0
 var _unstick_t := 0.0
 var _unstick_dir := Vector2.ZERO
 var _rescue_ok := true
+var _spot := Vector2.INF      ## where the tactical layer (BotTactics) wants us to stand; INF = not chosen yet
+var _plan_t := 0.0            ## seconds until the next Monte Carlo plan
+var _hop_t := 0.0             ## seconds until the next rail-hop check
+var _rng := RandomNumberGenerator.new()
+var _last_goal := Vector2.INF ## where _go was last asked to take us (the unstick re-routes to it)
+const PLAN_EVERY := 0.2       ## re-plan the spot this often (between plans the bot keeps walking to it)
+
+# --- the state machine: WHAT the bot is doing (BotTactics then decides WHERE to stand while doing it)
+enum State { ROAM, ENGAGE, RETREAT, OBJECTIVE, HOLD, POTATO }
+const STATE_NAMES := ["Roam", "Engage", "Retreat", "Objective", "Hold", "Potato"]
+const STATE_COLORS := [Color(0.75, 0.75, 0.75), Color(1.0, 0.45, 0.35), Color(0.5, 0.8, 1.0), Color(1.0, 0.85, 0.3), Color(1.0, 0.7, 0.2), Color(1.0, 0.3, 0.6)]
+const STATE_FEAR := [1.0, 0.7, 1.6, 0.6, 1.0, 0.5]   ## BotTactics' danger / ring-out weight per state
+const MIN_STATE_TIME := 0.6   ## seconds a state holds before a non-urgent change (no flicker)
+const RETREAT_HP := 0.3       ## below this, with a foe close: retreat
+const RECOVER_HP := 0.5       ## ... until back above this, or nobody is near
+var state: State = State.ROAM
+var _state_t := 0.0
 
 func setup(player: Player, arena: Node, level: float) -> void:
 	_p = player
@@ -93,8 +118,10 @@ func on_death(cause: String) -> void:
 func think(delta: float) -> void:
 	if _p.down:
 		move = Vector2.ZERO
-		held = [false, false]
+		held = [false, false, false]
 		_dash = false
+		_spot = Vector2.INF
+		state = State.ROAM
 		return
 	_emote_age += delta
 	if _emote_age > 2.0:
@@ -105,6 +132,9 @@ func think(delta: float) -> void:
 	_dash_cd -= delta
 	_react -= delta
 	_unstick_t -= delta
+	_plan_t -= delta
+	_hop_t -= delta
+	_state_t += delta
 	if _orbit_t <= 0.0:
 		_orbit = -_orbit if randf() < 0.6 else _orbit
 		_orbit_t = randf_range(1.0, 2.6)
@@ -129,62 +159,190 @@ func _decide() -> void:
 	var tpos := _target.global_position if _target else me
 	var dist := me.distance_to(tpos)
 
-	# objective
+	# what are we doing? (the state machine), then how
 	var pickup := _best_pickup(me, hp_frac)
-	if _p.has_bomb:
-		var victim := _nearest(foes, me, true)
-		if victim:
-			want = _dir(me, victim.global_position)
-			if me.distance_to(victim.global_position) > 110.0 and me.distance_to(victim.global_position) < 330.0:
-				_try_dash(want, 0.8)
-	elif pickup.pos != Vector2.INF and (_target == null or pickup.score > 1.3 or dist > 500.0):
-		want = _dir(me, pickup.pos)
-	elif _target:
-		want = _spacing(me, tpos, dist)
-	elif me.distance_to(_map.spawn_point) > 250.0:
-		want = _dir(me, _map.spawn_point)   # nobody around: drift back to the middle
-
-	# hurt and pressed: back off (a heal pickup already took the objective above)
-	if hp_frac < 0.3 and _target and dist < 260.0 and pickup.pos == Vector2.INF:
-		want = (want * 0.3 + _dir(tpos, me) * 1.2)
-		if dist < 150.0:
-			_try_dash(_dir(tpos, me), 0.7)
+	var heal := _heal_pickup(me)
+	_set_state(next_state(state, _state_t, {"has_bomb": _p.has_bomb, "holding_crown": _holding_crown(),
+		"has_target": _target != null, "hp_frac": hp_frac, "target_dist": dist,
+		"objective": pickup.pos != Vector2.INF and (_target == null or pickup.score > 1.3 or dist > 500.0)}))
+	match state:
+		State.POTATO:   # hand the hot potato to the nearest victim
+			var victim := _nearest(foes, me, true)
+			if victim:
+				want = _go(me, victim.global_position)
+				if me.distance_to(victim.global_position) > 110.0 and me.distance_to(victim.global_position) < 330.0:
+					_try_dash(want, 0.8)
+		State.OBJECTIVE:   # the free crown or a drop worth the walk
+			want = _go(me, pickup.pos)
+		State.ENGAGE, State.HOLD:
+			want = _tactical(me, tpos, dist, foes, hp_frac)
+		State.RETREAT:   # out of reach, toward a heal if there is one; the tactics weigh danger x1.6 here
+			if heal != Vector2.INF:
+				want = _go(me, heal)
+			else:
+				want = _tactical(me, tpos, dist, foes, hp_frac) * 0.6 + _dir(tpos, me) * 0.8
+			if dist < 150.0:
+				_try_dash(_dir(tpos, me), 0.7)
+		State.ROAM:   # nobody in sight: find the fight (nearest foe anywhere), else the middle
+			var far := _nearest_any(me)
+			if far != Vector2.INF:
+				want = _go(me, far)
+			elif me.distance_to(_map.spawn_point) > 250.0:
+				want = _go(me, _map.spawn_point)
 
 	want += _repulsion(me, foes, pickup)
 	var edge := _edge_push(me, EDGE_PROBE)
-	want += edge * 2.5 + _edge_push(me, EDGE_FAR) * 0.9 + _knock_line(me, foes) * 1.3
-	want += _dodge(me) * 2.5
-	want = _around_cover(want.normalized() if want.length() > 0.05 else Vector2.ZERO, me)
+	if _map.nav:
+		# The grid already keeps the route off the water and round rails and braziers, and the tactics weigh ring-out
+		# lines; the old island pushes (2.5x away from any water in reach) would pin bots in the bridges and the sand
+		# strips. Keep a light nudge, and never against the way we are walking.
+		var path_dir := want.normalized() if want.length() > 0.05 else Vector2.ZERO
+		var nudge := edge * 0.8 + _knock_line(me, foes) * 0.5
+		if path_dir != Vector2.ZERO and nudge.dot(path_dir) < 0.0:
+			nudge -= path_dir * nudge.dot(path_dir)
+		want += nudge + _dodge(me) * 2.0
+		want = want.normalized() if want.length() > 0.05 else Vector2.ZERO
+	else:
+		want += edge * 2.5 + _edge_push(me, EDGE_FAR) * 0.9 + _knock_line(me, foes) * 1.3
+		want += _dodge(me) * 2.5
+		want = _around_cover(want.normalized() if want.length() > 0.05 else Vector2.ZERO, me)
 
-	# stuck: tried to move for a while without getting anywhere
+	# on the drop: stand still and hold fire so the channel runs (a foe in reach breaks it anyway, see Player.take_damage)
+	if state == State.OBJECTIVE and pickup.pos != Vector2.INF and me.distance_to(pickup.pos) < CHANNEL_STAND and _channel_needed(pickup.pos):
+		_steer = Vector2.ZERO
+		_unstick_t = 0.0
+		_mark_t = 0.0
+		held = [false, false, false]
+		return
+
+	# stuck: tried to move for a while without getting anywhere (attacking while stuck still counts)
 	_mark_t += _react
-	if _mark_t > 0.7:
-		if want.length() > 0.5 and me.distance_to(_mark_pos) < 18.0 and not held[0]:
-			_unstick_t = 0.6
-			_unstick_dir = want.orthogonal() * (1.0 if randf() < 0.5 else -1.0)
-			_try_dash(_unstick_dir, 0.5)
+	if _mark_t > 0.6:
+		if want.length() > 0.5 and me.distance_to(_mark_pos) < 18.0:
+			_unstick_t = 0.8
+			if _map.nav and _last_goal != Vector2.INF:
+				_unstick_dir = _map.nav_next(me, _last_goal)   # follow the route cell by cell, no shortcuts, for a moment
+			else:
+				_unstick_dir = want.orthogonal() * (1.0 if randf() < 0.5 else -1.0)
+				_try_dash(_unstick_dir, 0.5)
+			_spot = Vector2.INF   # and plan afresh
 		_mark_pos = me
 		_mark_t = 0.0
 	_steer = (_unstick_dir if _unstick_t > 0.0 else want).limit_length(1.0)
 
 	_attack(me, tpos, dist, edge)
 
-## The spacing the hero is built for: melee closes in, ranged keeps back and circles.
-func _spacing(me: Vector2, tpos: Vector2, dist: float) -> Vector2:
-	var to := _dir(me, tpos)
-	if _p.hero.id == "rogue":
-		return _flank(me, tpos, dist, to)
-	var ideal := 70.0
-	if _p.hero.attack_type == "ranged":
-		ideal = _p.hero.attack_range * 0.62
-	var radial := clampf((dist - ideal) / 90.0, -1.0, 1.0)
-	var tangent := to.orthogonal() * _orbit * (0.55 if _p.hero.attack_type == "ranged" else 0.25)
-	# melee wants to be in reach and swinging; the circling would only waste it
-	if _p.hero.attack_type == "melee" and dist < ideal + 30.0:
-		tangent *= 0.3
+## True when the drop at `pos` needs a channel (the mode sets one) and is still there.
+func _channel_needed(pos: Vector2) -> bool:
+	for pk: PvpPickup in _arena._pickups.values():
+		if pk.global_position.distance_to(pos) < 1.0:
+			return pk.channel_time > 0.0
+	return false
+
+## The tactical layer: walk to the spot BotTactics picked (Monte Carlo position search, re-planned every PLAN_EVERY),
+## strafe a little once there, and keep the hero's own habits: a melee bot dashes in on a target with no dash left,
+## an Assassin peels away between bursts.
+func _tactical(me: Vector2, tpos: Vector2, dist: float, foes: Array[Player], hp_frac: float) -> Vector2:
+	if _p.hero.archetype == "Assassin" and _target and not _bursting and dist < 220.0:
+		return _flank(me, tpos, dist, _dir(me, tpos))   # hit and run
+	if _target and dist > engage_range(_p.hero):   # far away: just go and get them (the planner is for the fight itself)
+		_spot = Vector2.INF
+		return _go(me, tpos)
+	if _plan_t <= 0.0 or _spot == Vector2.INF:
+		_plan_t = PLAN_EVERY * randf_range(0.8, 1.2)
+		_spot = BotTactics.best(_map, tactics_ctx(me, foes, hp_frac), _rng, _spot)
 	if _target and _target.dash_charges == 0 and _p.dash_charges > 1 and _p.hero.attack_type == "melee" and dist > 220.0 and dist < 420.0:
-		_try_dash(to, 0.5)   # close the gap
-	return to * radial + tangent
+		_try_dash(_dir(me, tpos), 0.5)   # close the gap
+	if me.distance_to(_spot) < 30.0:   # arrived: a little strafe, never a still target
+		return _dir(me, tpos).orthogonal() * _orbit * 0.4 if _target else Vector2.ZERO
+	return _go(me, _spot)
+
+## What BotTactics needs to know, from this bot's point of view.
+func tactics_ctx(me: Vector2, foes: Array[Player], hp_frac: float) -> Dictionary:
+	var list: Array = []
+	for f in foes:
+		if f != _target and me.distance_to(f.global_position) > 1100.0:
+			continue   # far bystanders do not matter for where to stand; the target always does
+		list.append({"pos": f.global_position, "vel": f.velocity, "aim": f.aim_dir, "reach": _threat_reach(f), "target": f == _target})
+	var ranged := _p.hero.attack_type == "ranged"
+	var ctx := {"me": me, "speed": _p.speed, "hp_frac": hp_frac, "ranged": ranged,
+		"ideal": _p.hero.attack_range * 0.62 if ranged else 70.0,
+		"assassin": _p.hero.archetype == "Assassin", "foes": list,
+		"objective": Vector2.INF, "objective_w": 0.0, "hold_at": Vector2.INF, "hold_r": 0.0, "fear": STATE_FEAR[state]}
+	var crown: CrownPickup = _arena.get("_crown_obj")
+	if crown != null and crown.grace <= 0.0:
+		ctx.objective = crown.global_position
+		ctx.objective_w = 2.5
+	if _holding_crown():   # the king holds the centre: away from foes, off the moat's edge
+		ctx.hold_at = _map.spawn_point
+		ctx.hold_r = _map.hold_radius()
+	return ctx
+
+## Beyond this distance from its target a bot walks straight at it (on the nav route) instead of planning a spot:
+## a ranged hero's reach plus a margin, a melee hero's a fixed approach ring.
+static func engage_range(hero: Hero) -> float:
+	if hero == null:
+		return 500.0
+	return hero.attack_range + 250.0 if hero.attack_type == "ranged" else 450.0
+
+## How far a foe can hurt from: melee its reach plus a step, ranged its range (capped).
+func _threat_reach(f: Player) -> float:
+	if f.hero == null:
+		return 150.0
+	return f.hero.attack_range + 60.0 if f.hero.attack_type == "melee" else minf(f.hero.attack_range, 600.0)
+
+## The state machine, as a pure function so it can be tested. Urgent states (Potato, Hold, Retreat) switch at once;
+## the rest wait MIN_STATE_TIME. Retreat lasts until HP is back over RECOVER_HP or nobody is near (hysteresis).
+## facts: has_bomb, holding_crown, has_target, hp_frac, target_dist, objective (a crown / pickup worth going for).
+static func next_state(cur: int, time_in: float, facts: Dictionary) -> int:
+	if facts.get("has_bomb", false):
+		return State.POTATO
+	if facts.get("holding_crown", false):
+		return State.HOLD
+	var hp: float = facts.get("hp_frac", 1.0)
+	var near: bool = facts.get("has_target", false) and float(facts.get("target_dist", INF)) < 400.0
+	if cur == State.RETREAT and hp < RECOVER_HP and facts.get("has_target", false) and float(facts.get("target_dist", INF)) < 600.0:
+		return State.RETREAT   # keep backing off until healthier or clear
+	if hp < RETREAT_HP and near:
+		return State.RETREAT
+	var want := State.ROAM
+	if facts.get("objective", false):
+		want = State.OBJECTIVE
+	elif facts.get("has_target", false):
+		want = State.ENGAGE
+	if want != cur and time_in < MIN_STATE_TIME and cur != State.POTATO and cur != State.HOLD and cur != State.RETREAT:
+		return cur   # not urgent: finish what we started
+	return want
+
+func _set_state(s: int) -> void:
+	if s != state:
+		state = s as State
+		_state_t = 0.0
+		_spot = Vector2.INF   # a new job: plan afresh
+
+func state_name() -> String:
+	return STATE_NAMES[state]
+
+## The nearest heal drop, or INF.
+func _heal_pickup(me: Vector2) -> Vector2:
+	var best := Vector2.INF
+	for pk: PvpPickup in _arena._pickups.values():
+		if pk.kind == "heal" and (best == Vector2.INF or me.distance_to(pk.global_position) < me.distance_to(best)):
+			best = pk.global_position
+	return best
+
+## Where the nearest living foe is, however far (Roam goes there), or INF.
+func _nearest_any(me: Vector2) -> Vector2:
+	var best := Vector2.INF
+	for n in _p.get_tree().get_nodes_in_group("players"):
+		var f := n as Player
+		if f and f != _p and not f.down and not f.veiled() and not (_p.team >= 0 and f.team == _p.team):
+			if best == Vector2.INF or me.distance_to(f.global_position) < me.distance_to(best):
+				best = f.global_position
+	return best
+
+func _holding_crown() -> bool:
+	return _p.crowned and _arena.get("_cm") == true
 
 ## The rogue: slip round to the target's back and stab, then peel away between bursts instead of trading blows.
 func _flank(me: Vector2, tpos: Vector2, dist: float, to: Vector2) -> Vector2:
@@ -194,7 +352,7 @@ func _flank(me: Vector2, tpos: Vector2, dist: float, to: Vector2) -> Vector2:
 	var back := tpos - _target.aim_dir * 55.0
 	if dist < 130.0:   # close already: swing round behind rather than straight in
 		return _dir(me, back) * 0.8 + to.orthogonal() * _orbit * 0.35 * (1.0 if _target.aim_dir.dot(to) > 0.0 else 0.0)
-	return _dir(me, back)
+	return _go(me, back)
 
 func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 	for i in held.size():
@@ -204,7 +362,11 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 	if _target == null or _p.buffed("chicken") or _p.has_bomb or edge.length() > 0.6:
 		return
 	var los := _los_clear(aim_from, tpos)
-	for i: int in [1, 0]:   # the signature first, then the basic
+	var ult := _p.ult_ready() and _p.spells[Player.ULT_SLOT].worth_casting(_p, tpos)
+	if ult:   # a charged ult with somebody in reach always goes first
+		held[Player.ULT_SLOT] = true
+		_aim_goal = _aim_for(_p.spells[Player.ULT_SLOT], aim_from, tpos)
+	for i: int in ([] if ult else [1, 0]):   # the signature first, then the basic
 		if i >= _p.spells.size():
 			continue
 		var s: Spell = _p.spell_in(i)   # a Friendslop weapon, when one is held
@@ -236,13 +398,41 @@ func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
 		return dist < hb.bolt_speed * hb.bolt_life * 0.92 and los
 	if s is EmberField:
 		return dist < EmberField.MAX_RANGE - 20.0 and (dist > 70.0 or _p.hp < _p.max_hp)
+	if s is ChainLightning:
+		return dist < ChainLightning.RANGE - 10.0
+	if s is Purification:   # heal and burn: when hurt with someone close, or to finish a brawl
+		return dist < Purification.RADIUS - 10.0 and _p.hp < _p.max_hp * 0.85
+	if s is Riposte:   # brace when a foe is in its own striking distance
+		return dist < 170.0
+	if s is BallLightning:   # zip in to start, or out when hurt (the move goal already points away then)
+		return (dist > 180.0 and dist < BallLightning.RANGE) or (_p.hp < _p.max_hp * 0.35 and dist < 200.0)
+	if s is Tumble:   # roll when something is close: the empowered shot follows
+		return dist < 260.0
+	if s is DaggerThrow:
+		return dist < s.range_px - 20.0 and los
+	if s is HammerThrow:   # in its lane, out or back
+		return dist < s.range_px - 10.0
+	if s is FanOfKnives:   # point blank most knives land on one foe
+		return dist < 260.0 and los
+	if s is StiflingDagger:   # throw it at a runner, then close in
+		return dist > 120.0 and dist < StiflingDagger.RANGE - 20.0 and los
+	if s is LightningBolt:
+		return dist < LightningBolt.MAX_RANGE - 20.0
+	if s is ArrowRain:   # the Scout's RMB
+		return dist < ArrowRain.MAX_RANGE - 20.0
 	if s is SnipeShot:
 		return dist > 260.0 and dist < 1000.0 and los
+	if s is PowerShot:
+		return dist > 180.0 and dist < PowerShot.reach_at(1.0) - 80.0 and los
 	if s is ShieldCharge:
 		# close the gap and stun, or (better) pin a foe that stands with a rock behind it
 		return dist > 110.0 and dist < (330.0 if _backed_by_edge(tpos, _dir(_p.global_position, tpos)) else 215.0) and los
 	if s is ShadowStep:
 		return dist > 170.0 and dist < ShadowStep.MAX_RANGE - 30.0
+	if s is ShadowRush:
+		# rush through a foe that is looking at us: we land at its frozen back. Facing away already: just walk up and stab
+		var facing_us := _target != null and tpos != Vector2.INF and _target.aim_dir.dot(_dir(tpos, _p.global_position)) > 0.3
+		return dist > 120.0 and dist < ShadowRush.RANGE - 20.0 and (facing_us or skill < 0.5)
 	return false
 
 ## Water or a rock within a launch's reach behind `pos`, seen from `dir`.
@@ -276,10 +466,28 @@ func _aim_for(s: Spell, from: Vector2, tpos: Vector2) -> Vector2:
 	var vel := _target.velocity if skill > 0.35 else Vector2.ZERO
 	if s is EmberField:
 		return tpos + (vel * 0.6).limit_length(170.0)   # lands after the 0.6s telegraph
+	if s is Meteor:
+		return tpos + (vel * Meteor.DELAY * 0.6).limit_length(Meteor.RADIUS * 0.8)   # half-lead: they will try to walk out
 	if s is SnipeShot:
 		return tpos + (vel * (SnipeShot.CHARGE + 0.1)).limit_length(300.0)   # the line is locked when the charge starts
-	if s is ShadowStep:
+	if s is PowerShot:
+		return lead(from, tpos, vel, PowerShot.speed_at(1.0))   # re-aimed every think while drawing: it tracks to the release
+	if s is ArrowRain:
+		return tpos + (vel * ArrowRain.DELAY).limit_length(120.0)
+	if s is LightningBolt:
+		return tpos + (vel * LightningBolt.DELAY).limit_length(120.0)
+	if s is DaggerThrow:
+		return lead(from, tpos, vel, DaggerThrow.SPEED)
+	if s is HammerThrow:
+		return lead(from, tpos, vel, HammerThrow.OUT_SPEED)
+	if s is FanOfKnives:
+		return lead(from, tpos, vel, FanOfKnives.SPEED)
+	if s is ShadowStep or s is ShadowRush:
 		return tpos
+	if s is Tumble:   # roll away from the threat; the empowered shot goes back at it
+		return from + (from - tpos).normalized() * Tumble.ROLL
+	if s is BallLightning and _p.hp < _p.max_hp * 0.35:
+		return from + (from - tpos).normalized() * BallLightning.RANGE   # hurt: it is the escape
 	var speed := Hook.SPEED if s is Hook else 0.0
 	if s is FsWeapon:
 		speed = s.lead_speed
@@ -306,7 +514,7 @@ func _pick_target(foes: Array[Player], me: Vector2) -> void:
 	for f in foes:
 		if f.has_bomb:
 			continue   # never chase the potato carrier: stay clear and let someone else eat it
-		var d := me.distance_to(f.global_position)
+		var d := _route_dist(me, f.global_position)
 		var s := 900.0 / (d + 120.0) + (1.0 - float(f.hp) / maxf(f.max_hp, 1.0)) * 3.0
 		if f.crowned:
 			s += 2.5   # a bounty
@@ -319,11 +527,21 @@ func _pick_target(foes: Array[Player], me: Vector2) -> void:
 			best = f
 	_target = best
 
+## How far `pos` really is: the walking route on the Colosseum (a foe just across the moat is a long way round), but
+## never more than a dash shortcut would make it; straight elsewhere. Asked for the few foes, every retarget.
+func _route_dist(me: Vector2, pos: Vector2) -> float:
+	var straight := me.distance_to(pos)
+	if _map.nav == null or _map.nav_clear(me, pos):
+		return straight
+	if _p.dash_charges > 0 and _map.dash_shortcut(me, pos, DASH_SPEED_PX - 20.0) != Vector2.ZERO:
+		return straight + 60.0
+	return minf(_map.nav_length(me, pos), straight * 3.0)
+
 func _foes() -> Array[Player]:
 	var out: Array[Player] = []
 	for n in _p.get_tree().get_nodes_in_group("players"):
 		var f := n as Player
-		if f and f != _p and not f.down and not (_p.team >= 0 and f.team == _p.team):
+		if f and f != _p and not f.down and not f.veiled() and not (_p.team >= 0 and f.team == _p.team):   # a veiled Rogue is unseen
 			out.append(f)
 	return out
 
@@ -341,6 +559,9 @@ func _best_pickup(me: Vector2, hp_frac: float) -> Dictionary:
 	var best := {"pos": Vector2.INF, "score": 0.0}
 	if _p.has_bomb or _p.buffed("chicken"):
 		return best
+	var crown: CrownPickup = _arena.get("_crown_obj")   # Crown mode: a free crown is the objective, worth more than any drop
+	if crown != null and crown.grace <= 0.0:
+		best = {"pos": crown.global_position, "score": 2.0 * 600.0 / (me.distance_to(crown.global_position) + 200.0)}
 	for pk: PvpPickup in _arena._pickups.values():
 		var value: float = PICKUP_VALUE.get(pk.kind, 0.0)
 		if PvpPickup.is_weapon(pk.kind):
@@ -440,7 +661,7 @@ func _knock_line(me: Vector2, foes: Array[Player]) -> Vector2:
 			continue
 		for reach in [220.0, 360.0, 500.0]:
 			if _map.is_water(feet + away * reach):
-				push += _dir(me, _map.spawn_point) * (1.0 - d / 700.0)   # toward the middle, harder the closer the foe
+				push -= away * (1.0 - d / 700.0)   # step toward the hitter: a longer run of ground behind us, harder the closer it is
 				break
 	return push
 
@@ -453,7 +674,7 @@ func _around_cover(dir: Vector2, me: Vector2) -> Vector2:
 		if along <= 0.0 or along > 230.0:
 			continue
 		var perp := rel - dir * along
-		if perp.length() < WorldMap.COVER_R + 36.0:
+		if perp.length() < _map.cover_r + 36.0:
 			var away := -perp.normalized() if perp.length() > 1.0 else dir.orthogonal()
 			dir = (dir + away * 1.4).normalized()
 	return dir
@@ -463,9 +684,20 @@ func _los_clear(a: Vector2, b: Vector2) -> bool:
 	var len2 := maxf(ab.length_squared(), 1.0)
 	for c in _map.cover:
 		var t := clampf((c - a).dot(ab) / len2, 0.0, 1.0)
-		if (a + ab * t).distance_to(c) < WorldMap.COVER_R + 10.0:
+		if (a + ab * t).distance_to(c) < _map.cover_r + 10.0:
 			return false
 	return true
+
+## Which way to walk to `goal`: round water, rails and braziers on maps with a nav grid (WorldMap.nav_step), straight elsewhere.
+func _go(me: Vector2, goal: Vector2) -> Vector2:
+	_last_goal = goal
+	if _hop_t <= 0.0 and _p.dash_charges > 1 and _dash_cd <= 0.0:   # a rail, a brazier or the moat in the way: dash through
+		_hop_t = 0.4
+		var hop := _map.dash_shortcut(me, goal, DASH_SPEED_PX - 20.0)
+		if hop != Vector2.ZERO:
+			_try_dash(hop, 0.9)
+			return hop
+	return _map.nav_step(me, goal)
 
 func _dir(from: Vector2, to: Vector2) -> Vector2:
 	return (to - from).normalized()
@@ -473,8 +705,9 @@ func _dir(from: Vector2, to: Vector2) -> Vector2:
 ## Every frame: don't drown. A slide toward the water gets a dash back, and so does standing in it.
 func _safety(_delta: float) -> void:
 	var feet := _p.global_position + Vector2(0, 14)
-	var centre := _map.spawn_point
-	var to_centre := _dir(feet, centre)
+	var to_centre := _map.dry_dir(feet)   # the nearest dry ground (on the island that was the middle; in the Colosseum it is not)
+	if to_centre == Vector2.ZERO:
+		to_centre = _dir(feet, _map.spawn_point)
 	var slide_end := feet + _p.knock.normalized() * (_p.knock.length_squared() / (2.0 * Player.KNOCK_DECEL)) if _p.knock.length() > 150.0 else feet
 	var danger := _map.is_water(feet) or _map.is_water(slide_end) or _map.is_water(feet + _p.velocity * 0.25)
 	if not danger:

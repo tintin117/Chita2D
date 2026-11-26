@@ -17,9 +17,11 @@ class Board extends Control:
 		if arena._time_left != INF:
 			var t := int(ceil(arena._time_left))
 			clock = "%d:%02d" % [t / 60, t % 60]
-		var mode := "Friendslop" if arena._fs else "Classic"
+		var mode := GameMode.title(Net.mode)
 		var limit: int = Net.settings.kill_limit
 		var info := "First to %d" % limit if limit > 0 else "No kill limit"
+		if arena._cm:
+			info = "First to %d pts" % int(arena._cfg.score_limit)
 		var clock_box := Rect2(roundf((viewport_width - 296) * 0.5), 16, 296, 52)
 		ArenaUi.panel(self, clock_box)
 		_text(clock_box.position + Vector2(15, 30), mode, ArenaUi.MUTED, 15, 78)
@@ -30,25 +32,46 @@ class Board extends Control:
 			_text(clock_box.position + Vector2(183, 36), info, ArenaUi.MUTED, 12, 96, HORIZONTAL_ALIGNMENT_RIGHT)
 		else:
 			_text(clock_box.position + Vector2(183, 30), info, ArenaUi.MUTED, 15, 96, HORIZONTAL_ALIGNMENT_RIGHT)
-		_draw_buffs(clock_box)
+		var below := _draw_event_chip(clock_box)
+		_draw_buffs(clock_box, below)
 		_draw_scores(viewport_width)
 
-	func _draw_buffs(clock_box: Rect2) -> void:
+	## The match event, pinned under the clock for the whole match (docs §6.5). Returns where the next strip may start.
+	func _draw_event_chip(clock_box: Rect2) -> float:
+		var ev: String = MatchEvent.current
+		if ev == MatchEvent.NONE:
+			return clock_box.end.y + 1.0
+		var col := MatchEvent.color(ev)
+		var box := Rect2(clock_box.position + Vector2(0, 53), Vector2(clock_box.size.x, 26))
+		draw_rect(box, ArenaUi.SHADE)
+		draw_rect(Rect2(box.position, Vector2(5, box.size.y)), col)
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.004)
+		draw_rect(Rect2(box.position + Vector2(14, 8), Vector2(10, 10)), Color(col, 0.6 + 0.4 * pulse))
+		_text(box.position + Vector2(32, 19), MatchEvent.title(ev).to_upper(), col, 14, box.size.x - 40)
+		return box.end.y + 1.0
+
+	func _draw_buffs(clock_box: Rect2, top: float) -> void:
 		var me: Player = arena._players.get(Net.local_id())
 		if not me:
 			return
 		var buffs: PackedStringArray = []
-		for kind in ["damage", "speed", "giant", "chicken"]:
+		for kind in Player.TIMED_BUFFS:
 			if me.buffed(kind):
-				buffs.append("%s %ds" % [PvpPickup.LABELS[kind], ceili(me.buff_left(kind))])
+				var label: String = PvpPickup.LABELS[kind]
+				if kind == "shield":
+					label = "Shield %d" % me.shield_hp
+				buffs.append("%s %ds" % [label, ceili(me.buff_left(kind))])
 		if not buffs.is_empty():
-			var box := Rect2(clock_box.position + Vector2(0, 53), Vector2(clock_box.size.x, 30))
+			var box := Rect2(Vector2(clock_box.position.x, top), Vector2(clock_box.size.x, 30))
 			draw_rect(box, ArenaUi.SHADE)
 			_text(box.position + Vector2(5, 21), "  /  ".join(buffs), ArenaUi.GOLD, 16, box.size.x - 10, HORIZONTAL_ALIGNMENT_CENTER)
 
 	func _draw_scores(viewport_width: float) -> void:
 		var ids: Array = arena._players.keys()
+		var crown_mode: bool = arena._cm
 		ids.sort_custom(func(a: int, b: int) -> bool:
+			if crown_mode and int(arena._score[a]) != int(arena._score[b]):
+				return arena._score[a] > arena._score[b]
 			if arena._kills[a] != arena._kills[b]:
 				return arena._kills[a] > arena._kills[b]
 			if arena._deaths[a] != arena._deaths[b]:
@@ -57,8 +80,8 @@ class Board extends Control:
 		var box := Rect2(viewport_width - WIDTH - 16, 16, WIDTH, 46 + ids.size() * 26)
 		ArenaUi.panel(self, box)
 		draw_string(ArenaUi.DISPLAY, box.position + Vector2(16, 27), "Standings", HORIZONTAL_ALIGNMENT_LEFT, 140, 19, ArenaUi.INK)
-		_text(box.position + Vector2(164, 28), "KILLS", ArenaUi.MUTED, 12, 30, HORIZONTAL_ALIGNMENT_CENTER)
-		_text(box.position + Vector2(199, 28), "DEATHS", ArenaUi.MUTED, 12, 40, HORIZONTAL_ALIGNMENT_CENTER)
+		_text(box.position + Vector2(164, 28), "PTS" if crown_mode else "KILLS", ArenaUi.MUTED, 12, 30, HORIZONTAL_ALIGNMENT_CENTER)
+		_text(box.position + Vector2(199, 28), "KILLS" if crown_mode else "DEATHS", ArenaUi.MUTED, 12, 40, HORIZONTAL_ALIGNMENT_CENTER)
 		draw_line(box.position + Vector2(15, 36), box.position + Vector2(WIDTH - 15, 36), ArenaUi.EDGE)
 		for i in ids.size():
 			var id: int = ids[i]
@@ -73,8 +96,12 @@ class Board extends Control:
 				draw_texture_rect(ArenaUi.CROWN, Rect2(origin + Vector2(135, 4), Vector2(16, 16)), false)
 				name_width -= 8
 			_text(origin + Vector2(16, 17), p.display_name, ArenaUi.INK, 16, name_width)
-			_text(origin + Vector2(149, 17), str(arena._kills[id]), ArenaUi.MOSS, 18, 30, HORIZONTAL_ALIGNMENT_CENTER)
-			_text(origin + Vector2(184, 17), str(arena._deaths[id]), ArenaUi.MUTED, 16, 40, HORIZONTAL_ALIGNMENT_CENTER)
+			if crown_mode:
+				_text(origin + Vector2(149, 17), str(int(arena._score[id])), ArenaUi.GOLD if id == arena._crown else ArenaUi.MOSS, 18, 30, HORIZONTAL_ALIGNMENT_CENTER)
+				_text(origin + Vector2(184, 17), str(arena._kills[id]), ArenaUi.MUTED, 16, 40, HORIZONTAL_ALIGNMENT_CENTER)
+			else:
+				_text(origin + Vector2(149, 17), str(arena._kills[id]), ArenaUi.MOSS, 18, 30, HORIZONTAL_ALIGNMENT_CENTER)
+				_text(origin + Vector2(184, 17), str(arena._deaths[id]), ArenaUi.MUTED, 16, 40, HORIZONTAL_ALIGNMENT_CENTER)
 
 	func _text(at: Vector2, text: String, color: Color, px: int, width: float, align := HORIZONTAL_ALIGNMENT_LEFT) -> void:
 		draw_string(ArenaUi.BODY, at, text, align, width, px, color)
@@ -108,6 +135,41 @@ class KillFeed extends Control:
 			draw_rect(Rect2(at, Vector2(2, 30)), Color(line.color, alpha))
 			draw_texture_rect(ArenaUi.SWORDS, Rect2(at + Vector2(10, 7), Vector2(16, 16)), false, Color(1, 1, 1, alpha))
 			draw_string(ArenaUi.BODY, at + Vector2(34, 21), line.text, HORIZONTAL_ALIGNMENT_LEFT, width - 43, 16, Color(ArenaUi.INK, alpha))
+
+## The FIGHT card for the match event (docs §6.5): name + one line under the centre banner, in the event's colour,
+## SHOW seconds then a fade. Players pick a plan before the first drop.
+class EventCard extends Control:
+	const SHOW := 3.5
+	const FADE := 0.6
+	var _event := MatchEvent.NONE
+	var _age := INF
+
+	func _ready() -> void:
+		set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+		mouse_filter = MOUSE_FILTER_IGNORE
+
+	func show_event(id: String) -> void:
+		_event = id
+		_age = 0.0
+
+	func _process(delta: float) -> void:
+		if _age < SHOW + FADE:
+			_age += delta
+			queue_redraw()
+
+	func _draw() -> void:
+		if _event == MatchEvent.NONE or _age >= SHOW + FADE:
+			return
+		var alpha := 1.0 if _age < SHOW else 1.0 - (_age - SHOW) / FADE
+		var pop := clampf(_age / 0.25, 0.0, 1.0)   # slides up into place
+		var col := MatchEvent.color(_event)
+		var view := get_viewport_rect().size
+		var box := Rect2(Vector2(roundf((view.x - 520) * 0.5), view.y * 0.5 + 60.0 + (1.0 - pop) * 30.0), Vector2(520, 86))
+		draw_rect(box, Color(ArenaUi.SHADE, 0.94 * alpha))
+		draw_rect(Rect2(box.position, Vector2(6, box.size.y)), Color(col, alpha))
+		draw_rect(Rect2(box.position + Vector2(0, box.size.y - 2), Vector2(box.size.x, 2)), Color(col, 0.5 * alpha))
+		draw_string(ArenaUi.DISPLAY, box.position + Vector2(24, 36), "EVENT:  " + MatchEvent.title(_event).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 40, 26, Color(col, alpha))
+		draw_string(ArenaUi.BODY, box.position + Vector2(24, 66), MatchEvent.cfg(_event).blurb, HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 40, 16, Color(ArenaUi.INK, alpha))
 
 class Results extends Control:
 	var title := ""

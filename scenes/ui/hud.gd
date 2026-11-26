@@ -1,7 +1,7 @@
 class_name Hud extends CanvasLayer
-## Creates one HeroPanel per player (HP, gear, dash pips, the two skill slots) and the boss bar.
+## Creates one HeroPanel per player (HP, gear, dash pips, the kit: LMB / RMB / passive / ult) and the boss bar.
 
-const HINTS := [["LMB", "RMB"], ["RT", "B"]]
+const HINTS := [["LMB", "RMB", "F"], ["RT", "B", "Y"]]
 
 var with_sheet := true   ## the Tab character sheet pauses the tree, so online matches turn it off
 var online := false      ## one local player: always the P1 hints, bottom-left

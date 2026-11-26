@@ -1,10 +1,21 @@
 class_name Dummy extends StaticBody2D
 ## Training dummy for the gym: takes any hit, never dies, shows floating damage and a rolling DPS readout.
+## It also has a facing (aim_dir, drawn as an arrow) so backstabs, Shadow Rush and Bulwark-style checks can be tried,
+## slides when knocked back (then walks home), and shows STUNNED / FROZEN when a hold lands.
 
 const WINDOW := 3.0   ## seconds of hits the DPS number averages over
 
 var down := false     ## Spell.foes / Projectile read this off every target
-var knock := Vector2.ZERO   ## ShieldCharge shoves via this; a dummy ignores it
+var knock := Vector2.ZERO   ## shoves (Spell.shove) land here: the dummy slides, then walks back to `home`
+var aim_dir := Vector2.LEFT ## its facing: hits from the other side are backstabs
+var home := Vector2.INF
+var burn := 0               ## Kindling stacks, ticked like a player's so the gym shows the burn adding up
+var _burn_by: Node = null
+var _burn_tick := 0.0
+var _burn_decay := 0.0
+var _burning := false
+var _status := ""
+var _status_left := 0.0
 var _hits: Array[Vector2] = []   ## (time, damage)
 var _label: Label
 
@@ -28,6 +39,39 @@ func _ready() -> void:
 	_label.z_index = 50
 	add_child(_label)
 
+func _physics_process(delta: float) -> void:
+	if home == Vector2.INF:
+		home = position
+	if knock.length() > 1.0:
+		position += knock * delta
+		knock = knock.move_toward(Vector2.ZERO, Player.KNOCK_DECEL * delta)
+	elif position.distance_to(home) > 2.0:
+		position = position.move_toward(home, 220.0 * delta)
+	_status_left = maxf(_status_left - delta, 0.0)
+	if burn > 0:
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick += Player.BURN_TICK
+			_burning = true
+			take_damage(burn, global_position, true, _burn_by if is_instance_valid(_burn_by) else null)
+			_burning = false
+		_burn_decay -= delta
+		if _burn_decay <= 0.0:
+			_burn_decay += Player.BURN_DECAY
+			burn -= 1
+	queue_redraw()
+
+## Holds do nothing to a dummy but say so, so the gym shows which hits stun or freeze.
+func stun(secs: float) -> void:
+	_show_status("STUNNED %.1fs" % secs, secs)
+
+func freeze(secs: float) -> void:
+	_show_status("FROZEN %.1fs" % secs, secs)
+
+func _show_status(text: String, secs: float) -> void:
+	_status = text
+	_status_left = secs
+
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	while not _hits.is_empty() and now - _hits[0].x > WINDOW:
@@ -36,8 +80,17 @@ func _process(_delta: float) -> void:
 	for h in _hits:
 		total += h.y
 	_label.text = "DPS %d" % roundi(total / WINDOW)
+	if _status_left > 0.0:
+		_label.text += "   " + _status
+	if burn > 0:
+		_label.text += "   BURN %d" % burn
 
 func _draw() -> void:
+	var f := aim_dir.normalized() * 40.0 + Vector2(0, 14)   # facing arrow on the ground: its front
+	draw_line(Vector2(0, 14), f, Color(0.4, 0.8, 1.0, 0.8), 3.0)
+	draw_colored_polygon(PackedVector2Array([f + aim_dir.normalized() * 12.0, f + aim_dir.orthogonal() * 8.0, f - aim_dir.orthogonal() * 8.0]), Color(0.4, 0.8, 1.0, 0.8))
+	if _status_left > 0.0:
+		draw_arc(Vector2(0, 14), 30.0, 0.0, TAU, 24, Color(0.55, 0.85, 1.0) if _status.begins_with("FROZEN") else Color(1.0, 0.95, 0.4), 3.0)
 	draw_rect(Rect2(-6, -34, 12, 50), Color(0.45, 0.3, 0.18))        # post
 	draw_rect(Rect2(-26, -22, 52, 9), Color(0.55, 0.38, 0.22))       # arm
 	draw_circle(Vector2(0, -46), 15, Color(0.85, 0.7, 0.42))         # straw head
@@ -48,6 +101,14 @@ func _draw() -> void:
 
 func take_damage(amount: int, _from_pos: Vector2, silent := false, _attacker: Node = null) -> bool:
 	_hits.append(Vector2(Time.get_ticks_msec() / 1000.0, amount))
+	if _attacker is Player and _attacker.owns():
+		_attacker.on_hit_landed(amount)   # the gym is where an ult (and lifesteal) gets tried out
+	if _attacker is Player and _attacker.hero and _attacker.hero.kindling and not _burning:
+		if burn == 0:
+			_burn_tick = Player.BURN_TICK
+			_burn_decay = Player.BURN_DECAY
+		burn = mini(burn + 1, Player.BURN_MAX)
+		_burn_by = _attacker
 	if not silent:
 		Player.hit_fx(self, amount, true)   # the gym is where the hit feel gets tuned
 	var l := Label.new()
