@@ -3,8 +3,10 @@ extends Node2D
 ## Three dummies: one facing you (front), one facing away (its back is yours: backstabs), one off to the side so line
 ## and area skills (Shadow Rush, Arrow Rain, Meteor) catch more than one. Dummies slide when knocked back and say when
 ## a stun or freeze lands. The side panel (GymPanel) swaps heroes and holds the tools and settings. Keys: Tab /
-## Shift+Tab swap hero, U fills the ult, R resets the dummies and cooldowns, Esc shows / hides the panel.
+## Shift+Tab swap hero, R resets the dummies and cooldowns and fills the ult, Esc shows / hides the panel.
+## Free spells (panel toggle): the skill is ready again after FREE_CD and the ult is always full. The basic keeps its pace.
 
+const FREE_CD := 0.4   ## not 0: a button held for a few frames would cast once per frame
 const DUMMY_SPOTS := [[Vector2(60, 0), Vector2.LEFT], [Vector2(260, -150), Vector2.RIGHT], [Vector2(230, 170), Vector2.UP]]
 
 var _map: WorldMap
@@ -14,6 +16,7 @@ var _cam: GameCamera
 var _dummies: Array[Dummy] = []
 var _hero_i := 0
 var _panel: GymPanel
+var _free_spells := false
 
 func _ready() -> void:
 	_map = WorldMap.new()
@@ -44,7 +47,7 @@ func _ready() -> void:
 	ui.add_child(hint)
 	_panel = GymPanel.new()
 	_panel.hero_picked.connect(_swap_hero)
-	_panel.fill_ult.connect(_fill_ult)
+	_panel.free_spells.connect(func(on: bool) -> void: _free_spells = on)
 	_panel.reset.connect(_reset)
 	_panel.quit.connect(func() -> void: get_tree().change_scene_to_file(Net.MENU_SCENE))
 	ui.add_child(_panel)
@@ -54,6 +57,13 @@ func _ready() -> void:
 ## A mouse button over the panel is a click on it, not an attack.
 func _physics_process(_delta: float) -> void:
 	_player.pointer_on_ui = _panel.get_global_rect().has_point(_panel.get_global_mouse_position())
+	if _free_spells:
+		_apply_free_spells()
+
+func _apply_free_spells() -> void:
+	for i in range(1, _player.cooldowns.size()):
+		_player.cooldowns[i] = minf(_player.cooldowns[i], FREE_CD)
+	_player.ult_charge = _player.hero.ult_cost
 
 ## (Re)builds the hero at `pos` with Hero.all()[_hero_i], and its HUD.
 func _spawn_hero(pos: Vector2) -> void:
@@ -79,10 +89,6 @@ func _swap_hero(i: int) -> void:
 	_spawn_hero(_player.global_position)
 	_panel.show_hero(i)
 
-func _fill_ult() -> void:
-	_player.ult_charge = _player.hero.ult_cost
-	_player.float_text("ULT FILLED", Color(0.85, 0.5, 1.0), 20)
-
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
@@ -96,9 +102,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			var n := Hero.all().size()
 			_swap_hero((_hero_i + (n - 1 if key.shift_pressed else 1)) % n)
 			get_viewport().set_input_as_handled()
-		KEY_U:
-			_fill_ult()
-			get_viewport().set_input_as_handled()
 		KEY_R:
 			_reset()
 			get_viewport().set_input_as_handled()
@@ -111,5 +114,6 @@ func _reset() -> void:
 	for i in _player.cooldowns.size():
 		_player.cooldowns[i] = 0.0
 	_player.dash_charges = Player.MAX_DASH
+	_player.ult_charge = _player.hero.ult_cost
 	_player.heal(_player.max_hp)
 	_player.float_text("RESET", Color(0.8, 0.9, 1.0), 20)

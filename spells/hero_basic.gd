@@ -24,7 +24,7 @@ const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 p
 @export var combo := true            ## false: no finisher, every cast is the same
 @export var splash := 0.0            ## bolt: > 0 = an orb that bursts in this radius at the cursor or on the first thing it touches
 @export var fx_color := Color(1.0, 0.5, 0.15)   ## sweep / orb colour, so each hero's basic reads apart
-@export var arrow_tex := ""          ## bolt: arrow sprite ("" = the default spell sprite)
+@export var arrow_tex := ""          ## bolt: arrow frame folder ("" = the default spell sprite)
 @export var might := 0.0             ## + this x the caster's current HP as damage (Paladin Holy Might)
 @export var focus_hits := 0          ## the Nth hit in a row on one target crits (Shade Focus); 0 = off
 @export var crit_mult := 2.5

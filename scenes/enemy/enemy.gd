@@ -4,7 +4,7 @@ class_name Enemy extends CharacterBody2D
 signal died(enemy: Enemy)
 
 const UNITS := "res://assets/isometric_character/%s/%s"
-const ARROW := "res://assets/isometric_projecttile/Arrows/Arrow/0015.png"
+const ARROW := "res://assets/isometric_projecttile/Arrows/Arrow/"
 
 @export_enum("grunt", "archer", "lancer", "boss") var kind := "grunt"
 var hp_mult := 1.0       ## set by the spawner (scales with player count)

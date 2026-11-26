@@ -103,6 +103,18 @@ func test_dummy_is_hittable_and_never_down() -> void:
 	assert_false(d.down)
 	assert_true(d.has_method("take_damage"))
 
+func test_projectile_frames_play_once_then_loop() -> void:
+	for folder: String in Projectile.LOOP_FROM:
+		var kind := "Arrows" if folder.ends_with("Arrow") else "Spells"
+		var f := SheetFrames.seq(SheetFrames.FX + kind + "/" + folder + "/")
+		assert_eq(f.get_frame_count("fx"), 15, folder + " has frames 0001..0029")
+	assert_eq(Projectile.frame_at(0.0, 15, 5), 0, "starts on the launch frame")
+	assert_eq(Projectile.frame_at(14.5 / Projectile.ANIM_FPS, 15, 5), 14, "plays through once")
+	assert_eq(Projectile.frame_at(15.5 / Projectile.ANIM_FPS, 15, 5), 5, "then skips the launch frames")
+	assert_eq(Projectile.frame_at(25.5 / Projectile.ANIM_FPS, 15, 5), 5, "and keeps looping")
+	assert_eq(Projectile.frame_at(0.0, 15, 5, 5), 5, "an arrow opens past its launch frames")
+	assert_eq(Projectile.frame_at(10.5 / Projectile.ANIM_FPS, 15, 5, 5), 5, "and loops from there")
+
 func test_pickups_spawn_central_and_clear() -> void:
 	var m := _arena()
 	var taken: Array[Vector2] = []

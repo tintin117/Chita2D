@@ -3,7 +3,7 @@ class_name GymPanel extends PanelContainer
 ## The arrow in the header (or Esc) folds it away. Nothing here takes focus, so Space and Tab stay with the hero.
 
 signal hero_picked(index: int)
-signal fill_ult
+signal free_spells(on: bool)
 signal reset
 signal quit
 
@@ -66,11 +66,16 @@ func _ready() -> void:
 		_cards.append(card)
 
 	_section("Gym")
-	var tools := HBoxContainer.new()
+	var tools := HBoxContainer.new()   # one row: the panel must end above the HUD
 	_body.add_child(tools)
-	for tool_button: Button in [ArenaUi.button("Fill ult [U]", fill_ult.emit), ArenaUi.button("Reset [R]", reset.emit)]:
-		tool_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tools.add_child(tool_button)
+	var free := ArenaUi.button("Free spells: Off", Callable())
+	free.toggle_mode = true
+	free.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	free.toggled.connect(func(on: bool) -> void:
+		free.text = "Free spells: On" if on else "Free spells: Off"
+		free_spells.emit(on))
+	tools.add_child(free)
+	tools.add_child(ArenaUi.button("Reset [R]", reset.emit))
 
 	_section("Settings")
 	MatchOverlay.add_settings(_body)

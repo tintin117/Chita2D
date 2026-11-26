@@ -54,7 +54,7 @@ const MAX_RANGE_FOR_UI := 700.0
 @export var windup := 0.1                  ## melee basic: telegraph before the swing turns live (heavier = longer)
 @export var splash := 0.0                  ## ranged basic: > 0 = an orb that bursts at the cursor in this radius (Mage)
 @export var basic_color := Color(1.0, 0.5, 0.15)   ## the basic's swing / orb colour
-@export var basic_arrow := ""              ## ranged basic: arrow sprite ("" = spell bolt)
+@export var basic_arrow := ""              ## ranged basic: arrow frame folder ("" = spell bolt)
 
 static var _all: Array[Hero] = []
 
@@ -94,7 +94,7 @@ static func all() -> Array[Hero]:
 				"archetype": "Marksman",
 				"description": "Marksman. One long fast arrow at a time, piercing a foe. Longest reach; draw a Power Shot to blow them off the island. Fragile up close.",
 				"basic_name": "Arrow", "basic_damage": 11, "max_hp": 80, "speed": 270.0, "bolt_speed": 1300.0, "bolt_pierce": 1, "finisher_spread": 0,
-				"basic_cd": 0.45, "combo": false, "basic_color": Color(0.95, 0.9, 0.75), "basic_arrow": "res://assets/isometric_projecttile/Arrows/Arrow/0015.png",
+				"basic_cd": 0.45, "combo": false, "basic_color": Color(0.95, 0.9, 0.75), "basic_arrow": "res://assets/isometric_projecttile/Arrows/Arrow/",
 				"rmb_skill": "power_shot", "rmb_text": "Hold to draw, release to fire. Aim freely while drawing. Longer draw = harder, farther, more knockback; full draw pierces.",
 				"steady_aim": true,
 				"passive_name": "Steady Aim", "passive_text": "Standing still while drawing Power Shot fills it twice as fast. Plant your feet, or kite with a slower draw.",
@@ -136,8 +136,9 @@ static func all() -> Array[Hero]:
 			_clone("ranger", {"id": "scout", "display_name": "Scout", "units": ["5CamoArcher"], "tint": Color(1.0, 0.75, 0.7),
 				"archetype": "Glass Cannon", "attack_range": 520.0,
 				"description": "Glass Cannon. The most damage and the least health in the game. Fast short arrows, a rain of arrows to zone, and a sniper ult. Never get caught.",
-				"basic_name": "Quick Shot", "basic_damage": 8, "max_hp": 60, "speed": 290.0, "bolt_speed": 1400.0, "bolt_pierce": 0,
+				"basic_name": "Quick Shot", "basic_damage": 4, "max_hp": 60, "speed": 290.0, "bolt_speed": 1400.0, "bolt_pierce": 0,   # 4 x 1.35 = 5 per hit
 				"basic_cd": 0.3, "combo": false, "basic_color": Color(1.0, 0.55, 0.5), "steady_aim": false,
+				"basic_arrow": "res://assets/isometric_projecttile/Arrows/FireArrow/",
 				"damage_dealt": 1.35, "taken_mult": 1.35,
 				"rmb_skill": "arrow_rain", "rmb_cd": 9.0,
 				"rmb_text": "Rain arrows on the cursor for 3 s: everyone inside keeps taking hits and is slowed. Leave or bleed.",

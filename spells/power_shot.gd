@@ -6,7 +6,7 @@ class_name PowerShot extends Spell
 ## on a hurt foe by the shore is a ring-out. Slowed while drawing; a stun or a dash drops the draw (no cooldown spent).
 ## Steady Aim (Ranger passive, hero.steady_aim): standing still draws twice as fast (Player.STEADY_RATE).
 
-const ARROW := "res://assets/isometric_projecttile/Arrows/FireArrow/0015.png"
+const ARROW := "res://assets/isometric_projecttile/Arrows/FireArrow/"
 const CHARGE := 1.0          ## seconds to a full draw (0.5 standing still with Steady Aim)
 const MAX_HOLD := 2.5        ## holding this long looses it anyway
 const REACH := [450.0, 1100.0]     ## [no draw, full draw] flight distance
@@ -86,8 +86,7 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	arrow.pierce = pierce_at(p)
 	arrow.shove = shove_at(p)
 	arrow.radius = 10.0 + 6.0 * p
-	arrow.tex_scale = 1.0 + 0.9 * p        # a bigger arrow for a bigger draw
-	arrow.trail = lerpf(40.0, 260.0, p)    # and a longer streak, so everyone sees which shot is the dangerous one
+	arrow.trail = lerpf(40.0, 260.0, p)    # a longer streak for a longer draw, so everyone sees which shot is dangerous
 	arrow.color = FULL if p >= 1.0 else LINE
 	arrow.impact_scale = lerpf(0.15, 0.45, p)
 	if p >= 1.0 and caster.has_method("float_text"):
