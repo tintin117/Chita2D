@@ -29,7 +29,21 @@ func _ready() -> void:
 	box.add_child(ArenaUi.heading(_title, 40))
 	if _leave.is_valid() and not pause_tree:
 		box.add_child(ArenaUi.label("The match continues while this menu is open.", 17, ArenaUi.MUTED))
+	add_settings(box)
 
+	box.add_child(HSeparator.new())
+	var actions := HBoxContainer.new()
+	box.add_child(actions)
+	if _leave.is_valid():
+		actions.add_child(ArenaUi.button("Leave match", func() -> void:
+			close()
+			_leave.call()))
+	_resume = ArenaUi.button("Resume" if _leave.is_valid() else "Back", close, true)
+	_resume.size_flags_horizontal = SIZE_EXPAND_FILL
+	actions.add_child(_resume)
+
+## Appends the volume, display and playtest controls to `box` (this menu, and the gym's side panel).
+static func add_settings(box: Container) -> void:
 	var bus := AudioServer.get_bus_index("Master")
 	var volume := HSlider.new()
 	var value := ArenaUi.label("", 18, ArenaUi.MUTED)
@@ -49,13 +63,13 @@ func _ready() -> void:
 
 	var display := ArenaUi.button("", Callable())
 	var update_display := func() -> void:
-		var mode := get_window().mode
+		var mode := (Engine.get_main_loop() as SceneTree).root.mode
 		var full := mode == Window.MODE_FULLSCREEN or mode == Window.MODE_EXCLUSIVE_FULLSCREEN
 		display.text = "Display: Fullscreen" if full else "Display: Windowed"
 	display.pressed.connect(func() -> void:
-		var mode := get_window().mode
-		var full := mode == Window.MODE_FULLSCREEN or mode == Window.MODE_EXCLUSIVE_FULLSCREEN
-		get_window().mode = Window.MODE_WINDOWED if full else Window.MODE_FULLSCREEN
+		var window := display.get_window()
+		var full := window.mode == Window.MODE_FULLSCREEN or window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN
+		window.mode = Window.MODE_WINDOWED if full else Window.MODE_FULLSCREEN
 		update_display.call())
 	update_display.call()
 	box.add_child(display)
@@ -90,17 +104,6 @@ func _ready() -> void:
 		bot_text.call())
 	bot_text.call()
 	box.add_child(bot_btn)
-
-	box.add_child(HSeparator.new())
-	var actions := HBoxContainer.new()
-	box.add_child(actions)
-	if _leave.is_valid():
-		actions.add_child(ArenaUi.button("Leave match", func() -> void:
-			close()
-			_leave.call()))
-	_resume = ArenaUi.button("Resume" if _leave.is_valid() else "Back", close, true)
-	_resume.size_flags_horizontal = SIZE_EXPAND_FILL
-	actions.add_child(_resume)
 
 func open() -> void:
 	_previous_focus = get_viewport().gui_get_focus_owner()

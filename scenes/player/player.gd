@@ -104,6 +104,7 @@ var _queued := -1          ## buffered slot index, -1 = none
 var _queued_time := 0.0
 var _puppet := false       ## online and owned by another peer: no input, position comes from net_pos
 var _mouse_aim := true     ## P1 only: aim with the mouse until a gamepad is touched, then with the right stick
+var pointer_on_ui := false ## the mouse is over a clickable panel (the gym's): its clicks are not attacks
 var _swing := false        ## alternates basic-attack animations (cast / cast2) when the hero has both
 var _iframes := 0.0
 var _stun_immune := 0.0   ## post-stun immunity left (see STUN_IMMUNITY); ticked on every peer like _stun_left
@@ -820,9 +821,13 @@ func _tick_timers(delta: float) -> void:
 func _dash_pressed() -> bool:
 	return ai.take_dash() if ai else Input.is_action_just_pressed(_p + "dash")
 
+## The mouse buttons (LMB, RMB) belong to the panel under the cursor; the ult's key still works.
+func _on_ui(slot: int) -> bool:
+	return pointer_on_ui and slot < ULT_SLOT
+
 func _held(slot: int) -> bool:
-	if slot >= spells.size():
-		return false   # a hero with no ult: F does nothing
+	if slot >= spells.size() or _on_ui(slot):
+		return false   # also a hero with no ult: F does nothing
 	return ai.held[slot] if ai else Input.is_action_pressed(_p + SLOTS[slot])
 
 func _update_aim(move: Vector2) -> void:
@@ -1330,7 +1335,7 @@ func _try_cast() -> void:
 		return   # the bow is drawn: nothing else goes out until it is loosed
 	_try_focus_fire()   # Focus Fire: the basic goes by itself; the other buttons still work
 	for i in SLOTS.size():
-		if ai == null and i < spells.size() and Input.is_action_just_pressed(_p + SLOTS[i]):
+		if ai == null and i < spells.size() and not _on_ui(i) and Input.is_action_just_pressed(_p + SLOTS[i]):
 			if i == ULT_SLOT and ult_ready() and not spells[i].can_cast(self, aim_pos):
 				float_text("Nobody in reach", Color(0.8, 0.8, 0.8), 16)   # the charge is kept
 			elif cooldowns[i] > 0.0:
