@@ -71,6 +71,13 @@ class Crack extends Node2D:
 				if e.has_method("apply_slow"):
 					e.apply_slow(FaultLine.SLOW[0], FaultLine.SLOW[1])
 
+	## Bots: step sideways off the line before it splits (zero = not on it, or already split).
+	func bot_avoid(pos: Vector2) -> Vector2:
+		if _split or not FaultLine.caught(global_position, dir, pos):
+			return Vector2.ZERO
+		var side := dir.orthogonal()
+		return side * (1.0 if (pos - global_position).dot(side) >= 0.0 else -1.0)
+
 	func _crack_points(length: float) -> PackedVector2Array:
 		var pts := PackedVector2Array([Vector2.ZERO])
 		var n := int(length / 25.0)

@@ -78,12 +78,31 @@ const RECOVER_HP := 0.5       ## ... until back above this, or nobody is near
 var state: State = State.ROAM
 var _state_t := 0.0
 
+# --- personality: each bot gets one at setup, so a solo lobby has a brawler, a careful one and a looter
+enum Mood { AGGRO, CAUTIOUS, LOOTER }
+const MOOD_NAMES := ["Aggro", "Cautious", "Looter"]
+const MOOD_FEAR := [0.7, 1.4, 1.0]        ## x BotTactics' danger weight
+const MOOD_RETREAT := [0.18, 0.45, 0.3]   ## HP fraction that sends it into Retreat
+const MOOD_LOOT := [0.7, 1.0, 1.7]        ## x how much drops and the crown are worth
+const MOOD_DASH := [1.3, 0.8, 1.0]        ## x how readily it dashes
+var mood: Mood = Mood.AGGRO
+
+# --- habits: what the bots have learned about each foe this match (shared by every bot: they compare notes).
+## peer_id -> {"shots": n, "dodged": n, "dashes": [msec, ...]}. A foe that dashes away right after being shot at gets
+## baited: the cheap basic goes first, the big skill waits until its dashes are spent.
+static var habits := {}
+const DODGE_WINDOW := 0.5     ## a dash this soon after we shot at it counts as a reaction
+const DASH_PX_S := 1000.0     ## faster than this = a dash (bots read puppets' eased velocity too)
+var _shot_at := {}            ## peer_id -> msec we last shot at it (to see whether it reacts)
+var _seen_dash := {}          ## peer_id -> msec we last saw it dash (one dash, one record)
+
 func setup(player: Player, arena: Node, level: float) -> void:
 	_p = player
 	_arena = arena
 	_map = arena._map
 	skill = clampf(level, 0.0, 1.0)
 	_sharp = skill * skill
+	mood = [Mood.AGGRO, Mood.CAUTIOUS, Mood.LOOTER][player.peer_id % 3] as Mood   # consecutive bot ids: a mix every lobby
 	_orbit = 1.0 if randf() < 0.5 else -1.0
 	_react = randf() * 0.3   # bots do not all think on the same frame
 
@@ -153,6 +172,7 @@ func think(delta: float) -> void:
 func _decide() -> void:
 	var me := _p.global_position
 	var foes := _foes()
+	_observe(foes)
 	_pick_target(foes, me)
 	var hp_frac := float(_p.hp) / maxf(_p.max_hp, 1.0)
 	var want := Vector2.ZERO
@@ -163,7 +183,7 @@ func _decide() -> void:
 	var pickup := _best_pickup(me, hp_frac)
 	var heal := _heal_pickup(me)
 	_set_state(next_state(state, _state_t, {"has_bomb": _p.has_bomb, "holding_crown": _holding_crown(),
-		"has_target": _target != null, "hp_frac": hp_frac, "target_dist": dist,
+		"has_target": _target != null, "hp_frac": hp_frac, "target_dist": dist, "retreat_hp": MOOD_RETREAT[mood],
 		"objective": pickup.pos != Vector2.INF and (_target == null or pickup.score > 1.3 or dist > 500.0)}))
 	match state:
 		State.POTATO:   # hand the hot potato to the nearest victim
@@ -243,14 +263,27 @@ func _channel_needed(pos: Vector2) -> bool:
 ## strafe a little once there, and keep the hero's own habits: a melee bot dashes in on a target with no dash left,
 ## an Assassin peels away between bursts.
 func _tactical(me: Vector2, tpos: Vector2, dist: float, foes: Array[Player], hp_frac: float) -> Vector2:
+	if _target and _disabled(_target) and dist < engage_range(_p.hero):   # combo window: it cannot answer, so close in and unload
+		_bursting = true
+		if _p.hero.attack_type == "melee" and dist > _p.hero.attack_range * 0.6:
+			if dist > 200.0:
+				_try_dash(_dir(me, tpos), 0.7)
+			return _go(me, tpos)
+	if _team_peel != null and is_instance_valid(_team_peel) and not _team_peel.down and _team_peel.hp < _team_peel.max_hp * 0.5:
+		return _go(me, _team_peel.global_position)   # an ally is dying: get between it and its attacker
 	if _p.hero.archetype == "Assassin" and _target and not _bursting and dist < 220.0:
 		return _flank(me, tpos, dist, _dir(me, tpos))   # hit and run
+	if _p.hero.stalk and _target and not _p.stalking() and dist > 260.0 and dist < 520.0 and skill > 0.4:
+		return _dir(me, tpos).orthogonal() * _orbit * 0.7 - _dir(me, tpos) * 0.2   # circle at the edge until faded, then dive
 	if _target and dist > engage_range(_p.hero):   # far away: just go and get them (the planner is for the fight itself)
 		_spot = Vector2.INF
 		return _go(me, tpos)
 	if _plan_t <= 0.0 or _spot == Vector2.INF:
 		_plan_t = PLAN_EVERY * randf_range(0.8, 1.2)
 		_spot = BotTactics.best(_map, tactics_ctx(me, foes, hp_frac), _rng, _spot)
+	if _target and _p.hero.attack_type == "ranged" and _target.hero and _target.hero.attack_type == "melee" \
+			and dist < _target.hero.attack_range + 40.0 and skill > 0.3:
+		_try_dash(_dir(tpos, me) + _dir(me, tpos).orthogonal() * _orbit * 0.5, 0.6)   # a melee foe in its swing: dash out, keep kiting
 	if _target and _target.dash_charges == 0 and _p.dash_charges > 1 and _p.hero.attack_type == "melee" and dist > 220.0 and dist < 420.0:
 		_try_dash(_dir(me, tpos), 0.5)   # close the gap
 	if me.distance_to(_spot) < 30.0:   # arrived: a little strafe, never a still target
@@ -266,13 +299,13 @@ func tactics_ctx(me: Vector2, foes: Array[Player], hp_frac: float) -> Dictionary
 		list.append({"pos": f.global_position, "vel": f.velocity, "aim": f.aim_dir, "reach": _threat_reach(f), "target": f == _target})
 	var ranged := _p.hero.attack_type == "ranged"
 	var ctx := {"me": me, "speed": _p.speed, "hp_frac": hp_frac, "ranged": ranged,
-		"ideal": _p.hero.attack_range * 0.62 if ranged else 70.0,
+		"ideal": _p.hero.attack_range * (0.62 if ranged else 0.6),   # melee: well inside its own swing (85..165 px reach)
 		"assassin": _p.hero.archetype == "Assassin", "foes": list,
-		"objective": Vector2.INF, "objective_w": 0.0, "hold_at": Vector2.INF, "hold_r": 0.0, "fear": STATE_FEAR[state]}
+		"objective": Vector2.INF, "objective_w": 0.0, "hold_at": Vector2.INF, "hold_r": 0.0, "fear": STATE_FEAR[state] * MOOD_FEAR[mood]}
 	var crown: CrownPickup = _arena.get("_crown_obj")
 	if crown != null and crown.grace <= 0.0:
 		ctx.objective = crown.global_position
-		ctx.objective_w = 2.5
+		ctx.objective_w = 2.5 * MOOD_LOOT[mood]
 	if _holding_crown():   # the king holds the centre: away from foes, off the moat's edge
 		ctx.hold_at = _map.spawn_point
 		ctx.hold_r = _map.hold_radius()
@@ -301,9 +334,10 @@ static func next_state(cur: int, time_in: float, facts: Dictionary) -> int:
 		return State.HOLD
 	var hp: float = facts.get("hp_frac", 1.0)
 	var near: bool = facts.get("has_target", false) and float(facts.get("target_dist", INF)) < 400.0
-	if cur == State.RETREAT and hp < RECOVER_HP and facts.get("has_target", false) and float(facts.get("target_dist", INF)) < 600.0:
+	if cur == State.RETREAT and hp < maxf(RECOVER_HP, float(facts.get("retreat_hp", RETREAT_HP)) + 0.15) and facts.get("has_target", false) and float(facts.get("target_dist", INF)) < 600.0:
 		return State.RETREAT   # keep backing off until healthier or clear
-	if hp < RETREAT_HP and near:
+	var retreat_hp: float = facts.get("retreat_hp", RETREAT_HP)
+	if hp < retreat_hp and near:
 		return State.RETREAT
 	var want := State.ROAM
 	if facts.get("objective", false):
@@ -321,7 +355,7 @@ func _set_state(s: int) -> void:
 		_spot = Vector2.INF   # a new job: plan afresh
 
 func state_name() -> String:
-	return STATE_NAMES[state]
+	return "%s · %s" % [STATE_NAMES[state], MOOD_NAMES[mood]]
 
 ## The nearest heal drop, or INF.
 func _heal_pickup(me: Vector2) -> Vector2:
@@ -359,13 +393,14 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 		held[i] = false
 	var aim_from := me + Vector2(0, 8)
 	_aim_goal = tpos if _target else me + (_steer if _steer.length() > 0.1 else Vector2.RIGHT) * 200.0
-	if _target == null or _p.buffed("chicken") or _p.has_bomb or edge.length() > 0.6:
+	if _target == null or _p.buffed("chicken") or _p.hexed() or _p.vanished() or _p.has_bomb or edge.length() > 0.6:
 		return
 	var los := _los_clear(aim_from, tpos)
-	var ult := _p.ult_ready() and _p.spells[Player.ULT_SLOT].worth_casting(_p, tpos)
+	var ult := _p.ult_ready() and _p.spells[Player.ULT_SLOT].worth_casting(_p, tpos) and _ult_timing(dist)
 	if ult:   # a charged ult with somebody in reach always goes first
 		held[Player.ULT_SLOT] = true
 		_aim_goal = _aim_for(_p.spells[Player.ULT_SLOT], aim_from, tpos)
+	var bait := _should_bait(_target)
 	for i: int in ([] if ult else [1, 0]):   # the signature first, then the basic
 		if i >= _p.spells.size():
 			continue
@@ -374,8 +409,11 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 			continue
 		if i == 0 and not _bursting:
 			continue
+		if i == 1 and bait and dist > 160.0 and not _disabled(_target):
+			continue   # it dashes on reflex: let the basic draw the dash out first
 		held[i] = true
 		_aim_goal = _aim_for(s, aim_from, tpos)
+		_note_shot(_target)
 		break
 	if not holding() and _p.spells.size() > 1 and _p.cooldowns[1] <= 0.04 and _p.spells[1] is EmberField:
 		var deny := _contested_pickup(me)   # the mage zones a pickup a foe is about to take
@@ -384,6 +422,25 @@ func _attack(me: Vector2, tpos: Vector2, dist: float, edge: Vector2) -> void:
 			_aim_goal = deny
 	var err := randfn(0.0, lerpf(0.2, 0.02, _sharp))   # Normal ~7.7 deg (was 3.7), Hard ~3 deg (was 1.6)
 	_aim_goal = aim_from + (_aim_goal - aim_from).rotated(err)
+
+## When to spend the ult, on top of the spell's own worth_casting: a damage-window ult (Demon Form, Focus Volley,
+## Connection Lost, Ravaging Tide) waits until the target is in our own reach and not already nearly dead (no wasted
+## window on a kill the basic finishes), unless we are low ourselves and it is now or never. Easy bots sit on it longer.
+func _ult_timing(dist: float) -> bool:
+	var hp_frac := float(_p.hp) / maxf(_p.max_hp, 1.0)
+	if hp_frac < 0.3:
+		return true   # use it or lose it
+	var u: Spell = _p.spells[Player.ULT_SLOT]
+	if u is EbbAndFlow and _target and (_target.weakened() or _disabled(_target)):
+		return true   # combo: Anchor Slam (weaken) / a stun, then the tide
+	if u is Stillwake and _p.cooldowns[1] > 1.0:
+		return false   # combo: keep the Time Sphere until Chaos Blast is ready to follow it
+	if u is Fiendform or u is FocusFire or u is ConnectionLost or u is EbbAndFlow:
+		if dist > _p.hero.attack_range * 1.1 + (60.0 if _p.hero.attack_type == "melee" else 0.0):
+			return false
+		if _target and float(_target.hp) / maxf(_target.max_hp, 1.0) < 0.2:
+			return false
+	return randf() < lerpf(0.35, 1.0, skill)   # a weaker bot hesitates a few thinks
 
 ## Does this skill make sense at this range? Bolts need a clear line, blasts and arcs do not.
 func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
@@ -426,8 +483,8 @@ func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
 		return dist > 180.0 and dist < PowerShot.reach_at(1.0) - 80.0 and los
 	if s is PacketLoss:   # it finds its own way after the lag
 		return dist < s.range_px - 20.0
-	if s is SixSeven:   # blink in next to a foe so the yell catches it
-		return dist > 120.0 and dist < SixSeven.RANGE + SixSeven.RADIUS * 0.6
+	if s is SixSeven:   # blink in next to a foe so the yell catches it, or blink out (stunning the chaser) when hurt
+		return (dist > 120.0 and dist < SixSeven.RANGE + SixSeven.RADIUS * 0.6) or (_p.hp < _p.max_hp * 0.35 and dist < SixSeven.RADIUS)
 	if s is RubberBand:   # anchor before diving in, or when hurt (it pulls him back out)
 		return dist < 300.0 and _p.hp < _p.max_hp * 0.6
 	if s is ReboundShield:   # best with a second foe close enough for a bounce, fine on one
@@ -506,6 +563,8 @@ func _aim_for(s: Spell, from: Vector2, tpos: Vector2) -> Vector2:
 		return from + (from - tpos).normalized() * Tumble.ROLL
 	if s is BallLightning and _p.hp < _p.max_hp * 0.35:
 		return from + (from - tpos).normalized() * BallLightning.RANGE   # hurt: it is the escape
+	if s is SixSeven and _p.hp < _p.max_hp * 0.35 and from.distance_to(tpos) < SixSeven.RADIUS:
+		return from + (from - tpos).normalized() * SixSeven.RANGE   # the yell stuns them on the way out
 	if s is WildOrb and _p.hp < _p.max_hp * 0.3:
 		return from + (from - tpos).normalized() * WildOrb.RANGE   # hurt: it is the escape
 	if s is FaultLine or s is MirrorTorment:
@@ -537,6 +596,7 @@ func _pick_target(foes: Array[Player], me: Vector2) -> void:
 	if _retarget > 0.0 and is_instance_valid(_target) and not _target.down and _target in foes:
 		return
 	_retarget = 0.7
+	_team_peel = null
 	var best: Player = null
 	var best_s := -INF
 	for f in foes:
@@ -550,10 +610,96 @@ func _pick_target(foes: Array[Player], me: Vector2) -> void:
 			s -= 1.5
 		if f == _target:
 			s += 1.0
+		if _p.team >= 0:
+			s += 1.0 * _hunters(f)   # team modes: focus the same foe
+			s += 2.5 if _threatens_ally(f) else 0.0   # peel: the foe hitting a hurt teammate
+		else:
+			s -= 0.9 * _hunters(f)   # free-for-all: spread out, the bots do not all pile on the human
+		if _disabled(f):
+			s += 1.5   # stunned / hexed / frozen: punish it
+		if f.hp < f.max_hp * 0.4 and _busy(f):
+			s += 1.2   # third party: a hurt foe locked in someone else's fight is a cheap kill
+		if f.guarded() or f.time_stopped():
+			s -= 1.5   # immune right now (Guardian Grace, Blade Spin) or frozen in a Time Sphere: not worth the walk
 		if s > best_s:
 			best_s = s
 			best = f
 	_target = best
+
+## Can `f` not fight back right now? (A combo window: stunned, frozen, hexed, held in a Time Sphere, rooted.)
+static func _disabled(f: Player) -> bool:
+	return f.stunned() or f.frozen() or f.hexed() or f.time_stopped() or f.rooted()
+
+var _team_peel: Player = null   ## team modes: a hurt ally to stand beside (set by _threatens_ally), else null
+
+## Team modes: is `f` beating on a teammate of ours that is below 40% HP? Remembers that teammate for the peel.
+func _threatens_ally(f: Player) -> bool:
+	for o in _p.get_tree().get_nodes_in_group("players"):
+		var a := o as Player
+		if a and a != _p and not a.down and a.team == _p.team and a.hp < a.max_hp * 0.4 \
+				and a.global_position.distance_to(f.global_position) < 220.0 and _p.global_position.distance_to(a.global_position) < 600.0:
+			_team_peel = a if _p.hero.max_hp >= 120 else null   # only the sturdy ones body-block; the rest just shoot the attacker
+			return true
+	return false
+
+# --- habits
+
+## Watch every foe for dashes, and score them as reactions when they come right after one of our shots.
+func _observe(foes: Array[Player]) -> void:
+	var now := Time.get_ticks_msec()
+	for f in foes:
+		if f.ai != null:
+			continue   # only humans have habits worth learning
+		var id := f.peer_id
+		if f.velocity.length() > DASH_PX_S and now - int(_seen_dash.get(id, 0)) > 400:
+			_seen_dash[id] = now
+			var h: Dictionary = habits.get(id, {"shots": 0, "dodged": 0, "dashes": []})
+			h.dashes.append(now)
+			h.dashes = h.dashes.filter(func(t: int) -> bool: return now - t < 10000)   # only recent ones matter
+			if now - int(_shot_at.get(id, -100000)) < DODGE_WINDOW * 1000.0:
+				h.dodged += 1
+			habits[id] = h
+
+## Remember that we just shot at `f` (a reaction dash within DODGE_WINDOW counts as a dodge).
+func _note_shot(f: Player) -> void:
+	if f == null or f.ai != null:
+		return
+	_shot_at[f.peer_id] = Time.get_ticks_msec()
+	var h: Dictionary = habits.get(f.peer_id, {"shots": 0, "dodged": 0, "dashes": []})
+	h.shots += 1
+	habits[f.peer_id] = h
+
+## Does `f` answer our shots with a dash, and does it still have one? Then hold the big skill and bait with the basic.
+## Its charges are not replicated, so they are estimated from the dashes we saw (Player.MAX_DASH, DASH_RECHARGE).
+func _should_bait(f: Player) -> bool:
+	if f == null or f.ai != null or skill < 0.5:
+		return false
+	var h: Dictionary = habits.get(f.peer_id, {})
+	if h.is_empty() or int(h.shots) < 4 or float(h.dodged) / float(h.shots) < 0.35:
+		return false
+	var now := Time.get_ticks_msec()
+	var recent := 0
+	for t: int in h.dashes:
+		if now - t < Player.DASH_RECHARGE * 1000.0:
+			recent += 1
+	return recent < Player.MAX_DASH   # it still has a dash in hand: wait
+
+## True when `f` is fighting someone else right now (another player close to it, not us).
+func _busy(f: Player) -> bool:
+	for o in _p.get_tree().get_nodes_in_group("players"):
+		var q := o as Player
+		if q and q != _p and q != f and not q.down and q.global_position.distance_to(f.global_position) < 260.0:
+			return true
+	return false
+
+## How many other bots are already after `f`.
+func _hunters(f: Player) -> int:
+	var n := 0
+	for o in _p.get_tree().get_nodes_in_group("players"):
+		var b := o as Player
+		if b and b != _p and b.ai and not b.down and b.ai._target == f:
+			n += 1
+	return n
 
 ## How far `pos` really is: the walking route on the Colosseum (a foe just across the moat is a long way round), but
 ## never more than a dash shortcut would make it; straight elsewhere. Asked for the few foes, every retarget.
@@ -602,7 +748,7 @@ func _best_pickup(me: Vector2, hp_frac: float) -> Dictionary:
 			value = 0.15 if hp_frac > 0.9 else 1.0 + (1.0 - hp_frac) * 3.0
 		if value <= 0.0:
 			continue
-		var score := value * 600.0 / (me.distance_to(pk.global_position) + 200.0)
+		var score: float = value * MOOD_LOOT[mood] * 600.0 / (me.distance_to(pk.global_position) + 200.0)
 		if score > best.score:
 			best = {"pos": pk.global_position, "score": score}
 	return best
@@ -631,7 +777,11 @@ func _repulsion(me: Vector2, foes: Array[Player], _pickup: Dictionary) -> Vector
 				_try_dash(_dir(e.global_position, me), 0.9)
 	for n in _p.get_tree().get_nodes_in_group("zones"):
 		var z := n as Node2D
-		if z and z.get("caster") != _p and me.distance_to(z.global_position) < EmberField.RADIUS + 50.0:
+		if z == null or z.get("caster") == _p:
+			continue
+		if z.has_method("bot_avoid"):   # a zone that knows its own shape (a line, a trail, a big sphere)
+			push += z.bot_avoid(me) * 2.2
+		elif me.distance_to(z.global_position) < EmberField.RADIUS + 50.0:
 			push += _dir(z.global_position, me) * 2.0
 	return push
 
@@ -652,6 +802,22 @@ func _dodge(me: Vector2) -> Vector2:
 		if lateral.length() < pr.radius + 26.0:
 			worst_t = along / pr.velocity.length()
 			side = lateral.normalized() if lateral.length() > 2.0 else dirv.orthogonal()
+	for n in _p.get_tree().get_nodes_in_group("dodgeables"):   # kit shots that are not Projectiles (shield, hex, packet, orb)
+		var nd := n as Node2D
+		if nd == null or nd.get("caster") == _p:
+			continue
+		var v: Vector2 = nd.get("velocity")
+		if v.length() < 1.0:
+			continue
+		var dv := v.normalized()
+		var rel := me - nd.global_position
+		var along := rel.dot(dv)
+		if along < 0.0 or along > v.length() * worst_t:
+			continue
+		var lateral := rel - dv * along
+		if lateral.length() < 48.0:
+			worst_t = along / v.length()
+			side = lateral.normalized() if lateral.length() > 2.0 else dv.orthogonal()
 	if side == Vector2.ZERO or randf() > lerpf(0.1, 0.85, _sharp) * 1.4:   # Normal dodges ~52% of shots (was 83%)
 		return Vector2.ZERO
 	if worst_t < 0.3:
@@ -664,7 +830,7 @@ func _dodge(me: Vector2) -> Vector2:
 func _try_dash(dir: Vector2, chance: float) -> void:
 	if _dash_cd > 0.0 or _p.dash_charges <= 0 or dir.length() < 0.1:
 		return
-	if randf() > chance * lerpf(0.4, 1.0, skill):
+	if randf() > chance * lerpf(0.4, 1.0, skill) * MOOD_DASH[mood]:
 		return
 	_dash_dir = dir.normalized()
 	_dash = true

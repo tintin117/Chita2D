@@ -233,6 +233,7 @@ func _ready() -> void:
 	_banner.add_theme_constant_override("outline_size", 12)
 	_banner.text = "Waiting for players..."
 	ui.add_child(_banner)
+	add_child(FogOverlay.new())   # the Fog event's mist (hidden unless Fog is on)
 	ui.add_child(ChatBox.new())
 	Net.chat_received.connect(func(line: Dictionary) -> void:
 		var talker: Player = _players.get(line.peer)
@@ -378,6 +379,24 @@ func _on_fragged(victim: Player, killer_peer: int, cause: String) -> void:
 			_net_crown.rpc(0, victim.global_position, _cfg.crown_grace)   # the crown falls where the king fell
 	else:
 		_update_crown()
+
+## Every player for the results screen, best first: name, the hero they played (in its colour), K / D (and points in
+## Crown mode), and whether they won.
+func scoreboard(winner: int, win_team: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for id: int in _players:
+		var p: Player = _players[id]
+		out.append({"name": _name_of(id), "hero": p.hero.display_name if p.hero else "?",
+			"color": p.hero.basic_color if p.hero else ArenaUi.INK, "kills": int(_kills.get(id, 0)), "deaths": int(_deaths.get(id, 0)),
+			"score": int(_score.get(id, 0.0)) if _cm else -1, "won": id == winner or (_tdm and win_team >= 0 and p.team == win_team),
+			"me": id == Net.local_id()})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.score != b.score:
+			return a.score > b.score
+		if a.kills != b.kills:
+			return a.kills > b.kills
+		return a.deaths < b.deaths)
+	return out
 
 func _name_of(id: int) -> String:
 	var p: Player = _players.get(id)
@@ -774,8 +793,10 @@ func _end(winner: int, win_team: int) -> void:
 	_match_menu.close()
 	var names := {}
 	for id: int in _stats:
-		names[id] = _name_of(id)
+		var p: Player = _players.get(id)
+		names[id] = "%s (%s)" % [_name_of(id), p.hero.display_name] if p and p.hero else _name_of(id)   # awards say who on what
 	var results := MatchHud.Results.new()
+	results.board = scoreboard(winner, win_team)
 	results.title = "%s wins!" % who
 	if _tdm:
 		results.title = "%s team wins!" % Net.TEAM_NAMES[win_team] if win_team >= 0 else "Draw!"

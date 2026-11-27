@@ -29,8 +29,8 @@ const RESPAWN_TIME := 3.0
 const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
 const KNOCK_BASE := 220.0          ## launch speed of a light hit: a flinch (~11 px) so basic combos keep connecting
 const KNOCK_LIGHT_DMG := 15        ## hits up to this damage are light; only heavier ones (finishers, skills) launch. Was 12: the
-                                   ## Tidecaller's 15-dmg swing then shoved its target out of his reach every hit, and a held LMB
-                                   ## (hold-to-chase) walked him forward after it
+								   ## Tidecaller's 15-dmg swing then shoved its target out of his reach every hit, and a held LMB
+								   ## (hold-to-chase) walked him forward after it
 const KNOCK_PER_DMG := 20.0        ## extra launch speed per damage above KNOCK_LIGHT_DMG (skills add their own Spell.shove on top)
 const KNOCK_LOW_HP := 0.6          ## launch bonus at 0 HP: knockback grows as the victim's health drops (Smash-style), so ring-outs come late in a fight
 const KNOCK_MAX := 1500.0
@@ -976,6 +976,11 @@ func _apply_look() -> void:
 			_sprite.self_modulate.a *= 0.45   # you see yourself faded
 		else:
 			modulate.a = _stalk_alpha()
+	if MatchEvent.is_on(MatchEvent.FOG) and not is_local(self) and is_inside_tree():   # Fog: only what is near you shows
+		var viewer := _local_viewer(get_tree())
+		if viewer and viewer != self and not (team >= 0 and viewer.team == team):
+			var d := viewer.global_position.distance_to(global_position)
+			modulate.a = minf(modulate.a, clampf((FogOverlay.RADIUS + 40.0 - d) / 80.0, 0.0, 1.0))
 	if _vanish_left > 0.0:   # inside the Illusion Orb: gone (a ghost of himself on his own screen)
 		modulate.a = 0.25 if is_local(self) else 0.0
 	if (veiled() or stalking()) and not is_local(self) and is_inside_tree():
@@ -1608,6 +1613,8 @@ func break_stalk() -> void:
 func hidden_from(viewer: Node2D) -> bool:
 	if viewer is Player and viewer != self and team >= 0 and viewer.team == team:
 		return false
+	if FogOverlay.fogged(viewer, self):
+		return true    # Fog: too far to see
 	if viewer is Player and viewer != self and viewer.sees_hidden(self):
 		return false   # Darkvision
 	if veiled():
@@ -1700,8 +1707,8 @@ func _draw_statuses() -> void:
 	var font := ThemeDB.fallback_font
 	if ai and PlaySettings.bot_debug:   # playtest: what the bot is doing right now
 		var label: String = ai.state_name()
-		draw_string_outline(font, Vector2(-60, -112), label, HORIZONTAL_ALIGNMENT_CENTER, 120, 14, 4, Color.BLACK)
-		draw_string(font, Vector2(-60, -112), label, HORIZONTAL_ALIGNMENT_CENTER, 120, 14, BotBrain.STATE_COLORS[ai.state])
+		draw_string_outline(font, Vector2(-100, -112), label, HORIZONTAL_ALIGNMENT_CENTER, 200, 14, 4, Color.BLACK)
+		draw_string(font, Vector2(-100, -112), label, HORIZONTAL_ALIGNMENT_CENTER, 200, 14, BotBrain.STATE_COLORS[ai.state])
 	if burn > 0:   # flames over the head and the stack count
 		var col := Color(1.0, 0.45 + 0.03 * (BURN_MAX - burn), 0.1)
 		for i in mini(burn, 6):

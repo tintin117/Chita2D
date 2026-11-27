@@ -1,0 +1,16 @@
+{
+"knight":    {"cleave":0.8, "ult":{"cost":180,"aoe":150,"dmg":26,"stun":1.0,"range":420}},
+"rogue":     {"ult":{"cost":140,"buff":4.5,"out":1.6,"taken":0.5}},
+"wizard":    {"aoe":70, "rmb_aoe":125, "ult":{"cost":160,"aoe":170,"dmg":40,"range":620,"p":0.6}},
+"ranger":    {"pierce":1, "ult":{"cost":150,"buff":4,"rate":2.1}},
+"paladin":   {"aoe":30, "rmb_aoe":150, "ult":{"cost":170,"buff":3,"taken":0.0}},
+"shade":     {"rmb_aoe":80, "ult":{"cost":150,"buff":3.5,"dot":28,"dot_range":120}},
+"sorcerer":  {"chain":2, "rmb_aoe":75, "ult":{"cost":180,"buff":3.5,"dot":26,"dot_range":320}},
+"scout":     {"rmb_aoe":160, "ult":{"cost":140,"dmg":55,"range":900,"p":0.7}},
+"tidecaller":{"cleave":0.5, "rmb_aoe":150, "ult_taken":2.0, "ult":{"cost":170,"aoe":300,"dmg":32,"p":0.75,"range":0,"buff":1.0,"taken":0.7}},
+"rampager":  {"cleave":0.3, "rmb_aoe":120, "ult":{"cost":160,"aoe":300,"dmg_frac":0.25,"slow":3,"p":0.5,"range":350}},
+"demonbound":{"rmb_aoe":220, "ult":{"cost":160,"buff":6,"out":2.1}},
+"chaoslord": {"cleave":1.0, "ult":{"cost":180,"aoe":180,"stun_roll":0.8,"range":450}},
+"pactknight":{"ult":{"cost":150,"aoe":190,"buff":4,"dot":10,"dot_range":190,"blind":0.5,"range":500}},
+"sixseven":  {"rmb_aoe":130, "ult":{"cost":160,"aoe":260,"stun":1.0,"range":0,"buff":4,"rate":2.0}}
+}

@@ -25,6 +25,15 @@ var _tick := TICK
 func add(pos: Vector2, r: float) -> void:
 	_pts.append([pos, r, 0.0])
 
+## Bots: which way to step to get off the burning ground at `pos` (zero = not on it).
+func bot_avoid(pos: Vector2) -> Vector2:
+	var feet := pos + Vector2(0, 14)
+	for p in _pts:
+		var off: Vector2 = feet - p[0]
+		if off.length() <= p[1] + 20.0:
+			return off.normalized() if off.length() > 1.0 else Vector2.RIGHT
+	return Vector2.ZERO
+
 ## True if `pos` is on a live patch.
 func covers(pos: Vector2) -> bool:
 	for p in _pts:

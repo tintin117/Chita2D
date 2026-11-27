@@ -16,6 +16,10 @@ const COLOR := Color(0.85, 0.6, 0.3)   ## the hero's signature colour (Hero.basi
 class Orb extends Node2D:
 	var caster: Node2D
 	var dir := Vector2.RIGHT
+	var velocity := Vector2.ZERO   ## for bots to dodge (group dodgeables)
+
+	func _ready() -> void:
+		add_to_group("dodgeables")
 	var dmg := 10
 	var dist := RANGE
 	var _flown := 0.0
@@ -38,6 +42,7 @@ class Orb extends Node2D:
 			return
 		var step := minf(SPEED * delta, dist - _flown)
 		global_position += dir * step
+		velocity = dir * SPEED
 		_flown += step
 		for e in Spell.foes(caster):
 			if e in _hits or e.global_position.distance_to(global_position) > RADIUS + 14.0:

@@ -206,3 +206,19 @@ func test_packet_seeks_the_closest_foe() -> void:
 	far.position = Vector2(300, 0)
 	assert_eq(PacketLoss.seek(c, Vector2.ZERO, null), near)
 	assert_eq(PacketLoss.seek(c, Vector2.ZERO, far), far, "a locked foe in range wins")
+
+func test_bot_moods_change_when_they_retreat() -> void:
+	var S := BotBrain.State
+	var hurt := {"has_target": true, "hp_frac": 0.35, "target_dist": 200.0}
+	var cautious := hurt.duplicate()
+	cautious["retreat_hp"] = BotBrain.MOOD_RETREAT[BotBrain.Mood.CAUTIOUS]
+	var aggro := hurt.duplicate()
+	aggro["retreat_hp"] = BotBrain.MOOD_RETREAT[BotBrain.Mood.AGGRO]
+	assert_eq(BotBrain.next_state(S.ENGAGE, 5.0, cautious), S.RETREAT, "the careful one backs off at 35%")
+	assert_eq(BotBrain.next_state(S.ENGAGE, 5.0, aggro), S.ENGAGE, "the brawler keeps swinging")
+
+func test_bots_see_a_combo_window() -> void:
+	var p := _hero("knight")
+	assert_false(BotBrain._disabled(p))
+	p.hex(1.0)
+	assert_true(BotBrain._disabled(p), "a chicken cannot answer")

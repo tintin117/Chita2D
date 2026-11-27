@@ -173,6 +173,7 @@ class EventCard extends Control:
 
 class Results extends Control:
 	var title := ""
+	var board: Array[Dictionary] = []   ## every player: name, hero, color, kills, deaths, score (-1 = no points), won, me
 	var rows: Array[Dictionary] = []
 	var next_label := ""
 	var proceed: Callable
@@ -199,10 +200,14 @@ class Results extends Control:
 		header.add_child(winner)
 		box.add_child(header)
 		box.add_child(HSeparator.new())
+		for entry in board:
+			_add_player(box, entry)
+		if not board.is_empty():
+			box.add_child(HSeparator.new())
 		if not rows.is_empty():
 			box.add_child(ArenaUi.heading("Match Awards", 19))
-			for row in rows:
-				_add_award(box, row)
+			for i in mini(rows.size(), 3 if board.size() > 6 else rows.size()):   # a full lobby: keep it on one screen
+				_add_award(box, rows[i])
 		var actions := HBoxContainer.new()
 		actions.alignment = BoxContainer.ALIGNMENT_END
 		box.add_child(actions)
@@ -215,6 +220,33 @@ class Results extends Control:
 		else:
 			actions.add_child(ArenaUi.label("Waiting for the host", 17, ArenaUi.MUTED))
 			ArenaUi.defer_focus(leave)
+
+	## One player on the scoreboard: a crown for the winner, the name (gold for you), the hero they played in its own
+	## colour, then K / D (and points in Crown mode).
+	func _add_player(box: VBoxContainer, e: Dictionary) -> void:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		box.add_child(row)
+		if e.won:
+			row.add_child(ArenaUi.picture(ArenaUi.CROWN, Vector2(22, 22)))
+		else:
+			var gap := Control.new()
+			gap.custom_minimum_size = Vector2(22, 22)
+			row.add_child(gap)
+		var who := ArenaUi.label(e.name, 18, ArenaUi.GOLD if e.me else ArenaUi.INK)
+		who.size_flags_horizontal = SIZE_EXPAND_FILL
+		who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.add_child(who)
+		var hero := ArenaUi.label(e.hero, 18, Color(e.color).lightened(0.25))
+		hero.custom_minimum_size.x = 170
+		row.add_child(hero)
+		var kd := "%d / %d" % [e.kills, e.deaths]
+		if int(e.score) >= 0:
+			kd = "%d pts   %s" % [e.score, kd]
+		var stat := ArenaUi.label(kd, 18, ArenaUi.MUTED)
+		stat.custom_minimum_size.x = 150
+		stat.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(stat)
 
 	func _add_award(box: VBoxContainer, award: Dictionary) -> void:
 		var stripe := PanelContainer.new()

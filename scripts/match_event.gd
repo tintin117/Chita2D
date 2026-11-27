@@ -15,7 +15,7 @@ const EVENTS := {
 	NONE: {"name": "Clean match", "blurb": "", "color": Color(0.8, 0.8, 0.8), "weight": 40.0},
 	BLADEMAIL: {"name": "Blademail", "blurb": "Every hit bites back: 30% of the damage returns to the attacker", "color": Color(0.62, 0.72, 0.85), "weight": 15.0},
 	METEOR: {"name": "Meteor Shower", "blurb": "A meteor falls every 20 s. 2 s warning. Get out of the circle", "color": Color(1.0, 0.55, 0.2), "weight": 15.0},
-	FOG: {"name": "Fog", "blurb": "No radar, no name tags, no drop arrows. The beams still shine", "color": Color(0.85, 0.88, 0.9), "weight": 15.0},
+	FOG: {"name": "Fog", "blurb": "You only see what is near you. No radar, no name tags, no drop arrows", "color": Color(0.85, 0.88, 0.9), "weight": 15.0},
 	DOUBLE: {"name": "Double Drop", "blurb": "Drops fall in pairs, on opposite sides of the centre", "color": Color(0.8, 0.5, 1.0), "weight": 15.0},
 }
 const ORDER := [NONE, BLADEMAIL, METEOR, FOG, DOUBLE]   ## roll order, so the same r gives the same event everywhere

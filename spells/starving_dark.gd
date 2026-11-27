@@ -45,6 +45,10 @@ class Dark extends Node2D:
 					e.take_damage(DMG, global_position, true, caster)
 		queue_redraw()
 
+	func bot_avoid(pos: Vector2) -> Vector2:
+		var off := pos - global_position
+		return off.normalized() if off.length() < RADIUS + 40.0 and off.length() > 1.0 else Vector2.ZERO
+
 	func _draw() -> void:
 		var fade := clampf(_age / 0.3, 0.0, 1.0) * clampf((TIME - _age) / 0.5, 0.0, 1.0)
 		draw_circle(Vector2.ZERO, RADIUS, Color(COLOR, 0.6 * fade))

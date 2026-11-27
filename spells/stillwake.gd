@@ -30,6 +30,10 @@ class Field extends Node2D:
 				e.chrono_hold(dur - _age)
 		queue_redraw()
 
+	func bot_avoid(pos: Vector2) -> Vector2:
+		var off := pos - global_position
+		return off.normalized() if off.length() < RADIUS + 40.0 and off.length() > 1.0 else Vector2.ZERO
+
 	func _draw() -> void:
 		var k := clampf(_age / dur, 0.0, 1.0)
 		draw_circle(Vector2.ZERO, RADIUS, Color(COLOR, 0.22))

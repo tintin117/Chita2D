@@ -31,6 +31,7 @@ static func next_target(caster: Node2D, from: Vector2, hit: Array[Node]) -> Node
 class Disc extends Node2D:
 	var caster: Node2D
 	var dir := Vector2.RIGHT
+	var velocity := Vector2.ZERO   ## for bots to dodge (group dodgeables)
 	var dmg := 18
 	var target: Node2D
 	var _left := RANGE
@@ -39,6 +40,7 @@ class Disc extends Node2D:
 	var _spin := 0.0
 
 	func _ready() -> void:
+		add_to_group("dodgeables")
 		z_index = 6
 		if caster is Player:
 			caster.shield_out = true
@@ -66,6 +68,7 @@ class Disc extends Node2D:
 		else:
 			target = null
 		global_position += dir * step
+		velocity = dir * SPEED
 		_left -= step
 		for e in Spell.foes(caster):
 			if e in _hits or e.global_position.distance_to(global_position) > RADIUS + 16.0:

@@ -4,11 +4,11 @@ class_name PacketLoss extends Spell
 ## the homing off, like any locked shot. It can also hit a foe directly on the way out. Only flinches (a basic).
 ## Runs on every peer; the hit lands on the victim's own peer.
 
-const OUT_SPEED := 700.0
-const OUT_TIME := 0.2         ## ~140 px out before it lags
-const BUFFER := 0.3
+const OUT_SPEED := 260.0       ## a sluggish crawl out of the gate (200 ping), then it stalls
+const OUT_TIME := 0.4         ## ~105 px out before it lags
+const BUFFER := 0.35
 const SEEK := 450.0           ## after the freeze it hunts the closest foe within this of itself
-const HOME_SPEED := 820.0
+const HOME_SPEED := 900.0      ## and then it all arrives at once
 const HOME_LIFE := 1.0
 const RADIUS := 18.0
 const PICK_RADIUS := 150.0
@@ -34,6 +34,10 @@ static func seek(caster: Node2D, at: Vector2, lock_: Node2D) -> Node2D:
 class Packet extends Node2D:
 	var caster: Node2D
 	var dir := Vector2.RIGHT
+	var velocity := Vector2.ZERO   ## for bots to dodge (group dodgeables)
+
+	func _ready() -> void:
+		add_to_group("dodgeables")
 	var dmg := 9
 	var lock: Node2D
 	var color := COLOR
@@ -48,8 +52,9 @@ class Packet extends Node2D:
 			return
 		if _age < OUT_TIME:
 			global_position += dir * OUT_SPEED * delta
+			velocity = dir * OUT_SPEED
 		elif _age < OUT_TIME + BUFFER:
-			pass   # lagging: frozen mid-air
+			velocity = Vector2.ZERO   # lagging: frozen mid-air
 		else:
 			if not _homing:
 				_homing = true
@@ -60,6 +65,7 @@ class Packet extends Node2D:
 			else:
 				_target = null
 			global_position += dir * HOME_SPEED * delta
+			velocity = dir * HOME_SPEED
 			if _age >= OUT_TIME + BUFFER + HOME_LIFE:
 				queue_free()
 				return
@@ -79,6 +85,9 @@ class Packet extends Node2D:
 		if buffering:   # the loading ring
 			var spin := _age * 14.0
 			draw_arc(Vector2.ZERO, 14.0, spin, spin + PI * 1.4, 16, Color(color, 0.9), 3.0)
+			var font := ThemeDB.fallback_font
+			draw_string_outline(font, Vector2(-30, -20), "200ms", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, 3, Color.BLACK)
+			draw_string(font, Vector2(-30, -20), "200ms", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color(1.0, 0.45, 0.45))
 		if _homing:
 			draw_line(Vector2.ZERO, -dir * 26.0, Color(color, 0.4), 6.0)
 		var jitter := Vector2(randf_range(-2, 2), 0) if buffering else Vector2.ZERO   # a little glitch (visual only)

@@ -347,3 +347,52 @@ Unlock: type `67` on the hero pick. Ranged, neon cyan, 67 HP, 267 speed, 467 ran
   are stunned (confused, "??") for 0.67 s (stun immunity applies). 6.7 s. Landing from Player.blink_target.
 - Passive **67 Lives**: a lethal hit leaves him at 67 HP (his max) and untouchable for 1 s, once per 67 s (HUD shows it).
 - Ult **Connection Lost**: foes within 260 frozen 1 s ("CONNECTION LOST"), then 3 s of double attack speed.
+
+### Balance pass 2 (Nov 2026)
+
+Baseline = the numbers in the repo (the designer's own tuning); only small steps on the clear outliers, each hero's
+signature kept (Sorcerer's fast 0.45 s chain, Scout's 4-dmg stream, Six Seven's 67s, Knight's cleave untouched).
+
+Tools in `tools/balance/` (Python, crude, ignore terrain): `duel_sim.py` (1v1 on a line: speed, reach, attack rate,
+projectile speed / homing vs strafing, kiting, dashes, RMB) and `ffa_sim.py` (the "chaos factor": 6-hero free-for-all
+with respawns, splash / cleave / chain / pierce hitting several foes, ults charged by damage, third parties, and the
+Chaos Lord's x0.5-3.5 roll on every hit, stun and Time Sphere). `extra.json` holds the multi-hit and ult numbers.
+
+| Hero | 1v1 before → after | FFA K-D before → after | Change |
+|---|---|---|---|
+| Sorcerer | 85% → 77% | +6.5 → +4.4 | chain 11 → 9, HP 90 → 85 (0.45 s kept) |
+| Demonbound | 8% → 17% | -2.4 → -1.5 | bolt 450 → 600 px/s, 8 → 10 |
+| Rogue | 20% → 27% | -3.4 → -2.1 | HP 75 → 85 |
+| Rampager | 33% → 39% | -3.4 → -3.1 | HP 105 → 115 |
+| Chaos Lord | 60% → 65% | -3.0 → -2.6 | HP 125 → 130, speed 250 → 260 |
+| Six Seven | 79% → 54% | +1.6 → +0.1 | packet 11 → 9 (and the slow 200 ping crawl) |
+| Pactknight | 41% → 47% | -1.4 → -1.2 | blast 10 → 11 |
+
+Chaos factor: the Chaos Lord's roll averages x2 but swings a 1v1 from a stomp to a loss; in a brawl his short slow
+melee gets kited and third-partied, so he trails there despite winning 1v1s. Splash / chain heroes (Sorcerer, Mage)
+and lifesteal (Paladin) gain the most from the chaos; single-target melee (Rogue, Rampager) loses the most.
+Not touched (rely on what the sims cannot see): Knight (tops 1v1, average in a brawl), Scout (bottom 1v1, positive
+in a brawl), Paladin and Mage (strong in a brawl, fine 1v1).
+
+Bots: spread targets (-0.9 per other bot on it), skip immune / time-stopped foes, +1.2 for a hurt foe already busy
+with someone else (third party); melee hold ~60% of their own reach; shape-aware zone avoidance (`bot_avoid`); dodge
+kit shots (`dodgeables`); Rogue waits for Stalk before diving; ranged bots dash out when a melee foe is in its swing;
+damage-window ults (Demon Form, Focus Volley, Connection Lost, Ravaging Tide) wait until the target is in reach and
+not already dying (unless the bot is low); Guardian Grace only when hurt, Smoke Cloud only on a fight; Six Seven
+blinks out (stunning the chaser) when low; hexed / vanished bots stop attacking.
+
+### Bots round 3 (Nov 2026)
+
+- **Combos**: a stunned / frozen / hexed / time-stopped / rooted foe is a combo window (`BotBrain._disabled`): +1.5
+  target score, no burst pause, melee close in (dash if far). Tidecaller casts Ravaging Tide right after Anchor Slam
+  (weakened target); Chaos Lord keeps Time Sphere until Chaos Blast is ready to follow it; Pactknight hex → blasts
+  and Rift/Chaos stuns → swings fall out of the same rule.
+- **Team play** (team modes): +1 per teammate already on a foe (focus), +2.5 on a foe beating a teammate under 40%
+  (peel); sturdy bots (120+ HP) walk over to body-block for that ally. Free-for-all keeps the spread-out rule.
+- **Moods**: every bot is Aggro, Cautious or Looter (by peer id, so a lobby gets a mix): danger weight x0.7 / x1.4 /
+  x1.0, retreat below 18% / 45% / 30% HP, drops and crown worth x0.7 / x1.0 / x1.7, dash eagerness x1.3 / x0.8 / x1.
+  The bot-debug label shows "State · Mood".
+- **Learning your habits**: bots share `BotBrain.habits` per human: shots fired at them, dashes seen (velocity over
+  1000 px/s), and dashes within 0.5 s of a shot (reactions). Against a player who reaction-dashes 35%+ of the time and
+  still has a dash (estimated from recent dashes vs DASH_RECHARGE), Normal+ bots bait: the basic goes first, the RMB
+  waits until the dash is spent. Kept for the session, so a solo run gets harder to cheese.

@@ -15,6 +15,7 @@ func add_player(p: Player) -> void:
 var _boss_bar := BossBar.new()
 
 func _ready() -> void:
+	layer = 8   # over the Fog mist (FogOverlay, layer 5): the hero panel never sinks into it
 	_boss_bar.size = Vector2(580, 55)
 	add_child(_boss_bar)
 	if with_sheet:

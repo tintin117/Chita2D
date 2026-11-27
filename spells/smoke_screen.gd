@@ -55,6 +55,14 @@ class Cloud extends Node2D:
 			draw_circle(Vector2(p.x + wob, p.y), p.z, Color(0.55, 0.52, 0.6, 0.3 * fade))
 		draw_arc(Vector2.ZERO, SmokeScreen.RADIUS, 0.0, TAU, 48, Color(0.7, 0.65, 0.8, 0.5 * fade), 2.0)
 
+## Bots: drop it on a fight, not on empty ground (a foe near the spot it lands).
+func worth_casting(caster: Node2D, aim_pos: Vector2) -> bool:
+	var at := spot(caster.global_position, aim_pos)
+	for e in Spell.foes(caster):
+		if e.global_position.distance_to(at) < RADIUS + 60.0:
+			return true
+	return false
+
 func _init() -> void:
 	display_name = "Smoke Cloud"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock

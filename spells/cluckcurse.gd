@@ -13,6 +13,10 @@ const COLOR := Color(0.7, 0.25, 1.0)   ## the hero's signature colour (Hero.basi
 class Curse extends Node2D:
 	var caster: Node2D
 	var dir := Vector2.RIGHT
+	var velocity := Vector2.ZERO   ## for bots to dodge (group dodgeables)
+
+	func _ready() -> void:
+		add_to_group("dodgeables")
 	var target: Node2D
 	var life := RANGE / SPEED
 
@@ -26,6 +30,7 @@ class Curse extends Node2D:
 		else:
 			target = null
 		global_position += dir * SPEED * delta
+		velocity = dir * SPEED
 		for e in Spell.foes(caster):
 			if e.global_position.distance_to(global_position) > RADIUS + 14.0:
 				continue
