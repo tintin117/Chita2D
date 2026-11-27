@@ -78,7 +78,7 @@ func _draw_arrow(e: Dictionary) -> void:
 		var pts := PackedVector2Array([tip + o, pos - dir * s * 0.45 + side * s * 0.9 + o, pos - dir * s * 0.1 + o, pos - dir * s * 0.45 - side * s * 0.9 + o])
 		draw_colored_polygon(pts, Color(col, 0.75 + 0.25 * pulse))
 		draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0, 0, 0, 0.85), 2.0)
-	var font := ThemeDB.fallback_font
+	var font := ArenaUi.BODY
 	var txt := "%s %dm" % [PvpPickup.ICONS[e.kind], int(float(e.dist) / METRE)]
 	var tpos := pos - dir * (s * 1.6 + 6.0 + tier * s * 0.75)
 	tpos.x = clampf(tpos.x - 40.0, 4.0, size.x - 84.0)

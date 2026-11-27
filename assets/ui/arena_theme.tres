@@ -1,106 +1,313 @@
-[gd_resource type="Theme" load_steps=19 format=3]
-[ext_resource type="FontVariation" path="res://assets/ui/pixelify_ui.tres" id="Pixelify"]
-[ext_resource type="Texture2D" path="res://assets/ui/panel-frame.png" id="PanelTexture"]
-[ext_resource type="Texture2D" path="res://assets/ui/button-frame.png" id="NormalTexture"]
-[ext_resource type="Texture2D" path="res://assets/ui/button-hover.png" id="HoverTexture"]
-[ext_resource type="Texture2D" path="res://assets/ui/button-pressed.png" id="PressedTexture"]
-[ext_resource type="Texture2D" path="res://assets/ui/button-disabled.png" id="DisabledTexture"]
-[ext_resource type="Texture2D" path="res://assets/ui/button-primary.png" id="PrimaryTexture"]
+[gd_resource type="Theme" load_steps=43 format=3]
+[ext_resource type="FontVariation" path="res://assets/ui/alagard_ui.tres" id="Alagard"]
+[ext_resource type="Texture2D" path="res://assets/ui/ornate/royal_blue_sheet.png" id="Sheet"]
+[ext_resource type="Texture2D" path="res://assets/ui/ornate/royal_blue_sheet_2x.png" id="Sheet2x"]
+
+[sub_resource type="StyleBoxTexture" id="HudPanel"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(4, 6, 96, 96)
+texture_margin_left = 32.0
+texture_margin_top = 32.0
+texture_margin_right = 32.0
+texture_margin_bottom = 32.0
+content_margin_left = 18.0
+content_margin_top = 16.0
+content_margin_right = 18.0
+content_margin_bottom = 16.0
 
 [sub_resource type="StyleBoxTexture" id="Panel"]
-texture = ExtResource("PanelTexture")
-axis_stretch_horizontal = 1
-axis_stretch_vertical = 1
-texture_margin_left = 6.0
-content_margin_left = 20.0
-texture_margin_right = 6.0
-content_margin_right = 20.0
-texture_margin_top = 6.0
-content_margin_top = 18.0
-texture_margin_bottom = 6.0
-content_margin_bottom = 18.0
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(8, 12, 192, 192)
+texture_margin_left = 64.0
+texture_margin_top = 64.0
+texture_margin_right = 64.0
+texture_margin_bottom = 64.0
+content_margin_left = 36.0
+content_margin_top = 20.0
+content_margin_right = 36.0
+content_margin_bottom = 26.0
 
 [sub_resource type="StyleBoxTexture" id="Normal"]
-texture = ExtResource("NormalTexture")
-axis_stretch_horizontal = 1
-axis_stretch_vertical = 1
-texture_margin_left = 6.0
-content_margin_left = 14.0
-texture_margin_right = 6.0
-content_margin_right = 14.0
-texture_margin_top = 6.0
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(232, 12, 96, 96)
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 18.0
+content_margin_left = 18.0
 content_margin_top = 6.0
-texture_margin_bottom = 6.0
-content_margin_bottom = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
 
-[sub_resource type="StyleBoxTexture" id="Hover"]
-texture = ExtResource("HoverTexture")
-axis_stretch_horizontal = 1
-axis_stretch_vertical = 1
-texture_margin_left = 6.0
-content_margin_left = 14.0
-texture_margin_right = 6.0
-content_margin_right = 14.0
-texture_margin_top = 6.0
+[sub_resource type="StyleBoxTexture" id="Lit"]
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(360, 12, 96, 96)
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 18.0
+content_margin_left = 18.0
 content_margin_top = 6.0
-texture_margin_bottom = 6.0
-content_margin_bottom = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxTexture" id="Pressed"]
-texture = ExtResource("PressedTexture")
-axis_stretch_horizontal = 1
-axis_stretch_vertical = 1
-texture_margin_left = 6.0
-content_margin_left = 14.0
-texture_margin_right = 6.0
-content_margin_right = 14.0
-texture_margin_top = 6.0
-content_margin_top = 6.0
-texture_margin_bottom = 6.0
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(360, 12, 96, 96)
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 18.0
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
 content_margin_bottom = 6.0
+expand_margin_top = -4.0
 
 [sub_resource type="StyleBoxTexture" id="Disabled"]
-texture = ExtResource("DisabledTexture")
-axis_stretch_horizontal = 1
-axis_stretch_vertical = 1
-texture_margin_left = 6.0
-content_margin_left = 14.0
-texture_margin_right = 6.0
-content_margin_right = 14.0
-texture_margin_top = 6.0
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(232, 12, 96, 96)
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 18.0
+content_margin_left = 18.0
 content_margin_top = 6.0
-texture_margin_bottom = 6.0
-content_margin_bottom = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+modulate_color = Color(0.55, 0.55, 0.62, 1)
 
 [sub_resource type="StyleBoxTexture" id="Primary"]
-texture = ExtResource("PrimaryTexture")
-axis_stretch_horizontal = 1
-axis_stretch_vertical = 1
-texture_margin_left = 6.0
-content_margin_left = 14.0
-texture_margin_right = 6.0
-content_margin_right = 14.0
-texture_margin_top = 6.0
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(232, 12, 96, 96)
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 18.0
+content_margin_left = 18.0
 content_margin_top = 6.0
-texture_margin_bottom = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="CardHover"]
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(232, 12, 96, 96)
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 18.0
+content_margin_left = 18.0
+content_margin_top = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+modulate_color = Color(1.3, 1.3, 1.3, 1)
+
+[sub_resource type="StyleBoxFlat" id="CardFocus"]
+draw_center = false
+border_color = Color(1, 0.9647, 0.8392, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+corner_detail = 3
+expand_margin_left = 3.0
+expand_margin_top = 3.0
+expand_margin_right = 3.0
+expand_margin_bottom = 3.0
+anti_aliasing = false
+
+[sub_resource type="StyleBoxTexture" id="SmallNormal"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(116, 6, 48, 48)
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 9.0
+content_margin_left = 6.0
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="SmallLit"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(180, 6, 48, 48)
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 9.0
+content_margin_left = 6.0
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="SmallPressed"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(180, 6, 48, 48)
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 9.0
+content_margin_left = 6.0
+content_margin_top = 4.0
+content_margin_right = 6.0
+content_margin_bottom = 2.0
+expand_margin_top = -2.0
+
+[sub_resource type="StyleBoxTexture" id="SmallHover"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(116, 6, 48, 48)
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 9.0
+content_margin_left = 6.0
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 4.0
+modulate_color = Color(1.3, 1.3, 1.3, 1)
+
+[sub_resource type="StyleBoxTexture" id="Pill"]
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(232, 140, 96, 32)
+texture_margin_left = 14.0
+texture_margin_top = 14.0
+texture_margin_right = 14.0
+texture_margin_bottom = 16.0
+content_margin_left = 24.0
+content_margin_top = 4.0
+content_margin_right = 24.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="Field"]
+bg_color = Color(0.0784, 0.1059, 0.1804, 1)
+border_color = Color(0.2078, 0.298, 0.5294, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
 content_margin_bottom = 6.0
 
-[sub_resource type="StyleBoxFlat" id="Focus"]
-bg_color = Color(0.0941, 0.1294, 0.1529, 1)
-border_color = Color(0.7725, 0.8745, 0.4667, 1)
-border_width_left = 2
-expand_margin_left = 2.0
-border_width_right = 2
-expand_margin_right = 2.0
-border_width_top = 2
-expand_margin_top = 2.0
-border_width_bottom = 2
-expand_margin_bottom = 2.0
+[sub_resource type="StyleBoxFlat" id="FieldFocus"]
 draw_center = false
+border_color = Color(1, 0.8431, 0.5294, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="Tooltip"]
+bg_color = Color(0.1255, 0.1647, 0.2588, 1)
+border_color = Color(1, 0.8431, 0.5294, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+content_margin_left = 8.0
+content_margin_top = 4.0
+content_margin_right = 8.0
+content_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="Divider"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(132, 199, 48, 14)
+texture_margin_left = 14.0
+texture_margin_top = 7.0
+texture_margin_right = 14.0
+texture_margin_bottom = 7.0
+
+[sub_resource type="StyleBoxTexture" id="SliderTrack"]
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(264, 244, 96, 14)
+texture_margin_left = 6.0
+texture_margin_top = 6.0
+texture_margin_right = 6.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="SliderFill"]
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(364, 440, 88, 8)
+texture_margin_left = 4.0
+texture_margin_top = 2.0
+texture_margin_right = 4.0
+texture_margin_bottom = 2.0
+expand_margin_left = -4.0
+expand_margin_top = -4.0
+expand_margin_bottom = -4.0
+
+[sub_resource type="StyleBoxTexture" id="SliderFillLit"]
+texture = ExtResource("Sheet2x")
+region_rect = Rect2(268, 280, 88, 6)
+texture_margin_left = 4.0
+texture_margin_top = 2.0
+texture_margin_right = 4.0
+texture_margin_bottom = 2.0
+expand_margin_left = -4.0
+expand_margin_top = -4.0
+expand_margin_bottom = -4.0
+
+[sub_resource type="AtlasTexture" id="Grabber"]
+atlas = ExtResource("Sheet2x")
+region = Rect2(400, 204, 16, 30)
+
+[sub_resource type="AtlasTexture" id="GrabberDisabled"]
+atlas = ExtResource("Sheet2x")
+region = Rect2(368, 204, 16, 30)
+
+[sub_resource type="StyleBoxTexture" id="SmallTrack"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(132, 122, 48, 7)
+texture_margin_left = 3.0
+texture_margin_top = 3.0
+texture_margin_right = 3.0
+texture_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="SmallFill"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(182, 220, 44, 4)
+texture_margin_left = 2.0
+texture_margin_top = 1.0
+texture_margin_right = 2.0
+texture_margin_bottom = 1.0
+expand_margin_left = -2.0
+expand_margin_top = -2.0
+expand_margin_bottom = -2.0
+
+[sub_resource type="AtlasTexture" id="SmallGrabber"]
+atlas = ExtResource("Sheet")
+region = Rect2(200, 102, 8, 15)
+
+[sub_resource type="StyleBoxTexture" id="ScrollTrack"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(201, 118, 6, 48)
+texture_margin_top = 2.0
+texture_margin_bottom = 2.0
+content_margin_left = 3.0
+content_margin_right = 3.0
+
+[sub_resource type="StyleBoxTexture" id="ScrollGrabber"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(219, 120, 3, 44)
+texture_margin_top = 2.0
+texture_margin_bottom = 2.0
+content_margin_left = 3.0
+content_margin_right = 3.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
 
 [sub_resource type="StyleBoxFlat" id="Track"]
-bg_color = Color(0.0627, 0.0980, 0.1216, 1)
-border_color = Color(0.3294, 0.4039, 0.4431, 1)
+bg_color = Color(0.0784, 0.1059, 0.1804, 1)
+border_color = Color(0.2078, 0.298, 0.5294, 1)
 border_width_left = 2
 content_margin_left = 3.0
 border_width_right = 2
@@ -111,62 +318,117 @@ border_width_bottom = 2
 content_margin_bottom = 3.0
 
 [sub_resource type="StyleBoxFlat" id="Fill"]
-bg_color = Color(0.5176, 0.5961, 0.3412, 1)
-border_color = Color(0.7725, 0.8745, 0.4667, 1)
-border_width_left = 2
-border_width_right = 2
-border_width_top = 2
-border_width_bottom = 2
+bg_color = Color(1, 0.8431, 0.5294, 1)
 
-[sub_resource type="StyleBoxFlat" id="Field"]
-bg_color = Color(0.0627, 0.0980, 0.1216, 1)
-border_color = Color(0.3294, 0.4039, 0.4431, 1)
+[sub_resource type="StyleBoxFlat" id="Plate"]
+bg_color = Color(0.1255, 0.1647, 0.2588, 0.96)
+border_color = Color(1, 0.8431, 0.5294, 1)
 border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+corner_detail = 3
+anti_aliasing = false
 content_margin_left = 6.0
-border_width_right = 2
+content_margin_top = 2.0
 content_margin_right = 6.0
-border_width_top = 2
-content_margin_top = 6.0
-border_width_bottom = 2
-content_margin_bottom = 6.0
+content_margin_bottom = 4.0
 
-[sub_resource type="StyleBoxLine" id="Seam"]
-color = Color(0.3294, 0.4039, 0.4431, 1)
-thickness = 2
+[sub_resource type="StyleBoxTexture" id="SmallFillLit"]
+texture = ExtResource("Sheet")
+region_rect = Rect2(134, 140, 44, 3)
+texture_margin_left = 2.0
+texture_margin_top = 1.0
+texture_margin_right = 2.0
+texture_margin_bottom = 1.0
+expand_margin_left = -2.0
+expand_margin_top = -2.0
+expand_margin_bottom = -2.0
 
 [resource]
-default_font = ExtResource("Pixelify")
+default_font = ExtResource("Alagard")
 default_font_size = 20
-Panel/styles/panel = SubResource("Panel")
+Panel/styles/panel = SubResource("HudPanel")
 PanelContainer/styles/panel = SubResource("Panel")
 Button/constants/h_separation = 8
 Button/constants/outline_size = 0
 Button/styles/normal = SubResource("Normal")
-Button/styles/hover = SubResource("Hover")
+Button/styles/hover = SubResource("Lit")
 Button/styles/pressed = SubResource("Pressed")
 Button/styles/hover_pressed = SubResource("Pressed")
 Button/styles/disabled = SubResource("Disabled")
-Button/styles/focus = SubResource("Focus")
-Button/colors/font_color = Color(0.9059, 0.9059, 0.8039, 1)
-Button/colors/font_hover_color = Color(0.9059, 0.9059, 0.8039, 1)
-Button/colors/font_pressed_color = Color(0.7725, 0.8745, 0.4667, 1)
-Button/colors/font_focus_color = Color(0.9059, 0.9059, 0.8039, 1)
-Button/colors/font_disabled_color = Color(0.5216, 0.5843, 0.5529, 1)
+Button/styles/focus = SubResource("Lit")
+Button/colors/font_color = Color(0.9843, 0.9373, 0.8157, 1)
+Button/colors/font_hover_color = Color(0.1255, 0.1647, 0.2588, 1)
+Button/colors/font_pressed_color = Color(0.1255, 0.1647, 0.2588, 1)
+Button/colors/font_hover_pressed_color = Color(0.1255, 0.1647, 0.2588, 1)
+Button/colors/font_focus_color = Color(0.1255, 0.1647, 0.2588, 1)
+Button/colors/font_disabled_color = Color(0.5804, 0.6196, 0.7216, 1)
 PrimaryButton/base_type = &"Button"
 PrimaryButton/styles/normal = SubResource("Primary")
-PrimaryButton/colors/font_color = Color(0.7725, 0.8745, 0.4667, 1)
+PrimaryButton/colors/font_color = Color(1, 0.8431, 0.5294, 1)
+CardButton/base_type = &"Button"
+CardButton/styles/hover = SubResource("CardHover")
+CardButton/styles/focus = SubResource("CardFocus")
+CardButton/colors/font_hover_color = Color(0.9843, 0.9373, 0.8157, 1)
+CardButton/colors/font_focus_color = Color(0.9843, 0.9373, 0.8157, 1)
+SmallButton/base_type = &"Button"
+SmallButton/styles/normal = SubResource("SmallNormal")
+SmallButton/styles/hover = SubResource("SmallLit")
+SmallButton/styles/pressed = SubResource("SmallPressed")
+SmallButton/styles/hover_pressed = SubResource("SmallPressed")
+SmallButton/styles/disabled = SubResource("SmallNormal")
+SmallButton/styles/focus = SubResource("SmallLit")
+SmallCard/base_type = &"Button"
+SmallCard/styles/normal = SubResource("SmallNormal")
+SmallCard/styles/hover = SubResource("SmallHover")
+SmallCard/styles/pressed = SubResource("SmallPressed")
+SmallCard/styles/hover_pressed = SubResource("SmallPressed")
+SmallCard/styles/disabled = SubResource("SmallNormal")
+SmallCard/styles/focus = SubResource("CardFocus")
+SmallCard/colors/font_hover_color = Color(0.9843, 0.9373, 0.8157, 1)
+SmallCard/colors/font_focus_color = Color(0.9843, 0.9373, 0.8157, 1)
+HudPlate/base_type = &"PanelContainer"
+HudPlate/styles/panel = SubResource("Plate")
+TitlePill/base_type = &"Label"
+TitlePill/styles/normal = SubResource("Pill")
+TitlePill/colors/font_color = Color(1, 0.8431, 0.5294, 1)
 DisplayLabel/base_type = &"Label"
-DisplayLabel/colors/font_color = Color(0.9059, 0.9059, 0.8039, 1)
-Label/colors/font_color = Color(0.9059, 0.9059, 0.8039, 1)
-HSeparator/styles/separator = SubResource("Seam")
+DisplayLabel/colors/font_color = Color(1, 0.8431, 0.5294, 1)
+Label/colors/font_color = Color(0.9843, 0.9373, 0.8157, 1)
+HSeparator/constants/separation = 14
+HSeparator/styles/separator = SubResource("Divider")
 VBoxContainer/constants/separation = 10
 HBoxContainer/constants/separation = 10
 GridContainer/constants/h_separation = 12
 GridContainer/constants/v_separation = 10
 LineEdit/styles/normal = SubResource("Field")
-LineEdit/styles/focus = SubResource("Focus")
-HSlider/styles/slider = SubResource("Track")
-HSlider/styles/grabber_area = SubResource("Fill")
-HSlider/styles/grabber_area_highlight = SubResource("Fill")
+LineEdit/styles/focus = SubResource("FieldFocus")
+LineEdit/colors/font_color = Color(0.9843, 0.9373, 0.8157, 1)
+LineEdit/colors/font_placeholder_color = Color(0.6392, 0.6902, 0.8314, 1)
+LineEdit/colors/caret_color = Color(1, 0.8431, 0.5294, 1)
+TooltipPanel/styles/panel = SubResource("Tooltip")
+TooltipLabel/colors/font_color = Color(0.9843, 0.9373, 0.8157, 1)
+TooltipLabel/font_sizes/font_size = 16
+HSlider/styles/slider = SubResource("SliderTrack")
+HSlider/styles/grabber_area = SubResource("SliderFill")
+HSlider/styles/grabber_area_highlight = SubResource("SliderFillLit")
+HSlider/icons/grabber = SubResource("Grabber")
+HSlider/icons/grabber_highlight = SubResource("Grabber")
+HSlider/icons/grabber_disabled = SubResource("GrabberDisabled")
+SmallSlider/base_type = &"HSlider"
+SmallSlider/styles/slider = SubResource("SmallTrack")
+SmallSlider/styles/grabber_area = SubResource("SmallFill")
+SmallSlider/styles/grabber_area_highlight = SubResource("SmallFillLit")
+SmallSlider/icons/grabber = SubResource("SmallGrabber")
+SmallSlider/icons/grabber_highlight = SubResource("SmallGrabber")
+VScrollBar/styles/scroll = SubResource("ScrollTrack")
+VScrollBar/styles/grabber = SubResource("ScrollGrabber")
+VScrollBar/styles/grabber_highlight = SubResource("ScrollGrabber")
+VScrollBar/styles/grabber_pressed = SubResource("ScrollGrabber")
 ProgressBar/styles/background = SubResource("Track")
 ProgressBar/styles/fill = SubResource("Fill")

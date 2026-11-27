@@ -95,7 +95,7 @@ func _draw() -> void:
 		var who := "%s: " % line.name
 		var who_w := ArenaUi.BODY.get_string_size(who, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_PX).x
 		y -= LINE_H
-		draw_rect(Rect2(Vector2(left_margin, y), Vector2(WIDTH, LINE_H - 2.0)), Color(ArenaUi.SHADE, 0.8 * alpha))
+		draw_rect(Rect2(Vector2(left_margin, y), Vector2(WIDTH, LINE_H - 2.0)), Color(ArenaUi.SHADE, 0.85 * alpha))
 		draw_string(ArenaUi.BODY, Vector2(left_margin + 8.0, y + 17), who, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_PX, Color(name_color(line), alpha))
 		draw_string(ArenaUi.BODY, Vector2(left_margin + 8.0 + who_w, y + 17), line.text, HORIZONTAL_ALIGNMENT_LEFT, WIDTH - 16 - who_w, FONT_PX, Color(ArenaUi.INK, alpha))
 		drawn += 1

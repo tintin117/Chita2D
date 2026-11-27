@@ -93,12 +93,20 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 12)
 	center.add_child(box)
 
+	# the title pill in the middle; online, the countdown on the right with an equal blank on the left
 	var header := HBoxContainer.new()
-	var title := ArenaUi.heading("Choose a fighter", 44)
+	var title := ArenaUi.title("Choose a fighter", 40, not _online)   # online needs the height for the roster
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	if _online:
-		_timer_label = ArenaUi.label("", 20, ArenaUi.GOLD)
+		var blank := Control.new()
+		blank.custom_minimum_size.x = 220
+		header.add_child(blank)
+		header.move_child(blank, 0)
+		_timer_label = ArenaUi.label("", 20, ArenaUi.SUN)
+		_timer_label.custom_minimum_size.x = 220
+		_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_timer_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		header.add_child(_timer_label)
 	box.add_child(header)
 
@@ -129,8 +137,8 @@ func _ready() -> void:
 	data.add_theme_constant_override("separation", 4)
 	details.add_child(data)
 	var hero_header := HBoxContainer.new()
-	_name_label = ArenaUi.heading("", 26)
-	_role_label = ArenaUi.label("", 19, ArenaUi.MOSS)
+	_name_label = ArenaUi.heading("", 24)
+	_role_label = ArenaUi.label("", 20, ArenaUi.MOSS)
 	_role_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_stats = ArenaUi.label("", 18, ArenaUi.MUTED)
 	_stats.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -140,7 +148,7 @@ func _ready() -> void:
 	hero_header.add_child(_role_label)
 	hero_header.add_child(_stats)
 	data.add_child(hero_header)
-	_description = ArenaUi.label("", 19)
+	_description = ArenaUi.label("", 18)
 	_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	data.add_child(_description)
 	# The kit: one icon per slot, the open one's name and text beside the row. Hover previews, click keeps it open.
@@ -151,6 +159,7 @@ func _ready() -> void:
 	for slot in ArenaUi.SKILL_SLOTS:
 		var tile := SkillTile.new()
 		tile.slot = slot
+		tile.theme_type_variation = &"CardButton"
 		tile.toggle_mode = true
 		tile.button_group = group_skill
 		tile.button_pressed = slot == _skill
@@ -167,9 +176,9 @@ func _ready() -> void:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.add_theme_constant_override("separation", 2)
 	kit.add_child(words)
-	_skill_name = ArenaUi.label("", 19, ArenaUi.GOLD)
+	_skill_name = ArenaUi.label("", 20, ArenaUi.SUN)
 	words.add_child(_skill_name)
-	_skill_text = ArenaUi.label("", 17)
+	_skill_text = ArenaUi.label("", 16)
 	_skill_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_skill_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_skill_text.custom_minimum_size.y = 60
@@ -216,6 +225,7 @@ func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> But
 	var card := ArenaUi.button("", func() -> void:
 		Net.set_hero(hero.id)
 		_show_hero(hero))
+	card.theme_type_variation = &"CardButton"
 	card.toggle_mode = true
 	card.button_group = group
 	card.button_pressed = selected
@@ -229,7 +239,7 @@ func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> But
 	card.add_theme_constant_override("icon_max_width", 76)
 	if hero.base_id != "":
 		card.modulate = hero.tint.lerp(Color.WHITE, 0.4)   # heroes 5-8 share sprite layouts with 1-4: the tint tells them apart
-	card.add_theme_font_size_override("font_size", 17)
+	card.add_theme_font_size_override("font_size", 16)
 	card.icon = ArenaUi.portrait(hero, color)
 	_hero_buttons.append(card)
 	return card
@@ -251,8 +261,8 @@ func _show_skill(slot: int) -> void:
 	_skill_name.add_theme_color_override("font_color", ArenaUi.skill_color(slot))
 	_skill_text.text = info[1]
 
-## One kit slot as a toggle button: the icon tile on top, its key under it. The theme draws the button frame,
-## the tile is drawn over it.
+## One kit slot as a toggle button (lit while its text is open): the icon tile on top, its key under it. The theme
+## draws the button frame, the tile is drawn over it.
 class SkillTile extends Button:
 	var slot := 0
 	var hero: Hero
@@ -260,12 +270,12 @@ class SkillTile extends Button:
 	func _draw() -> void:
 		if hero == null:
 			return
-		var r := Rect2(Vector2(roundf(size.x / 2.0 - 24.0), 8.0), Vector2(48, 48))
+		var r := Rect2(Vector2(roundf(size.x / 2.0 - 22.0), 9.0), Vector2(44, 44))
 		ArenaUi.draw_skill(self, hero, slot, r)
 		if button_pressed:
 			draw_rect(r, ArenaUi.skill_color(slot), false, 3.0)
-		draw_string(ArenaUi.BODY, Vector2(0, size.y - 8.0), ArenaUi.skill_key(slot, 0), HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
-			ArenaUi.INK if button_pressed else ArenaUi.MUTED)
+		draw_string(ArenaUi.BODY, Vector2(0, size.y - 14.0), ArenaUi.skill_key(slot, 0), HORIZONTAL_ALIGNMENT_CENTER, size.x, 16,
+			ArenaUi.SHADE if button_pressed else ArenaUi.INK)   # a pressed tile is gold
 
 func _go_back() -> void:
 	if _online:

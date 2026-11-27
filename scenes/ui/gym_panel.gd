@@ -8,7 +8,8 @@ signal reset
 signal quit
 
 const WIDTH := 264.0
-const FONT := 15
+const FONT := 16
+const ROW := 26   ## button height
 
 var _portrait: TextureRect
 var _name: Label
@@ -22,9 +23,9 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size.x = WIDTH
 	position = Vector2(12, 12)
-	var frame := ArenaUi.THEME.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
+	var frame := ArenaUi.THEME.get_stylebox("panel", "Panel").duplicate() as StyleBox   # the thin frame: no room for the menus' one
 	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
-		frame.set_content_margin(side, 10.0)
+		frame.set_content_margin(side, 14.0)   # clear of the corner curls
 	add_theme_stylebox_override("panel", frame)
 	var box := VBoxContainer.new()
 	add_child(box)
@@ -36,11 +37,13 @@ func _ready() -> void:
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(words)
-	_name = ArenaUi.label("")
+	_name = ArenaUi.label("", 20, ArenaUi.SUN)
 	_role = ArenaUi.label("", FONT, ArenaUi.MOSS)
 	words.add_child(_name)
 	words.add_child(_role)
 	_fold = ArenaUi.button("<", toggle)
+	_fold.custom_minimum_size.x = 28
+	_fold.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(_fold)
 
 	_body = VBoxContainer.new()
@@ -53,6 +56,7 @@ func _ready() -> void:
 	var group := ButtonGroup.new()
 	for i in heroes.size():
 		var card := ArenaUi.button("", func() -> void: hero_picked.emit(i))
+		card.theme_type_variation = &"SmallCard"
 		card.toggle_mode = true
 		card.button_group = group
 		card.tooltip_text = heroes[i].display_name
@@ -78,17 +82,11 @@ func _ready() -> void:
 	tools.add_child(ArenaUi.button("Reset [R]", reset.emit))
 
 	_section("Settings")
-	MatchOverlay.add_settings(_body)
+	MatchOverlay.add_settings(_body, false)   # no room for the "Playtest" caption under "SETTINGS"
 	_body.add_child(ArenaUi.button("Quit to menu", quit.emit))
 	_compact(self)
 	for card in _cards:   # after _compact: the hero cards are bigger than the text buttons
-		card.custom_minimum_size = Vector2(56 if grid.columns == 4 else 44, 52)
-		if grid.columns == 5:   # narrower cards: trim the theme's side margins so the face keeps its size
-			for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
-				var slim := ArenaUi.THEME.get_stylebox(state, "Button").duplicate() as StyleBox
-				slim.content_margin_left = 8.0
-				slim.content_margin_right = 8.0
-				card.add_theme_stylebox_override(state, slim)
+		card.custom_minimum_size = Vector2(56 if grid.columns == 4 else 44, 46)
 
 ## Marks hero `i` as the one being played.
 func show_hero(i: int) -> void:
@@ -110,22 +108,26 @@ func _face(hero: Hero) -> Texture2D:
 	return face
 
 func _section(title: String) -> void:
-	_body.add_child(ArenaUi.label(title.to_upper(), FONT, ArenaUi.MUTED))
+	_body.add_child(ArenaUi.label(title.to_upper(), FONT, ArenaUi.SUN))
 
 ## Smaller text, rows and gaps than the full-screen menus use (the panel must end above the HUD), and no keyboard
 ## focus anywhere.
 func _compact(node: Node) -> void:
 	if node is BoxContainer or node is GridContainer:
-		for gap in ["separation", "h_separation", "v_separation"]:
-			node.add_theme_constant_override(gap, 5)
+		node.add_theme_constant_override("separation", 3)
+		node.add_theme_constant_override("h_separation", 4)
+		node.add_theme_constant_override("v_separation", 3)
 	if node is Button or node is Slider:
 		node.focus_mode = Control.FOCUS_NONE
 	if node is Button:
-		node.custom_minimum_size.y = 28
+		node.custom_minimum_size.y = ROW
 		node.add_theme_font_size_override("font_size", FONT)
+		if node.theme_type_variation == &"":
+			node.theme_type_variation = &"SmallButton"
 	elif node is Label and node != _name:
 		node.add_theme_font_size_override("font_size", FONT)
 	elif node is Slider:
 		node.custom_minimum_size.y = 18
+		node.theme_type_variation = &"SmallSlider"
 	for child in node.get_children():
 		_compact(child)

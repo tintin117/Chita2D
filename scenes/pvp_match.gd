@@ -224,7 +224,7 @@ func _ready() -> void:
 	ui.add_child(_feed)
 	_event_card = MatchHud.EventCard.new()
 	ui.add_child(_event_card)
-	_banner = ArenaUi.heading("", 44)
+	_banner = ArenaUi.heading("", 48)
 	_banner.theme = ArenaUi.THEME
 	_banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -852,10 +852,11 @@ class Radar extends Control:
 
 	func _draw() -> void:
 		ArenaUi.panel(self, Rect2(Vector2.ZERO, size))
+		draw_set_transform(size * 0.05, 0.0, Vector2.ONE * 0.9)   # the map sits inside the frame
 		if MatchEvent.is_on(MatchEvent.FOG):   # Fog: the radar stays (vanishing looks like a bug) but shows nothing
 			var fog := MatchEvent.color(MatchEvent.FOG)
 			draw_rect(Rect2(Vector2.ZERO, size), Color(fog, 0.12))
-			draw_string(ArenaUi.DISPLAY, Vector2(0, size.y / 2.0 + 8.0), "FOG", HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, Color(fog, 0.8))
+			draw_string(ArenaUi.DISPLAY, Vector2(0, size.y / 2.0 + 8.0), "FOG", HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, Color(fog, 0.8))
 			return
 		var cell := maxf(WorldMap.TILE * _scale, 1.0)
 		for w: Vector2 in arena._map.water_spots:   # Colosseum: the deadly water

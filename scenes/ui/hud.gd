@@ -36,9 +36,9 @@ class BossBar extends Control:
 		var boss := get_tree().get_first_node_in_group("boss") as Enemy
 		if boss == null:
 			return
-		ArenaUi.panel(self, Rect2(Vector2.ZERO, size))
+		ArenaUi.plate(self, Rect2(Vector2.ZERO, size))
 		var track := Rect2(20, 35, size.x - 40, 8)
 		var ratio := clampf(float(boss.hp) / boss.max_hp, 0, 1)
-		draw_rect(track, Color("#352322"))
+		draw_rect(track, ArenaUi.NIGHT)
 		draw_rect(Rect2(track.position, Vector2(track.size.x * ratio, track.size.y)), Color("#d8775e"))
-		draw_string(ArenaUi.DISPLAY, Vector2(0, 28), "BLACK LANCER", HORIZONTAL_ALIGNMENT_CENTER, size.x, 17, ArenaUi.GOLD)
+		draw_string(ArenaUi.DISPLAY, Vector2(0, 28), "BLACK LANCER", HORIZONTAL_ALIGNMENT_CENTER, size.x, 20, ArenaUi.SUN)
