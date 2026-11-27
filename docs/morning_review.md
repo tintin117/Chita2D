@@ -1,6 +1,6 @@
 # Morning review: arenas and main menu
 
-Branch `feature/iso-editable-level`. Nothing is committed.
+Branch `feature/iso-editable-level`.
 
 Four new arenas (five hand-editable ones with Four Quarters), an arena picker, and a redesigned main menu.
 
@@ -150,8 +150,7 @@ The pixel font, colours and button art are unchanged, so the HUD and hero pick s
 ## Decisions for you
 
 1. Which arenas stay? Delete a row in `scripts/world/arenas.gd` to drop one.
-2. Commit? The menu needs `arenas.gd` (its backdrop is the arena), so arenas go first or together.
-3. Two old problems I noticed and did **not** change, since both alter how the current game plays:
+2. Two old problems I noticed and did **not** change, since both alter how the current game plays:
    - Drops fall in the **same places in the same order in every match**, on every map (the map's random generator
      has a fixed seed). A one-line fix.
    - A bot can keep walking toward a pickup that is already gone, which floods the log with "cannot be normalized"
