@@ -46,11 +46,11 @@ func _ready() -> void:
 	_body = VBoxContainer.new()
 	box.add_child(_body)
 	_section("Hero   [Tab]")
+	var heroes := Hero.pickable()   # the gym's hero indices count the unlocked secret heroes too
 	var grid := GridContainer.new()
-	grid.columns = 4
+	grid.columns = 5 if heroes.size() > 12 else 4   # with a secret unlocked: still three rows, so the panel grows no taller
 	_body.add_child(grid)
 	var group := ButtonGroup.new()
-	var heroes := Hero.all()
 	for i in heroes.size():
 		var card := ArenaUi.button("", func() -> void: hero_picked.emit(i))
 		card.toggle_mode = true
@@ -82,11 +82,17 @@ func _ready() -> void:
 	_body.add_child(ArenaUi.button("Quit to menu", quit.emit))
 	_compact(self)
 	for card in _cards:   # after _compact: the hero cards are bigger than the text buttons
-		card.custom_minimum_size = Vector2(56, 52)
+		card.custom_minimum_size = Vector2(56 if grid.columns == 4 else 44, 52)
+		if grid.columns == 5:   # narrower cards: trim the theme's side margins so the face keeps its size
+			for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+				var slim := ArenaUi.THEME.get_stylebox(state, "Button").duplicate() as StyleBox
+				slim.content_margin_left = 8.0
+				slim.content_margin_right = 8.0
+				card.add_theme_stylebox_override(state, slim)
 
 ## Marks hero `i` as the one being played.
 func show_hero(i: int) -> void:
-	var hero := Hero.all()[i]
+	var hero := Hero.pickable()[i]
 	_portrait.texture = _face(hero)
 	_name.text = hero.display_name
 	_role.text = hero.archetype
