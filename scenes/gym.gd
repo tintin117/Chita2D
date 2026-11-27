@@ -41,10 +41,11 @@ func _ready() -> void:
 	ui.layer = 10
 	var hint := Label.new()
 	hint.text = "WASD move   LMB basic   RMB skill   F / E ult   Space dash   Esc: panel"
-	hint.modulate.a = 0.8
-	hint.position = Vector2(GymPanel.WIDTH + 40.0, 12)
-	hint.add_theme_color_override("font_outline_color", Color.BLACK)
-	hint.add_theme_constant_override("outline_size", 4)
+	hint.theme = ArenaUi.THEME
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_stylebox_override("normal", ArenaUi.THEME.get_stylebox("panel", "HudPlate"))
+	hint.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	hint.position = Vector2(GymPanel.WIDTH + 32.0, 12)
 	ui.add_child(hint)
 	_panel = GymPanel.new()
 	_panel.hero_picked.connect(_swap_hero)

@@ -1,24 +1,35 @@
 class_name ArenaUi extends RefCounted
 
 const THEME := preload("res://assets/ui/arena_theme.tres")
-const BODY := preload("res://assets/ui/pixelify_ui.tres")
+const BODY := preload("res://assets/ui/alagard_ui.tres")
 const DISPLAY := BODY
+const SHEET := preload("res://assets/ui/ornate/royal_blue_sheet.png")
 const BACKDROP := preload("res://assets/ui/arena-diorama.png")
-const LOGO := preload("res://assets/ui/chita-mark.png")
 const ABILITIES := preload("res://assets/ui/ability-icons.png")
 const EQUIPMENT := preload("res://assets/ui/equipment-icons.png")
 const PORTRAITS := preload("res://assets/ui/fighter-sprites.png")
 const CROWN := preload("res://assets/ui/crown.png")
 const SWORDS := preload("res://assets/ui/crossed-swords.png")
+# Navy, blue and gold from the sheet, plus parchment text; the last three only say something (health, ready, danger).
+const INK := Color("#fbefd0")
+const MUTED := Color("#a3b0d4")
+const SHADE := Color("#202a42")
+const SLATE := Color("#2d3d68")
+const EDGE := Color("#354c87")
+const NIGHT := Color("#0e1322")
+const SUN := Color("#ffd787")
 const GOLD := Color("#e2b668")
-const INK := Color("#e7e7cd")
-const MUTED := Color("#acbcb7")
-const SHADE := Color("#182127")
-const SLATE := Color("#263742")
-const EDGE := Color("#546771")
 const MOSS := Color("#c5df77")
 const DANGER := Color("#d86e51")
-const NIGHT := Color("#10191f")
+
+# Pieces of the sheet. Left and right arrows: the outlined pair reads on both the blue and the gold button.
+const ARROWS := [Rect2(394, 46, 20, 16), Rect2(362, 46, 20, 16)]
+const FLOURISH_TINT := Color(4.82, 2.83, 1.0)   ## the flourishes are drawn in the sheet's blue: this makes it the frames' gold
+const SCROLL := Rect2(340, 145, 17, 17)   ## flanks a title
+const WAVE := Rect2(293, 183, 46, 15)     ## under a title
+const CROWNLET := Rect2(262, 150, 28, 12) ## bottom centre of a panel ...
+const SPRIG := Rect2(260, 168, 16, 10)    ## ... with one of these each side
+const CORNER := Rect2(340, 171, 29, 27)   ## bottom-left corner of a panel (mirrored on the right)
 
 # Atlas order matches the numbered isometric character folders.
 const PORTRAIT_CELLS := {
@@ -29,6 +40,7 @@ const SKILL_COLUMNS := 5
 const SKILL_COLUMNS_BY_HERO := {"knight": 0, "rogue": 1, "wizard": 2, "ranger": 3, "bonker": 4}
 
 static var _skills: Dictionary[int, Texture2D] = {}
+static var _faded: StyleBoxFlat
 
 static func backdrop(root: Control, veil := 0.0) -> void:
 	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -66,7 +78,7 @@ static func picture(texture: Texture2D, extent: Vector2) -> TextureRect:
 	return art
 
 static func heading(text: String, px: int) -> Label:
-	var node := label(text, px)
+	var node := label(text, px, SUN)
 	node.theme_type_variation = &"DisplayLabel"
 	return node
 
@@ -87,8 +99,71 @@ static func button(text: String, action: Callable, primary := false) -> Button:
 		node.pressed.connect(action)
 	return node
 
+## A screen's title: a pill with a flourish at each end and, with `wave`, one under it.
+static func title(text: String, px := 32, wave := true) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", -2)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", -6)
+	var pill := label(text, px, SUN)
+	pill.theme_type_variation = &"TitlePill"
+	pill.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pill.custom_minimum_size.x = 220   # a short title still gets a pill, not a square
+	pill.z_index = 1
+	for side in 2:
+		var flourish := flourish_art(SCROLL, side == 1)
+		flourish.size_flags_vertical = Control.SIZE_SHRINK_END
+		row.add_child(flourish)
+		if side == 0:
+			row.add_child(pill)
+	box.add_child(row)
+	if wave:
+		box.add_child(flourish_art(WAVE))
+	return box
+
+## One of the sheet's flourishes as a centred picture, twice its size.
+static func flourish_art(region: Rect2, mirrored := false) -> TextureRect:
+	var atlas := AtlasTexture.new()
+	atlas.atlas = SHEET
+	atlas.region = region
+	var art := picture(atlas, region.size * 2.0)
+	art.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	art.flip_h = mirrored
+	art.self_modulate = FLOURISH_TINT
+	return art
+
+## Draws a flourish centred on `at`, `k` times its size.
+static func draw_flourish(canvas: CanvasItem, region: Rect2, at: Vector2, k := 2.0, mirrored := false) -> void:
+	var extent := region.size * k
+	var box := Rect2((at - extent / 2.0).round(), extent)
+	if mirrored:
+		box.size.x = -extent.x
+	canvas.draw_texture_rect_region(SHEET, box, region, FLOURISH_TINT)
+
+## The ornate frame, for HUD boxes at least 64 px high.
 static func panel(canvas: CanvasItem, box: Rect2) -> void:
 	canvas.draw_style_box(THEME.get_stylebox("panel", "Panel"), box)
+
+## A button-shaped frame for HUD tiles: `kind` is a theme type ("Button" thick, "SmallButton" thin).
+static func frame(canvas: CanvasItem, box: Rect2, kind := &"SmallButton") -> void:
+	canvas.draw_style_box(THEME.get_stylebox("normal", kind), box)
+
+## The navy, gold-edged plate behind the HUD's text boxes (clock, feed, cards), faded by `alpha`.
+static func plate(canvas: CanvasItem, box: Rect2, alpha := 1.0) -> void:
+	var style := THEME.get_stylebox("panel", "HudPlate") as StyleBoxFlat
+	if alpha < 1.0:
+		if not _faded:
+			_faded = style.duplicate() as StyleBoxFlat
+		_faded.bg_color = Color(style.bg_color, style.bg_color.a * alpha)   # read when the box is drawn: one copy serves all
+		_faded.border_color = Color(style.border_color, alpha)
+		style = _faded
+	canvas.draw_style_box(style, box)
+
+## The title pill, for HUD headings.
+static func pill(canvas: CanvasItem, box: Rect2) -> void:
+	canvas.draw_style_box(THEME.get_stylebox("normal", "TitlePill"), box)
 
 ## "Back" on a menu screen: Esc, or B on a gamepad. B is not in ui_cancel because in game it casts a skill.
 static func back_pressed(event: InputEvent) -> bool:
@@ -141,7 +216,7 @@ const PASSIVE_COLOR := Color(0.95, 0.8, 0.4)
 const ULT_COLOR := Color(0.75, 0.4, 1.0)
 
 static func skill_color(slot: int) -> Color:
-	return [INK, GOLD, PASSIVE_COLOR, ULT_COLOR][slot]
+	return [INK, SUN, PASSIVE_COLOR, ULT_COLOR][slot]
 
 ## Key hint under a kit slot: P1 keyboard+mouse, P2 gamepad (Hud.HINTS), the passive has no key.
 static func skill_key(slot: int, player_index: int) -> String:
@@ -170,7 +245,7 @@ static func skill_info(hero: Hero, slot: int) -> Array[String]:
 ## Draws kit slot `slot` as a tile in `r`: the icon sheet for the basic and RMB; the passive and the ult have no art
 ## yet, so the same initials / ULT tiles the in-game HUD uses.
 static func draw_skill(canvas: CanvasItem, hero: Hero, slot: int, r: Rect2) -> void:
-	var font := ThemeDB.fallback_font
+	var font := BODY
 	canvas.draw_rect(r, SHADE)
 	match slot:
 		0, 1:
@@ -182,9 +257,41 @@ static func draw_skill(canvas: CanvasItem, hero: Hero, slot: int, r: Rect2) -> v
 					initials += w[0]
 			canvas.draw_rect(r.grow(-4.0), Color(PASSIVE_COLOR, 0.15))
 			canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 7), initials.to_upper() if initials != "" else "-",
-				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 18, PASSIVE_COLOR)
+				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 20, PASSIVE_COLOR)
 		3:
 			canvas.draw_rect(r.grow(-4.0), Color(ULT_COLOR, 0.25))
 			canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 6), "ULT" if hero.ult_skill != "" else "-",
 				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16, ULT_COLOR)
 	canvas.draw_rect(r, EDGE, false, 2.0)
+
+## The ornate menu panel. `corners` adds the flourishes along its bottom edge (and the room they need); without them
+## only the small centre one is drawn.
+class OrnatePanel extends PanelContainer:
+	var corners := true:
+		set(value):
+			corners = value
+			_pad()
+
+	func _init(with_corners := true) -> void:
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		corners = with_corners
+
+	## Content margin under the last row, so it clears the flourishes.
+	func _pad() -> void:
+		var style := ArenaUi.THEME.get_stylebox("panel", "PanelContainer").duplicate() as StyleBox
+		style.content_margin_bottom = 58.0 if corners else 36.0
+		add_theme_stylebox_override("panel", style)
+		queue_redraw()
+
+	func _draw() -> void:
+		if not has_theme_stylebox_override("panel") or not get_theme_stylebox("panel") is StyleBoxTexture:
+			return
+		var y := size.y - (30.0 if corners else 22.0)
+		var middle := roundf(size.x / 2.0)
+		ArenaUi.draw_flourish(self, ArenaUi.CROWNLET, Vector2(middle, y))
+		if corners:
+			ArenaUi.draw_flourish(self, ArenaUi.SPRIG, Vector2(middle - 44.0, y), 2.0, true)
+			ArenaUi.draw_flourish(self, ArenaUi.SPRIG, Vector2(middle + 44.0, y))
+			var corner := Vector2(16.0, size.y - 16.0) + Vector2(ArenaUi.CORNER.size.x, -ArenaUi.CORNER.size.y)
+			ArenaUi.draw_flourish(self, ArenaUi.CORNER, corner)
+			ArenaUi.draw_flourish(self, ArenaUi.CORNER, Vector2(size.x - corner.x, corner.y), 2.0, true)

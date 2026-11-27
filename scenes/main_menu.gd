@@ -15,13 +15,14 @@ const TAGLINE := "Knock them into the water."
 
 const MARGIN_LEFT := 64
 const COLUMN := 480        ## width of the menu column, left margin included
-const LOBBY_COLUMN := 960
+const LOBBY_COLUMN := 1000
 const ENTER_TIME := 0.18
 
 var _screen := Screen.MAIN
 var _region: MarginContainer
 var _box: VBoxContainer
-var _menu_frame: PanelContainer
+var _menu_frame: ArenaUi.OrnatePanel
+var _key_nav := false      ## keys or a gamepad moved the focus last (not the mouse): the focused entry shows its hint
 var _backdrop: MenuBackdrop
 var _footer: Control
 var _showing: Label
@@ -30,6 +31,8 @@ var _status: Label
 var _id_edit: LineEdit
 var _lobbies: Array = []
 var _shown := ""           ## the screen drawn last: a change slides the column in, a value change does not
+
+signal _hints_changed
 
 func _ready() -> void:
 	theme = ArenaUi.THEME
@@ -50,7 +53,7 @@ func _ready() -> void:
 	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	center.alignment = BoxContainer.ALIGNMENT_CENTER
 	scroll.add_child(center)
-	_menu_frame = PanelContainer.new()
+	_menu_frame = ArenaUi.OrnatePanel.new()
 	center.add_child(_menu_frame)
 	_box = VBoxContainer.new()
 	_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -69,8 +72,8 @@ func _ready() -> void:
 			_status.text = t
 			_status.visible = not t.is_empty())
 	var chat := ChatBox.new()   # lobby chat: shows once you are in a lobby
-	chat.left_margin = 560.0
-	chat.bottom_margin = 56.0
+	chat.left_margin = 580.0
+	chat.bottom_margin = 68.0   # the input clears the footer
 	add_child(chat)
 	Net.roster_changed.connect(_refresh)
 	Net.lobby_list.connect(func(l: Array) -> void:
@@ -107,7 +110,9 @@ func _add_background() -> void:
 func _add_footer() -> void:
 	var bar := PanelContainer.new()
 	var back := StyleBoxFlat.new()
-	back.bg_color = Color(ArenaUi.NIGHT, 0.85)
+	back.bg_color = Color(ArenaUi.SHADE, 0.94)
+	back.border_color = ArenaUi.SUN
+	back.border_width_top = 2
 	back.content_margin_left = MARGIN_LEFT
 	back.content_margin_right = 24
 	back.content_margin_top = 6
@@ -118,10 +123,10 @@ func _add_footer() -> void:
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var row := HBoxContainer.new()
 	bar.add_child(row)
-	var hints := ArenaUi.label("Arrows: select      Enter: confirm      Esc: back", 15, ArenaUi.MUTED)
+	var hints := ArenaUi.label("Arrows: select      Enter: confirm      Esc: back", 16, ArenaUi.MUTED)
 	hints.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(hints)
-	_showing = ArenaUi.label("", 15, ArenaUi.GOLD)
+	_showing = ArenaUi.label("", 16, ArenaUi.SUN)
 	row.add_child(_showing)
 	_footer = bar
 	add_child(bar)
@@ -153,6 +158,17 @@ func _go_back() -> void:
 	else:
 		_go(Screen.MAIN)
 
+## Before the GUI moves the focus: note whether the keys / pad or the mouse are doing the pointing.
+func _input(event: InputEvent) -> void:
+	var by_keys := _key_nav
+	if event is InputEventMouseMotion:
+		by_keys = false
+	elif ["ui_up", "ui_down", "ui_left", "ui_right"].any(func(a: String) -> bool: return event.is_action_pressed(a)):
+		by_keys = true
+	if by_keys != _key_nav:
+		_key_nav = by_keys
+		_hints_changed.emit()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if ArenaUi.back_pressed(event) and not ChatBox.typing and (_screen != Screen.MAIN or not Net.roster.is_empty()):
 		get_viewport().set_input_as_handled()
@@ -179,10 +195,8 @@ func _refresh() -> void:
 	var in_room := not Net.roster.is_empty()
 	var screen := "room" if in_room else str(_screen)
 	_status = _label(Net.last_status, 16, ArenaUi.MUTED)
-	if _screen == Screen.MAIN and not in_room:
-		_menu_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	else:
-		_menu_frame.remove_theme_stylebox_override("panel")
+	# the corner flourishes need room under the last row, which the tall screens do not have
+	_menu_frame.corners = not in_room and _screen != Screen.SOLO
 	_region.offset_right = LOBBY_COLUMN if in_room else COLUMN
 	if in_room:
 		_room()
@@ -222,70 +236,73 @@ func _enter() -> void:
 	t.tween_property(_region, "offset_right", right, ENTER_TIME)
 
 func _main() -> void:
-	var mark := ArenaUi.picture(ArenaUi.LOGO, Vector2(376, 128))
-	mark.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	mark.stretch_mode = TextureRect.STRETCH_KEEP
-	var inset := MarginContainer.new()
-	inset.add_theme_constant_override("margin_left", -32)   # the art's own padding: line the C up with the text under it
-	inset.add_child(mark)
-	_box.add_child(inset)
-	_box.add_child(_label(TAGLINE, 20, ArenaUi.GOLD))
-	_box.add_child(_gap(14))
+	_box.add_child(ArenaUi.title("Chita", 40))
+	var tagline := _label(TAGLINE, 20, ArenaUi.SUN)
+	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_box.add_child(tagline)
+	_box.add_child(_gap(6))
 	var online_hint := "Host or join a lobby with friends" if Net.available() else "Needs Steam running"
 	_box.add_child(_item("Online Match", online_hint, func() -> void: _go(Screen.ONLINE)))
 	_box.add_child(_item("Practice vs Bots", "Any arena, any ruleset, on your own", func() -> void: _go(Screen.SOLO)))
 	_box.add_child(_item("Gym Arena", "Try every hero on training dummies",
 		func() -> void: get_tree().change_scene_to_file(Net.HERO_SCENE)))
-	_box.add_child(_gap(6))
-	_box.add_child(HSeparator.new())
-	var row := HBoxContainer.new()
-	for item: Button in [_item("Settings", "", _settings.open), _item("Exit", "", get_tree().quit)]:
-		item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(item)
-	_box.add_child(row)
+	_box.add_child(_item("Settings", "", _settings.open))
+	_box.add_child(_item("Exit", "", get_tree().quit))
 
 func _gap(height: int) -> Control:
 	var node := Control.new()
 	node.custom_minimum_size.y = height
 	return node
 
-## A main-menu entry: a title, an optional line under it, and a gold bar with a small slide on the one in focus.
+## A main-menu entry: a centred title. Its hint shows under it only while the mouse is on it (or the keys / pad are).
 func _item(title: String, hint: String, action: Callable) -> Button:
 	var node := ArenaUi.button("", action)
-	node.custom_minimum_size.y = 62 if hint != "" else 44
-	var idle := StyleBoxFlat.new()
-	idle.bg_color = Color(ArenaUi.SLATE, 0.35)
-	idle.border_width_left = 4
-	idle.border_color = ArenaUi.EDGE
-	var lit := idle.duplicate() as StyleBoxFlat
-	lit.bg_color = Color(ArenaUi.SLATE, 0.95)
-	lit.border_width_left = 8
-	lit.border_color = ArenaUi.GOLD
-	node.add_theme_stylebox_override("normal", idle)
-	node.add_theme_stylebox_override("hover", idle)
-	node.add_theme_stylebox_override("pressed", lit)
-	node.add_theme_stylebox_override("focus", lit)
+	node.custom_minimum_size = Vector2(310, 66)
+	node.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	# only the focused entry lights up (its labels follow focus): a pointer resting on another one leaves it blue
+	node.add_theme_stylebox_override("hover", ArenaUi.THEME.get_stylebox("normal", "Button"))
 	var text := VBoxContainer.new()
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text.alignment = BoxContainer.ALIGNMENT_CENTER
-	text.add_theme_constant_override("separation", -2)
+	text.add_theme_constant_override("separation", -6)
 	text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	text.offset_left = 22
-	var head := ArenaUi.heading(title, 26 if hint != "" else 20)
+	text.offset_bottom = -3   # the frame's lower edge is the thicker one
+	var head := ArenaUi.heading(title, 28)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.add_child(head)
-	if hint != "":
-		text.add_child(ArenaUi.label(hint, 15, ArenaUi.MUTED))
 	node.add_child(text)
-	var slide := func(x: float, tint: Color) -> void:
-		head.add_theme_color_override("font_color", tint)
-		node.create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC).tween_property(text, "offset_left", x, 0.12)
-	node.focus_entered.connect(slide.bind(32.0, ArenaUi.MOSS))
-	node.focus_exited.connect(slide.bind(22.0, ArenaUi.INK))
+	var tint := func(label: Label, idle: Color) -> void:   # dark text on the gold button
+		node.focus_entered.connect(func() -> void: label.add_theme_color_override("font_color", ArenaUi.SHADE))
+		node.focus_exited.connect(func() -> void: label.add_theme_color_override("font_color", idle))
+	tint.call(head, ArenaUi.SUN)
 	node.mouse_entered.connect(node.grab_focus)   # one highlight: the mouse moves the same focus the keys do
+	if hint == "":
+		return node
+	var sub := ArenaUi.label(hint, 16)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.visible = false
+	text.add_child(sub)
+	tint.call(sub, ArenaUi.INK)
+	var show_hint := func() -> void:
+		sub.visible = node.has_focus() and (_key_nav or node.has_meta("pointed"))
+	node.mouse_entered.connect(func() -> void:
+		node.set_meta("pointed", true)
+		show_hint.call())
+	node.mouse_exited.connect(func() -> void:
+		node.remove_meta("pointed")
+		show_hint.call())
+	node.focus_entered.connect(show_hint)
+	node.focus_exited.connect(show_hint)
+	_hints_changed.connect(show_hint)
+	node.tree_exiting.connect(func() -> void: _hints_changed.disconnect(show_hint))
 	return node
 
 func _caption(text: String) -> Label:
-	return ArenaUi.label(text, 15, ArenaUi.GOLD)
+	return ArenaUi.label(text, 16, ArenaUi.SUN)
+
+## A screen's title pill.
+func _title(text: String) -> void:
+	_box.add_child(ArenaUi.title(text))
 
 ## A fixed two-line slot, so changing a value does not make the panel jump.
 func _blurb(text: String) -> Label:
@@ -301,7 +318,7 @@ func _mode_stepper() -> Stepper:
 		Net.set_mode(GameMode.MODES[posmod(GameMode.MODES.find(Net.mode) + d, GameMode.MODES.size())]))
 
 func _solo() -> void:
-	_box.add_child(ArenaUi.heading("Practice vs Bots", 33))
+	_title("Practice vs Bots")
 	_box.add_child(_caption("ARENA  %d / %d" % [Net.arena + 1, Arenas.LIST.size()]))
 	_box.add_child(_arena_stepper())
 	_box.add_child(_blurb(Arenas.info(Net.arena).blurb))
@@ -322,7 +339,7 @@ func _solo() -> void:
 	var play := ArenaUi.button("Play", func() -> void: Net.start_solo(BOT_COUNTS[_bot_count], DIFFICULTY[_difficulty][1]), true)
 	play.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	play.custom_minimum_size.y = 52
-	play.add_theme_font_size_override("font_size", 26)
+	play.add_theme_font_size_override("font_size", 24)
 	actions.add_child(play)
 	_box.add_child(actions)
 
@@ -332,12 +349,12 @@ func _setting(title: String, value: Control) -> HBoxContainer:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(label)
-	value.custom_minimum_size.x = 232
+	value.custom_minimum_size.x = 250
 	row.add_child(value)
 	return row
 
 func _online() -> void:
-	_box.add_child(ArenaUi.heading("Online Match", 33))
+	_title("Online Match")
 	var ok := Net.available()
 	_box.add_child(_button("Host a match", Net.host, not ok))
 	_box.add_child(_button("Join a lobby", func() -> void: _go(Screen.JOIN), not ok))
@@ -346,9 +363,9 @@ func _online() -> void:
 		_box.add_child(_label("Start Steam and relaunch Chita to play online.", 16, Color("#efab88")))
 
 func _join() -> void:
-	_box.add_child(ArenaUi.heading("Open Lobbies", 33))
+	_title("Open Lobbies")
 	if _lobbies.is_empty():
-		_box.add_child(_label("No open matches found", 14, ArenaUi.MUTED))
+		_box.add_child(_label("No open matches found", 16, ArenaUi.MUTED))
 	for l: Dictionary in _lobbies:
 		_box.add_child(_button("%s   (%d/%d)" % [l.name, l.members, Net.MAX_PLAYERS], Net.join.bind(l.id)))
 	_box.add_child(_button("Refresh", Net.refresh_lobbies))
@@ -365,15 +382,21 @@ func _join() -> void:
 ## The waiting room: players on the left, match rules on the right, the actions under both (always on screen).
 func _room() -> void:
 	var host := multiplayer.is_server()
+	# the title pill in the middle; "Copy ID" and the player count in equal slots either side keep it there
 	var header := HBoxContainer.new()
-	var title := ArenaUi.heading("Match Lobby", 34)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
+	var copy_slot := HBoxContainer.new()
+	copy_slot.custom_minimum_size.x = 140
+	header.add_child(copy_slot)
 	if Net.lobby_id != 0:
 		var copy := _button("Copy ID", func() -> void: DisplayServer.clipboard_set(str(Net.lobby_id)))
 		copy.tooltip_text = "Lobby %d" % Net.lobby_id
-		header.add_child(copy)
-	var count := ArenaUi.label("%d / %d" % [Net.roster.size(), Net.MAX_PLAYERS], 19, ArenaUi.MOSS)
+		copy_slot.add_child(copy)
+	var title := ArenaUi.title("Match Lobby", 32, false)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var count := ArenaUi.label("%d / %d" % [Net.roster.size(), Net.MAX_PLAYERS], 24, ArenaUi.MOSS)
+	count.custom_minimum_size.x = 140
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(count)
 	_box.add_child(header)
@@ -399,7 +422,7 @@ func _room() -> void:
 		for id: int in ids:
 			players.add_child(_player_row(id, false))
 	var rules := VBoxContainer.new()
-	rules.custom_minimum_size.x = 420
+	rules.custom_minimum_size.x = 400
 	columns.add_child(rules)
 	_settings_rows(rules, host)
 	rules.add_child(_blurb(Arenas.info(Net.arena).blurb))
@@ -472,7 +495,7 @@ func _player_row(id: int, host: bool) -> HBoxContainer:
 	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(name_label)
 	if id == 1:
-		var badge := ArenaUi.label("Host", 15, ArenaUi.MUTED)
+		var badge := ArenaUi.label("Host", 16, ArenaUi.MUTED)
 		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(badge)
 	if Net.is_team_mode() and (host or id == multiplayer.get_unique_id()):
@@ -491,14 +514,15 @@ class Stepper extends Button:
 		_step = step
 		custom_minimum_size.y = 42
 		clip_text = true
-		for side in 2:
-			var arrow := ArenaUi.label("<" if side == 0 else ">", 20, ArenaUi.GOLD)
-			arrow.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE if side == 0 else Control.PRESET_RIGHT_WIDE)
-			arrow.offset_left = 14.0 if side == 0 else -28.0
-			arrow.offset_right = 28.0 if side == 0 else -14.0
-			arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			add_child(arrow)
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		pressed.connect(func() -> void: _step.call(-1 if _back else 1))
+
+	## The sheet's arrows at both ends.
+	func _draw() -> void:
+		for side in 2:
+			var region: Rect2 = ArenaUi.ARROWS[side]
+			var x := 14.0 if side == 0 else size.x - 14.0 - region.size.x
+			draw_texture_rect_region(ArenaUi.SHEET, Rect2(Vector2(x, roundf((size.y - region.size.y) / 2.0) - 1.0), region.size), region)
 
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton:

@@ -20,15 +20,17 @@ func _ready() -> void:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	add_child(center)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size.x = 440
+	var panel := ArenaUi.OrnatePanel.new()
+	panel.custom_minimum_size.x = 480
 	center.add_child(panel)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
+	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
-	box.add_child(ArenaUi.heading(_title, 40))
+	box.add_child(ArenaUi.title(_title, 40))
 	if _leave.is_valid() and not pause_tree:
-		box.add_child(ArenaUi.label("The match continues while this menu is open.", 17, ArenaUi.MUTED))
+		var note := ArenaUi.label("The match continues while this menu is open.", 16, ArenaUi.MUTED)
+		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(note)
 	add_settings(box)
 
 	box.add_child(HSeparator.new())
@@ -43,7 +45,7 @@ func _ready() -> void:
 	actions.add_child(_resume)
 
 ## Appends the volume, display and playtest controls to `box` (this menu, and the gym's side panel).
-static func add_settings(box: Container) -> void:
+static func add_settings(box: Container, playtest_caption := true) -> void:
 	var bus := AudioServer.get_bus_index("Master")
 	var volume := HSlider.new()
 	var value := ArenaUi.label("", 18, ArenaUi.MUTED)
@@ -76,10 +78,11 @@ static func add_settings(box: Container) -> void:
 
 	# playtest feel toggles (local only, saved per machine: see PlaySettings)
 	PlaySettings.load_once()
-	box.add_child(ArenaUi.label("Playtest", 18, ArenaUi.MUTED))
+	if playtest_caption:
+		box.add_child(ArenaUi.label("Playtest", 18, ArenaUi.MUTED))
 	var aim_btn := ArenaUi.button("", Callable())
 	var aim_text := func() -> void:
-		aim_btn.text = "Attack aim: Facing (move direction)" if PlaySettings.aim_facing else "Attack aim: Mouse"
+		aim_btn.text = "Attack aim: Move direction" if PlaySettings.aim_facing else "Attack aim: Mouse"
 	aim_btn.pressed.connect(func() -> void:
 		PlaySettings.aim_facing = not PlaySettings.aim_facing
 		PlaySettings.save()

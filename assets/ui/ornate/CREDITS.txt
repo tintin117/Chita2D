@@ -1,0 +1,13 @@
+royal_blue_sheet.png, royal_blue_sheet_2x.png
+  "Retro Ornate UI Set (free version)", colour variant "blue and gold" (RoyalBlueUISheet.png).
+  The 2x file is the same sheet doubled with nearest-neighbour scaling, for the menus' larger frames.
+  Created by: zLizard
+  License (from the pack's README): Free for personal and commercial use. Credit is appreciated but not required.
+
+  The layout of the menus follows the pack's "Retro Ornate Set" example. The other colour variants share this
+  sheet's layout, so the regions in arena_theme.tres and ArenaUi work for any of them; text colours, and
+  ArenaUi.FLOURISH_TINT (which turns the blue flourishes gold), are tuned to this one.
+
+../alagard.ttf
+  Alagard (name table: "Pix3M:Alagard", Version 001.000). The archive it came in has no licence file:
+  check the terms where it was downloaded before shipping.
