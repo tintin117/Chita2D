@@ -90,6 +90,10 @@ static func button(text: String, action: Callable, primary := false) -> Button:
 static func panel(canvas: CanvasItem, box: Rect2) -> void:
 	canvas.draw_style_box(THEME.get_stylebox("panel", "Panel"), box)
 
+## "Back" on a menu screen: Esc, or B on a gamepad. B is not in ui_cancel because in game it casts a skill.
+static func back_pressed(event: InputEvent) -> bool:
+	return event.is_action_pressed("ui_cancel") or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_B)
+
 static func defer_focus(target: Control) -> void:
 	var select := func() -> void:
 		if is_instance_valid(target) and target.is_inside_tree() and target.is_visible_in_tree():

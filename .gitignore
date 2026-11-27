@@ -7,3 +7,6 @@
 
 # GodotSteam updater leaves temp copies of locked DLLs
 addons/godotsteam/**/~*
+
+# Exported game builds
+/build/

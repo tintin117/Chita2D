@@ -122,7 +122,14 @@ func close() -> void:
 		_previous_focus.grab_focus()
 
 func _input(event: InputEvent) -> void:
-	if visible and (event.is_action_pressed("ui_cancel") or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_START)):
+	if not visible:
+		return
+	var pad := event as InputEventJoypadButton
+	if pad and pad.button_index == JOY_BUTTON_B:   # closes on release: closing on the press would hand a held B to the skill
+		get_viewport().set_input_as_handled()
+		if not pad.pressed:
+			close()
+	elif event.is_action_pressed("ui_cancel") or (pad and pad.pressed and pad.button_index == JOY_BUTTON_START):
 		get_viewport().set_input_as_handled()
 		close()
 

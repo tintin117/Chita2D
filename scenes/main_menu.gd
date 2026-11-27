@@ -150,7 +150,7 @@ func _go_back() -> void:
 		_go(Screen.MAIN)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and (_screen != Screen.MAIN or not Net.roster.is_empty()):
+	if ArenaUi.back_pressed(event) and (_screen != Screen.MAIN or not Net.roster.is_empty()):
 		get_viewport().set_input_as_handled()
 		_go_back()
 

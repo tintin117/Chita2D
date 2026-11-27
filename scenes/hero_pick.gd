@@ -206,7 +206,7 @@ func _go_back() -> void:
 		get_tree().change_scene_to_file(Net.MENU_SCENE)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
+	if ArenaUi.back_pressed(event):
 		get_viewport().set_input_as_handled()
 		_go_back()
 

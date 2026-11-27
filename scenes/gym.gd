@@ -3,7 +3,8 @@ extends Node2D
 ## Three dummies: one facing you (front), one facing away (its back is yours: backstabs), one off to the side so line
 ## and area skills (Shadow Rush, Arrow Rain, Meteor) catch more than one. Dummies slide when knocked back and say when
 ## a stun or freeze lands. The side panel (GymPanel) swaps heroes and holds the tools and settings. Keys: Tab /
-## Shift+Tab swap hero, R resets the dummies and cooldowns and fills the ult, Esc shows / hides the panel.
+## Shift+Tab swap hero, R resets the dummies and cooldowns and fills the ult, Esc shows / hides the panel. A gamepad's
+## Start goes back to the menu.
 ## Free spells (panel toggle): the skill is ready again after FREE_CD and the ult is always full. The basic keeps its pace.
 
 const FREE_CD := 0.4   ## not 0: a button held for a few frames would cast once per frame
@@ -49,7 +50,7 @@ func _ready() -> void:
 	_panel.hero_picked.connect(_swap_hero)
 	_panel.free_spells.connect(func(on: bool) -> void: _free_spells = on)
 	_panel.reset.connect(_reset)
-	_panel.quit.connect(func() -> void: get_tree().change_scene_to_file(Net.MENU_SCENE))
+	_panel.quit.connect(_quit)
 	ui.add_child(_panel)
 	add_child(ui)
 	_panel.show_hero(_hero_i)
@@ -94,6 +95,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		_panel.toggle()
 		return
+	var pad := event as InputEventJoypadButton
+	if pad and pad.pressed and pad.button_index == JOY_BUTTON_START:   # the panel takes no focus: a gamepad's way out
+		get_viewport().set_input_as_handled()
+		_quit()
+		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
@@ -105,6 +111,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_R:
 			_reset()
 			get_viewport().set_input_as_handled()
+
+func _quit() -> void:
+	get_tree().change_scene_to_file(Net.MENU_SCENE)
 
 func _reset() -> void:
 	for i in _dummies.size():

@@ -163,6 +163,9 @@ var _shape: CircleShape2D
 var _sprite: AnimatedSprite2D
 var _dirs: Array[SpriteFrames] = []   ## one per facing, see SheetFrames.face
 const SPRITE_SCALE := 1.5   ## the isometric sheets are 128 px frames with a ~60 px body
+const TURN_SPEED := 4.0 * PI   ## rad/s the sprite turns at: a half turn takes 0.25 s and shows every facing on the way
+const CAST_TURN_SPEED := 12.0 * PI   ## faster while casting, so the swing points where the hit goes
+var _face_angle := PI / 2.0   ## the facing on screen, trailing aim_dir; starts south like the first frames
 
 ## True when this peer simulates this player: it is ours, or a bot we run.
 func owns() -> bool:
@@ -1419,10 +1422,13 @@ func _play_cast(slot: int, spell: Spell) -> void:
 const RUN_ANIMS := ["run", "strafe_r", "run_back", "strafe_l"]
 const RUN_SHEETS := {"run": "Run.png", "strafe_r": "StrafeRight.png", "run_back": "RunBackwards.png", "strafe_l": "StrafeLeft.png"}
 
-## Always faces the aim (aim_dir is replicated, so puppets and bots show the same facing); the legs pick
+## Always turns toward the aim (aim_dir is replicated, so puppets and bots show the same facing); the legs pick
 ## run / strafe / backpedal from the move direction relative to it, so walking away from the cursor never moonwalks.
+## The turn is visual only: aim_dir, and so every hit, changes at once.
 func _animate(move: Vector2) -> void:
-	SheetFrames.face(_sprite, _dirs, aim_dir)
+	var turn := CAST_TURN_SPEED if _cast_time > 0.0 else TURN_SPEED
+	_face_angle = rotate_toward(_face_angle, aim_dir.angle(), turn * get_physics_process_delta_time())
+	SheetFrames.face(_sprite, _dirs, Vector2.from_angle(_face_angle))
 	if _cast_time > 0.0:
 		return
 	_sprite.speed_scale = 1.0
