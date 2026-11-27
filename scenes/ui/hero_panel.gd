@@ -22,9 +22,9 @@ var _hooked := false
 
 func _ready() -> void:
 	size = SIZE_PX if player.online else SIZE_PX + Vector2(0, 10)
-	if player.spells.size() > Player.ULT_SLOT or player.hero.ult_skill != "":
+	if player.spells.size() > Player.ULT_SLOT or player.hero.ult_skill != "" or _drop_kit():
 		size.x += ULT_EXTRA
-	if player.hero.passive_name != "":
+	if player.hero.passive_name != "" or _drop_kit():
 		size.x += ULT_EXTRA
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -152,11 +152,22 @@ func _draw_dash() -> void:
 ## The kit as the player knows it: LMB, RMB, PASSIVE (no button), ULT. Column -> what it shows.
 func columns() -> Array:
 	var out: Array = [0, 1]
-	if player.hero.passive_name != "":
+	if player.hero.passive_name != "" or _drop_kit():
 		out.append("passive")
-	if player.spells.size() > Player.ULT_SLOT:
+	if player.spells.size() > Player.ULT_SLOT or _drop_kit():
 		out.append(Player.ULT_SLOT)
 	return out
+
+## Friendslop's Bonker: the passive and ult columns are always there, empty until a drop fills them (FsLoot).
+func _drop_kit() -> bool:
+	return player.hero != null and player.hero.id == "bonker"
+
+## An empty drop slot: a dim tile with a dash, captioned "find a drop".
+func _draw_empty(r: Rect2, color: Color) -> void:
+	draw_rect(r.grow(-4), Color(color, 0.06))
+	_text(r.position + Vector2(0, 30), "-", 20, Color(color, 0.5), HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	draw_rect(r, Color(color, 0.3), false, 2.0)
+	_draw_skill_caption(r, "find a drop", ArenaUi.MUTED)
 
 func _draw_skills() -> void:
 	var hints: Array = Hud.HINTS[0 if player.online else player.player_index % 2]
@@ -196,6 +207,9 @@ func _draw_skills() -> void:
 
 ## The ult: no icon sheet row for it yet, so a charge bar filling the slot from the bottom; it pulses once ready.
 func _draw_ult(r: Rect2) -> void:
+	if player.spells.size() <= Player.ULT_SLOT or player.ult_slot_empty():
+		_draw_empty(r, ULT_COLOR)
+		return
 	var spell: Spell = player.spells[Player.ULT_SLOT]
 	var frac := player.ult_fraction()
 	var full := player.ult_ready()
@@ -211,7 +225,10 @@ func _draw_ult(r: Rect2) -> void:
 ## something you can see (Ranger: Steady Aim doubling the draw right now).
 func _draw_passive(r: Rect2) -> void:
 	var h := player.hero
-	var lit := h.steady_aim and player.charge_show > 0.0 and player.draw_rate() > 1.0
+	if h.passive_name == "":
+		_draw_empty(r, PASSIVE_COLOR)
+		return
+	var lit := (h.steady_aim and player.charge_show > 0.0 and player.draw_rate() > 1.0) or player.passive_lit()   # Stalk faded, a wave ready, Fiendform...
 	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
 	var words := h.passive_name.split(" ")
 	var initials := ""
@@ -219,9 +236,18 @@ func _draw_passive(r: Rect2) -> void:
 		if w != "":
 			initials += w[0]
 	draw_rect(r.grow(-4), Color(PASSIVE_COLOR, 0.35 + 0.35 * pulse) if lit else Color(PASSIVE_COLOR, 0.12))
-	_text(r.position + Vector2(0, 31), initials.to_upper(), 20, Color.WHITE if lit else PASSIVE_COLOR, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
-	if lit:
+	_text(r.position + Vector2(0, 31), "67" if h.lives_67 else initials.to_upper(), 20, Color.WHITE if lit else PASSIVE_COLOR, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	if lit and h.steady_aim:
 		_text(r.position + Vector2(0, 46), "x2", 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	if h.lives_67 and player._lives_cd > 0.0:   # 67 Lives has a wait: shown like a skill cooldown
+		var lcd: float = player._lives_cd
+		draw_rect(Rect2(r.position, Vector2(SLOT, roundf(SLOT * clampf(lcd / Player.LIVES_CD, 0.0, 1.0)))), Color(0, 0, 0, 0.7))
+		_text(r.position + Vector2(0, 33), str(ceili(lcd)), 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	if h.tide_wave and player._wave_cd > 0.0:   # Tide Breaker has a wait: shown like a skill cooldown
+		var cd: float = player._wave_cd
+		var frac := clampf(cd / Player.WAVE_CD, 0.0, 1.0)
+		draw_rect(Rect2(r.position, Vector2(SLOT, roundf(SLOT * frac))), Color(0, 0, 0, 0.7))
+		_text(r.position + Vector2(0, 33), str(ceili(cd)) if cd >= 1.0 else "%.1f" % cd, 18, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 	draw_rect(r, Color(PASSIVE_COLOR, 0.6 + 0.4 * pulse) if lit else Color(PASSIVE_COLOR, 0.7), false, 2.0)
 	_draw_skill_caption(r, h.passive_name, PASSIVE_COLOR if lit else ArenaUi.MUTED)
 

@@ -105,7 +105,7 @@ class Dance extends Node2D:
 			draw_line(to_local(_trail[i - 1]), to_local(_trail[i]), Color(MARK_COLOR, 0.5), 3.0)
 
 func _init() -> void:
-	display_name = "Shadow Dance"
+	display_name = "Shadow Strikes"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 18
 	sfx = "dash"

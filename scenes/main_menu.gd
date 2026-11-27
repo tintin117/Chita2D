@@ -68,6 +68,10 @@ func _ready() -> void:
 		if _status:
 			_status.text = t
 			_status.visible = not t.is_empty())
+	var chat := ChatBox.new()   # lobby chat: shows once you are in a lobby
+	chat.left_margin = 560.0
+	chat.bottom_margin = 56.0
+	add_child(chat)
 	Net.roster_changed.connect(_refresh)
 	Net.lobby_list.connect(func(l: Array) -> void:
 		_lobbies = l
@@ -150,7 +154,7 @@ func _go_back() -> void:
 		_go(Screen.MAIN)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if ArenaUi.back_pressed(event) and (_screen != Screen.MAIN or not Net.roster.is_empty()):
+	if ArenaUi.back_pressed(event) and not ChatBox.typing and (_screen != Screen.MAIN or not Net.roster.is_empty()):
 		get_viewport().set_input_as_handled()
 		_go_back()
 

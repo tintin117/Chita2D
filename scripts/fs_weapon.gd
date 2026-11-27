@@ -1,18 +1,18 @@
 class_name FsWeapon extends Spell
-## Friendslop pickup weapons. One is held per button slot (0 = LMB, 1 = RMB) and replaces the hero's basic / skill while it
-## lasts: until `uses` run out or `time` seconds pass. Built by make(); the Player casts it through the same _net_cast
+## Friendslop pickup weapons. Every weapon goes in the LMB slot (0) and replaces the Bonk while it lasts: until `uses`
+## run out or `time` seconds pass. RMB is always the Hook. (`slot` stays in DEFS as the seam if that ever changes.) Built by make(); the Player casts it through the same _net_cast
 ## path as any spell, so every peer spawns identical projectiles / blasts (anything random comes from the caster's seeded rng).
 
 ## Per weapon: name, slot, uses, time (s), cd (s), dmg; the rest feeds the bots (reach band, needs a clear line, projectile speed to lead).
 const DEFS := {
 	"slingshot": {"name": "Slingshot", "slot": 0, "uses": 14, "time": 15.0, "cd": 0.32, "dmg": 7, "min": 0.0, "max": 400.0, "los": true, "speed": 720.0, "sfx": "shoot"},
-	"firecracker": {"name": "Firecracker", "slot": 1, "uses": 4, "time": 15.0, "cd": 1.6, "dmg": 16, "min": 60.0, "max": 320.0, "los": false, "speed": 0.0, "sfx": "swing"},
+	"firecracker": {"name": "Firecracker", "slot": 0, "uses": 4, "time": 15.0, "cd": 1.6, "dmg": 16, "min": 60.0, "max": 320.0, "los": false, "speed": 0.0, "sfx": "swing"},
 	"hammer": {"name": "War Hammer", "slot": 0, "uses": 8, "time": 14.0, "cd": 0.8, "dmg": 30, "min": 0.0, "max": 135.0, "los": false, "speed": 0.0, "sfx": "swing"},
 	"frost_gun": {"name": "Frost Gun", "slot": 0, "uses": 30, "time": 12.0, "cd": 0.16, "dmg": 5, "min": 0.0, "max": 380.0, "los": true, "speed": 760.0, "sfx": "shoot"},
-	"boomerang": {"name": "Boomerang", "slot": 1, "uses": 5, "time": 14.0, "cd": 1.3, "dmg": 15, "min": 60.0, "max": 380.0, "los": false, "speed": 0.0, "sfx": "shoot"},
-	"bomb_launcher": {"name": "Bomb Launcher", "slot": 1, "uses": 5, "time": 14.0, "cd": 1.2, "dmg": 26, "min": 120.0, "max": 480.0, "los": false, "speed": 0.0, "sfx": "swing"},
-	"rocket": {"name": "Rocket Launcher", "slot": 1, "uses": 4, "time": 12.0, "cd": 1.0, "dmg": 38, "min": 140.0, "max": 800.0, "los": true, "speed": 900.0, "sfx": "shoot"},
-	"meteor": {"name": "Meteor Storm", "slot": 1, "uses": 2, "time": 12.0, "cd": 3.0, "dmg": 28, "min": 100.0, "max": 450.0, "los": false, "speed": 0.0, "sfx": "swing"},
+	"boomerang": {"name": "Boomerang", "slot": 0, "uses": 5, "time": 14.0, "cd": 1.3, "dmg": 15, "min": 60.0, "max": 380.0, "los": false, "speed": 0.0, "sfx": "shoot"},
+	"bomb_launcher": {"name": "Bomb Launcher", "slot": 0, "uses": 5, "time": 14.0, "cd": 1.2, "dmg": 26, "min": 120.0, "max": 480.0, "los": false, "speed": 0.0, "sfx": "swing"},
+	"rocket": {"name": "Rocket Launcher", "slot": 0, "uses": 4, "time": 12.0, "cd": 1.0, "dmg": 38, "min": 140.0, "max": 800.0, "los": true, "speed": 900.0, "sfx": "shoot"},
+	"meteor": {"name": "Meteor Storm", "slot": 0, "uses": 2, "time": 12.0, "cd": 3.0, "dmg": 28, "min": 100.0, "max": 450.0, "los": false, "speed": 0.0, "sfx": "swing"},
 	"gatling": {"name": "Gatling Gun", "slot": 0, "uses": 60, "time": 12.0, "cd": 0.07, "dmg": 5, "min": 0.0, "max": 440.0, "los": true, "speed": 800.0, "sfx": "shoot"},
 }
 

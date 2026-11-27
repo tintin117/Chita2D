@@ -100,8 +100,8 @@ static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius
 	var cone_off := max_angle
 	for e: Node2D in foes(caster):
 		var off: Vector2 = e.global_position - caster.global_position
-		if off.length() > max_dist or (e.has_method("veiled") and e.veiled()):
-			continue   # out of reach, or unseen in a Smoke Screen: nothing to lock onto
+		if off.length() > max_dist or (e.has_method("hidden_from") and e.hidden_from(caster)):
+			continue   # out of reach, or unseen (Smoke Screen, a Stalk fade from afar): nothing to lock onto
 		var d := e.global_position.distance_to(aim_pos)
 		if d < near_d:
 			near_d = d

@@ -233,6 +233,11 @@ func _ready() -> void:
 	_banner.add_theme_constant_override("outline_size", 12)
 	_banner.text = "Waiting for players..."
 	ui.add_child(_banner)
+	ui.add_child(ChatBox.new())
+	Net.chat_received.connect(func(line: Dictionary) -> void:
+		var talker: Player = _players.get(line.peer)
+		if talker:
+			talker.say(line.text))
 	_match_menu = MatchOverlay.new()
 	_match_menu.pause_tree = Net.solo
 	_match_menu.configure("Paused" if Net.solo else "Match Settings", Net.leave)
@@ -303,7 +308,7 @@ func _on_go() -> void:
 		if multiplayer.is_server():
 			_crown_spawn_in = _cfg.crown_delay
 	else:
-		_say("FIGHT!   grab the drops!" if _fs else "FIGHT!   (1-4: emotes)", 1.6)
+		_say("FIGHT!   grab the drops!" if _fs else ("FIGHT!   (1-4: emotes)" if Net.solo else "FIGHT!   (1-4: emotes, Enter: chat)"), 1.6)
 	if multiplayer.is_server() and bool(_cfg.get("events", false)):
 		_net_event.rpc(MatchEvent.roll(randf()))   # the host's dice; the rule itself is fixed (docs §6.4)
 
@@ -782,6 +787,8 @@ func _end(winner: int, win_team: int) -> void:
 	_banner.modulate.a = 0.0
 
 func _unhandled_input(event: InputEvent) -> void:
+	if ChatBox.typing:
+		return
 	var menu_pressed: bool = event.is_action_pressed("ui_cancel") or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_START)
 	if menu_pressed:
 		get_viewport().set_input_as_handled()
@@ -855,8 +862,8 @@ class Radar extends Control:
 		var me_id := Net.local_id()
 		for id: int in arena._players:
 			var pl: Player = arena._players[id]
-			if pl.down:
-				continue
+			if pl.down or (id != me_id and pl.hidden_from(arena._players.get(me_id))):
+				continue   # a Smoke Screen / Stalk fade hides him from the radar too
 			var p := _to_radar(pl.global_position)
 			if id == me_id:
 				draw_arc(p, 5.0, 0.0, TAU, 20, Color.BLACK, 3.5)

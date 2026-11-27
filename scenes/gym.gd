@@ -33,7 +33,7 @@ func _ready() -> void:
 
 	_cam = GameCamera.new()
 	add_child(_cam)
-	var heroes := Hero.all()
+	var heroes := Hero.pickable()
 	_hero_i = maxi(heroes.find(Hero.by_id(Net.my_hero)), 0)
 	_spawn_hero(_map.spawn_point + Vector2(-260, 0))
 
@@ -66,14 +66,14 @@ func _apply_free_spells() -> void:
 		_player.cooldowns[i] = minf(_player.cooldowns[i], FREE_CD)
 	_player.ult_charge = _player.hero.ult_cost
 
-## (Re)builds the hero at `pos` with Hero.all()[_hero_i], and its HUD.
+## (Re)builds the hero at `pos` with Hero.pickable()[_hero_i], and its HUD.
 func _spawn_hero(pos: Vector2) -> void:
 	if is_instance_valid(_player):
 		_player.queue_free()
 	if is_instance_valid(_hud):
 		_hud.queue_free()
 	_player = Player.new()
-	_player.hero = Hero.all()[_hero_i]
+	_player.hero = Hero.pickable()[_hero_i]
 	_player.display_name = Net.my_name
 	_player.position = pos
 	_map.add_child(_player)
@@ -105,8 +105,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match key.keycode:
 		KEY_TAB:
-			var n := Hero.all().size()
+			var n := Hero.pickable().size()
 			_swap_hero((_hero_i + (n - 1 if key.shift_pressed else 1)) % n)
+			get_viewport().set_input_as_handled()
+		KEY_U:
+			_player.ult_charge = _player.hero.ult_cost
+			_player.float_text("ULT FILLED", Color(0.85, 0.5, 1.0), 20)
 			get_viewport().set_input_as_handled()
 		KEY_R:
 			_reset()

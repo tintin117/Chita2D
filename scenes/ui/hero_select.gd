@@ -1,6 +1,6 @@
 class_name HeroSelect extends CanvasLayer
 ## Pick a hero for every player before the run. Selections stay changeable until the run starts.
-## Each player gets a strip of the screen: a 4 x 2 grid of portraits, then a detail panel for the selected hero with
+## Each player gets a strip of the screen: a 6 x 2 grid of portraits, then a detail panel for the selected hero with
 ## stat bars and a row of kit icons (basic / skill / passive / ult). Hover an icon to read it, click it to keep it open.
 ## Mouse: click a portrait to select it, click START to begin.
 ## Keyboard / gamepad: move with left/right/up/down, attack or dash toggles READY, the skill key cycles the icon row.
@@ -8,7 +8,7 @@ class_name HeroSelect extends CanvasLayer
 
 signal finished(heroes: Array)
 
-const GRID_COLS := 4
+const GRID_COLS := 6
 const TILE_MAX := 180.0           ## portrait tile width; shrinks when several players share the screen
 const PORTRAIT_MAX := 112.0
 const PANEL_H := 206.0

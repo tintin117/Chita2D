@@ -65,7 +65,9 @@ class Hammer extends Node2D:
 			if e in done or e.global_position.distance_to(global_position) > RADIUS + 16.0:
 				continue
 			done.append(e)
+			Player.basic_hit = true
 			e.take_damage(dmg, caster.global_position if not _back else global_position + dir * -10.0, false, caster)
+			Player.basic_hit = false
 
 	func _draw() -> void:
 		draw_circle(Vector2.ZERO, RADIUS * 0.9, Color(COLOR, 0.18))

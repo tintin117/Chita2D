@@ -6,7 +6,7 @@ func suite_name() -> String:
 
 func test_four_heroes_with_distinct_roles() -> void:
 	var heroes := Hero.all()
-	assert_eq(heroes.size(), 8, "4 core heroes + Paladin, Shade, Sorcerer, Scout")
+	assert_eq(heroes.size(), 12, "4 core heroes + Paladin, Shade, Sorcerer, Scout + Tidecaller, Rampager, Demonbound, Chaos Lord")
 	var ids := heroes.map(func(h: Hero) -> String: return h.id)
 	for id in ["knight", "rogue", "wizard", "ranger"]:
 		assert_true(id in ids, id)
@@ -21,7 +21,7 @@ func test_four_heroes_with_distinct_roles() -> void:
 		assert_gt(h.description.length(), 20, h.id + " has a card description")
 		assert_gt(h.rmb_text.length(), 10, h.id + " describes its right click")
 		descs[h.description] = true
-	assert_eq(descs.size(), 8, "every card reads differently")
+	assert_eq(descs.size(), 12, "every card reads differently")
 
 func test_hero_basic_follows_attack_range() -> void:
 	for h in Hero.all():
@@ -49,16 +49,16 @@ func test_kit_is_basic_skill_and_maybe_an_ult() -> void:
 	for h in Hero.all():
 		var kit := h.make_kit()
 		assert_eq(kit.size(), 3 if h.ult_skill != "" else 2, h.id + " has LMB + RMB (+ F when it has an ult)")
-		assert_true(kit[0] is HeroBasic)
+		assert_true(kit[0] is HeroBasic or h.basic_spell != "", h.id + " basic")
 		seen[kit[1].display_name] = true
-		assert_true(kit[1].cooldown >= 5.0 and kit[1].cooldown <= 8.0, h.id + " skill cooldown 5-8s")
-	assert_eq(seen.size(), 4, "four different right-click skills")
+		assert_true(kit[1].cooldown >= 5.0 and kit[1].cooldown <= 9.0, h.id + " skill cooldown 5-9s")
+	assert_eq(seen.size(), Hero.all().size(), "every hero has its own right click")
 	assert_eq(Player.SLOTS.size(), 3)
 	assert_eq(Progression.SLOTS, 2, "the ult has no skill ranks")
 
 func test_rogue_kit_has_backstab_and_shadow_dance() -> void:
 	var h := Hero.by_id("rogue")
-	assert_eq(h.passive_name, "Backstab")
+	assert_eq(h.passive_name, "Stalk")
 	var kit := h.make_kit()
 	assert_true(kit[Player.ULT_SLOT] is SmokeScreen, "Smoke Screen replaced Shadow Dance")
 
@@ -96,8 +96,8 @@ func test_rogue_backstabs_and_wizard_keeps_ember_field() -> void:
 	assert_gt(rb.back_mult, 1.0)
 	assert_eq(Hero.by_id("rogue").make_kit()[1].display_name, "Shadow Rush")
 	assert_eq(Hero.by_id("wizard").make_kit()[1].display_name, "Ember Field")
-	assert_eq(Hero.by_id("knight").make_kit()[1].display_name, "Shield Charge")
-	assert_eq(Hero.by_id("ranger").make_kit()[1].display_name, "Power Shot")
+	assert_eq(Hero.by_id("knight").make_kit()[1].display_name, "Rebound Shield")
+	assert_eq(Hero.by_id("ranger").make_kit()[1].display_name, "Power Arrow")
 
 func test_from_behind() -> void:
 	var v := Player.new()
@@ -180,7 +180,7 @@ func test_knight_kit_is_charge_bulwark_judgement() -> void:
 	assert_true(h.front_mult < 1.0)
 	var kit := h.make_kit()
 	assert_eq(kit.size(), 3)
-	assert_true(kit[1] is ShieldCharge)
+	assert_true(kit[1] is ReboundShield)
 	assert_true(kit[Player.ULT_SLOT] is Judgement)
 
 func test_bulwark_reads_the_front() -> void:
@@ -345,7 +345,7 @@ func test_hud_shows_basic_skill_passive_ult() -> void:
 	var bp := HeroPanel.new()
 	track(bp)
 	bp.player = b
-	assert_eq(bp.columns(), [0, 1], "Bonker has no passive or ult: just the two buttons")
+	assert_eq(bp.columns(), [0, 1, "passive", Player.ULT_SLOT], "Bonker: empty passive and ult columns, filled by drops")
 
 func test_dummy_has_a_back_and_slides_home() -> void:
 	var d := Dummy.new()
@@ -552,7 +552,7 @@ func test_round3_kits() -> void:
 	assert_true((shade[0] as DaggerThrow).range_px < 400.0, "short range daggers")
 	var sorc := Hero.by_id("sorcerer")
 	assert_true(sorc.make_kit()[1] is LightningBolt and sorc.make_kit()[2] is Thunderstorm)
-	assert_eq(sorc.passive_name, "Static Field")
+	assert_eq(sorc.passive_name, "Static Charge")
 	assert_gt(sorc.static_field, 0.0)
 	var scout := Hero.by_id("scout").make_kit()
 	assert_true(scout[1] is ArrowRain, "the Scout throws the rain now")

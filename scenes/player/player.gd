@@ -28,14 +28,20 @@ const NAME_COLORS := [Color("5fa8ff"), Color("ffd84a"), Color("ff6a5f"), Color("
 const RESPAWN_TIME := 3.0
 const ONLINE_HIT_IFRAMES := 0.15   ## offline a hit grants 0.7s; online that would swallow most basic attacks
 const KNOCK_BASE := 220.0          ## launch speed of a light hit: a flinch (~11 px) so basic combos keep connecting
-const KNOCK_LIGHT_DMG := 12        ## hits up to this damage are light; only heavier ones (finishers, skills) launch
+const KNOCK_LIGHT_DMG := 15        ## hits up to this damage are light; only heavier ones (finishers, skills) launch. Was 12: the
+                                   ## Tidecaller's 15-dmg swing then shoved its target out of his reach every hit, and a held LMB
+                                   ## (hold-to-chase) walked him forward after it
 const KNOCK_PER_DMG := 20.0        ## extra launch speed per damage above KNOCK_LIGHT_DMG (skills add their own Spell.shove on top)
 const KNOCK_LOW_HP := 0.6          ## launch bonus at 0 HP: knockback grows as the victim's health drops (Smash-style), so ring-outs come late in a fight
 const KNOCK_MAX := 1500.0
+## True while a basic attack's hit is being dealt (set around the take_damage call by the basic itself, on every peer).
+## Basic attacks only flinch their target (the punch, the flash, the brief slow): no push at all, whatever the damage,
+## so nobody gets shoved out of a swing. Launches belong to skills, ults and the Knight's 3rd-swing finisher.
+static var basic_hit := false
 const KNOCK_DECEL := 2200.0        ## slide = v^2 / (2 * this): a 1470 px/s launch carries ~490 px. The Hook sizes its pull from this
-const ATTACK_MOVE := 0.75          ## move speed multiplier during the cast lock (not while merely holding the button)
-const HIT_SLOW_LIGHT := [0.3, 0.3] ## [speed multiplier, seconds] on the victim of a light hit: this is what lets a chaser stay on them
-const HIT_SLOW_HEAVY := [0.5, 0.6]
+const ATTACK_MOVE := 0.9           ## move speed multiplier during the cast lock (was 0.75: speed pulsed 75/100% on every shot, felt sticky)
+const HIT_SLOW_LIGHT := [0.75, 0.2] ## [speed multiplier, seconds] on the victim of a light hit: lets a chaser stay on them
+const HIT_SLOW_HEAVY := [0.55, 0.4] ## (was 0.3 / 0.3s light, 0.5 / 0.6s heavy: under steady fire you walked in mud)
 const SINK_TIME := 0.3             ## seconds over water before you drown
 const LAST_HIT_WINDOW := 4.0       ## a fall within this long of a hit is credited to the hitter
 const GIANT_SCALE := 1.8
@@ -98,6 +104,7 @@ var _dash_speed := DASH_SPEED
 var _ghost := false        ## mid-dash: rocks do not block, only the hard walls
 var _slow_mult := 1.0      ## movement slow from a field / aiming; lasts while _slow_left > 0
 var _slow_left := 0.0
+var _slows: Array = []     ## active slows as [mult, seconds left]; the strongest one applies, each for its own time
 var _phase_left := 0.0     ## Shadow Step: untargetable and see-through
 var _cast_time := 0.0
 var _queued := -1          ## buffered slot index, -1 = none
@@ -140,6 +147,45 @@ var _rooted_left := 0.0     ## Assassinate (Scout): cannot move or dash while ai
 var _veiled_left := 0.0     ## Smoke Screen (Rogue): unseen by others, untargetable by lock-on, every stab a backstab. Refreshed by the smoke
 var _smoked_left := 0.0     ## Smoke Screen: this player's attacks may miss (SMOKE_MISS). Refreshed by the smoke
 var _revealed_left := 0.0   ## Lightning Bolt: a veil does not hide you for this long
+const STALK_DELAY := 1.5    ## Stalk (Rogue passive): seconds without attacking or being hit before he fades
+const STALK_SEEN := 260.0   ## a faded Rogue is seen (as a shimmer) by a foe this close, and only then can be locked onto
+const STALK_FADE := 80.0    ## px over which he shades in past STALK_SEEN
+const AMBUSH_TIME := 0.35   ## a stab started out of the fade counts as a backstab for this long (covers the windup)
+var _stalk_cd := 0.0        ## seconds until the fade; reset on every peer by a cast (_net_cast) and a hit (_net_hp)
+var _ambush_left := 0.0
+
+# --- heroes 9-13 (Tidecaller, Rampager, Demonbound, Chaos Lord, Pactknight) and the Knight's Rebound Shield.
+# Every timed one is set by a cast or a hit that runs on every peer, so every screen agrees on it.
+const HEX_SPEED := 0.8      ## Cluckcurse: a cursed chicken walks slower (the drop's chicken runs faster)
+const WEAK_MULT := 0.7      ## Keel Slam: damage dealt by a weakened player
+const BRACE_MULT := 0.7     ## Ebb & Flow: damage taken while the tide plays
+const STRIDE_STEP := 90.0   ## Rumble Stride: px of movement per stomp
+const STRIDE_RADIUS := 110.0
+const STRIDE_DMG := 3
+const WAVE_CD := 7.0        ## Breaker Wave: seconds between waves
+const DARKVISION := 200.0   ## Darkvision: hidden foes this close are seen (by you only)
+const TOLL_SHIELD := 15     ## Fiend's Toll: shield on a kill
+const TOLL_TIME := 5.0
+var shield_out := false     ## Rebound Shield in flight: Bulwark is off until it comes back
+var _hex_left := 0.0
+var _chrono_left := 0.0     ## Stillwake: held in stopped time (a stun that ignores the stun immunity)
+var _weak_left := 0.0
+var _brace_left := 0.0
+var _fiend_left := 0.0
+var _wave_cd := 0.0
+var _stride := 0.0
+var _stride_last := Vector2.INF
+var _fel: FelTrail            ## Hellwalker (Demonbound): his burning trail, made on first move
+var _fel_last := Vector2.INF
+var _fel_acc := 0.0
+var _chrono_paused := false
+const LIVES_CD := 67.0      ## 67 Lives (Six Seven): a lethal hit leaves him at LIVES_HP instead, once per this many seconds
+const LIVES_HP := 67
+const LIVES_GUARD := 1.0    ## and nothing hurts him for this long after
+var _lives_cd := 0.0
+var _lives_guard := 0.0
+var _overclock_left := 0.0  ## Connection Lost: basics recover twice as fast
+var _vanish_left := 0.0     ## Illusion Orb: gone into the orb (unseen, untouchable, rooted, no casting)
 var _ff_left := 0.0         ## Focus Fire (Ranger ult): seconds of auto-fire left (every peer: set by the cast)
 var _ff_target: Node2D      ## and at whom
 const SMOKE_MISS := 0.5     ## chance a smoked attacker's hit misses
@@ -191,7 +237,10 @@ static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, sha
 		return
 	var heavy := amount > KNOCK_LIGHT_DMG
 	var fx := SheetFrames.FX + ("AoE/FireAoE/" if heavy else "AoE/SwordAoE/")
-	SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 0, 40.0, 0.25 if heavy else 0.4).z_index = 20
+	var spark := SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 0, 40.0, 0.25 if heavy else 0.4)
+	spark.z_index = 20
+	if attacker is Player and attacker.hero:   # the spark wears the hitter's colour: you can read who hit whom
+		spark.modulate = attacker.hero.basic_color.lightened(0.35)
 	var cam := victim.get_tree().get_first_node_in_group("camera") as GameCamera
 	if cam and shaken:
 		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
@@ -272,6 +321,8 @@ func _setup_online() -> void:
 func init_loadout() -> void:
 	if hero == null:
 		hero = Hero.by_id("wizard")
+	if hero == Hero.bonker():
+		hero = hero.duplicate()   # Friendslop: passive / ult drops write onto this player's own copy (see FsLoot)
 	prog = Progression.new()
 	prog.changed.connect(recalc_stats)
 	prog.leveled_up.connect(_on_level_up)
@@ -352,7 +403,7 @@ func apply_pickup(kind: String) -> void:
 		"bomb":
 			give_bomb(BOMB_FUSE)
 		"ult":   # half an ult, straight in (past the ult lock: a drop is not the ult paying for itself)
-			if owns() and spells.size() > ULT_SLOT:
+			if owns() and spells.size() > ULT_SLOT and not ult_from_drop:
 				var was := ult_ready()
 				ult_charge = minf(ult_charge + hero.ult_cost * PvpPickup.ULT_SPARK, hero.ult_cost)
 				if was:
@@ -372,6 +423,10 @@ func apply_pickup(kind: String) -> void:
 		_:
 			if PvpPickup.is_weapon(kind):
 				equip_weapon(kind)
+			elif FsLoot.is_passive(kind):
+				equip_passive(kind.substr(4))
+			elif FsLoot.is_ult(kind):
+				equip_ult(kind.substr(4))
 			else:   # damage / speed / warcry / giant / chicken: timed forms, read from the buffs on every peer
 				buffs[kind] = Time.get_ticks_msec() / 1000.0 + BUFF_TIMES.get(kind, BUFF_TIME)
 
@@ -454,6 +509,73 @@ func _tick_weapons() -> void:
 			weapons[i] = null
 			float_text("%s gone" % w.display_name, Color(0.8, 0.8, 0.8))
 
+# --- Friendslop kit drops (FsLoot): fill the Bonker's empty passive and ult. Run on every peer (from apply_pickup /
+# _die), so every peer's Hero copy and kit agree.
+
+var ult_from_drop := false   ## the F slot is a drop slot: ready on pickup, one use, never charges, emptied on death
+
+## A passive drop: the hero passive's fields go onto this player's own Hero copy, swapping out the old one. Kept until death.
+func equip_passive(pid: String) -> void:
+	if not FsLoot.PASSIVES.has(pid):
+		return
+	clear_passive()
+	var d: Dictionary = FsLoot.PASSIVES[pid]
+	for f: String in d.props:
+		hero.set(f, d.props[f])
+	hero.passive_name = d.name
+	hero.passive_text = d.text
+	_wave_cd = 0.0   # Tide Breaker: the first wave is ready now
+	_stalk_cd = STALK_DELAY   # Stalk: fade after the usual quiet time, not instantly
+	_sync_basic_passive()
+	recalc_stats()   # Glass Cannon changes damage_mult
+	float_text("PASSIVE: %s" % d.name, PvpPickup.PASSIVE_COLOR, 20)
+
+## Back to the Bonker's empty passive (death, or a new passive coming in). Never touches a picked hero's own passive.
+func clear_passive() -> void:
+	if hero == null or hero.id != "bonker" or hero.passive_name == "":
+		return
+	var base := Hero.bonker()
+	for f: String in FsLoot.passive_fields():
+		hero.set(f, base.get(f))
+	hero.passive_name = ""
+	hero.passive_text = ""
+	_sync_basic_passive()
+	recalc_stats()
+
+## The Bonk was built with the hero's back_mult baked in (Hero.make_basic): a passive that changes it (Stalk) copies it over.
+func _sync_basic_passive() -> void:
+	if not spells.is_empty() and spells[0] is HeroBasic:
+		spells[0].back_mult = hero.back_mult
+
+## An ult drop: the hero ult goes into the F slot, ready right away, one use (swaps out an unused one).
+func equip_ult(uid: String) -> void:
+	if not FsLoot.ULTS.has(uid):
+		return
+	var skill: String = FsLoot.ULTS[uid]
+	var s := Hero.make_skill(skill)
+	if spells.size() > ULT_SLOT:
+		spells[ULT_SLOT] = s
+	else:
+		spells.append(s)
+	_base_spells.resize(mini(_base_spells.size(), ULT_SLOT))
+	_base_spells.append([s.damage, s.cooldown])
+	hero.ult_skill = skill
+	hero.ult_text = FsLoot.ult_text(skill)
+	ult_from_drop = true
+	_ult_lock = 0.0
+	ult_charge = hero.ult_cost
+	cooldowns[ULT_SLOT] = 0.0
+	recalc_stats()
+	float_text("ULT: %s  [F]" % s.display_name, PvpPickup.ULT_COLOR, 22)
+
+## A drop ult that is spent or lost: the slot shows empty until the next ult drop.
+func ult_slot_empty() -> bool:
+	return ult_from_drop and not ult_ready()
+
+func clear_drop_ult() -> void:
+	if ult_from_drop:
+		ult_charge = 0.0
+
 func _speed_mult() -> float:
 	var m := (SPEED_BUFF if buffed("speed") else 1.0) * (_slow_mult if _slow_left > 0.0 else 1.0)
 	if crowned:
@@ -462,6 +584,8 @@ func _speed_mult() -> float:
 		m *= 0.8
 	if buffed("chicken"):
 		m *= 1.8
+	if _hex_left > 0.0:
+		m *= HEX_SPEED
 	return m
 
 ## Damage after the victim's own form: giant takes 40% less, chicken 50% more.
@@ -531,7 +655,7 @@ func ult_fraction() -> float:
 
 ## Banks `amount` of damage toward the ult. Owner only (the charge is the owner's state; the cast travels by RPC).
 func charge_ult(amount: float) -> void:
-	if spells.size() <= ULT_SLOT or _ult_lock > 0.0 or down or amount <= 0.0:
+	if spells.size() <= ULT_SLOT or ult_from_drop or _ult_lock > 0.0 or down or amount <= 0.0:
 		return
 	var was := ult_ready()
 	ult_charge = minf(ult_charge + amount, hero.ult_cost)
@@ -572,7 +696,7 @@ func _draw() -> void:
 
 func _try_emote() -> void:
 	_emote_cd = maxf(_emote_cd - get_physics_process_delta_time(), 0.0)
-	if _emote_cd > 0.0:
+	if _emote_cd > 0.0 or _chat_locked():
 		return
 	if ai:
 		var e := ai.take_emote()
@@ -593,6 +717,37 @@ func _net_emote(idx: int) -> void:
 	Sfx.play("emote", global_position)
 	float_text(EMOTES[idx], NAME_COLORS[player_index % NAME_COLORS.size()], 30)
 	emoted.emit(self)
+
+const SAY_TIME := 4.0
+const SAY_CHARS := 40
+var _say_node: Node2D
+
+## A chat line as a bubble over the head for SAY_TIME (a new line replaces the old one).
+func say(text: String) -> void:
+	if not is_inside_tree() or down:
+		return
+	if is_instance_valid(_say_node):
+		_say_node.queue_free()
+	if text.length() > SAY_CHARS:
+		text = text.left(SAY_CHARS - 1) + "..."
+	var n := Node2D.new()
+	var font := ArenaUi.BODY
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	n.draw.connect(func() -> void:
+		n.draw_rect(Rect2(-w / 2.0 - 8.0, -18.0, w + 16.0, 26.0), Color(0, 0, 0, 0.6))
+		n.draw_string(font, Vector2(-w / 2.0, 0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE))
+	_say_node = n
+	_say_node.z_index = 100
+	_say_node.position = Vector2(0, -112)
+	add_child(_say_node)
+	var t := _say_node.create_tween()
+	t.tween_interval(SAY_TIME)
+	t.tween_property(_say_node, "modulate:a", 0.0, 0.4)
+	t.tween_callback(_say_node.queue_free)
+
+## The keyboard / mouse belongs to the chat box right now: this player stands still and casts nothing.
+func _chat_locked() -> bool:
+	return ChatBox.typing and ai == null and not _puppet
 
 func float_text(text: String, color: Color, font_size := 18) -> void:
 	if not is_inside_tree():
@@ -641,6 +796,8 @@ func _physics_process(delta: float) -> void:
 	if ai:
 		ai.think(delta)
 	var move := ai.move if ai else Input.get_vector(_p + "left", _p + "right", _p + "up", _p + "down")
+	if _chat_locked():
+		move = Vector2.ZERO
 	_update_aim(move)
 	if _frozen_left > 0.0:   # cannot turn: attacks go out the locked way, as far as the cursor is
 		aim_dir = _frozen_aim
@@ -668,12 +825,14 @@ func _physics_process(delta: float) -> void:
 		if not _ghost and shore_guard(velocity) != velocity:   # a lunge (Shield Charge) runs on the ground: it stops at the shore
 			_dash_time = 0.0
 			velocity = Vector2.ZERO
-	elif _stun_left > 0.0:
+	elif _stun_left > 0.0 or _chrono_left > 0.0:
 		velocity = Vector2.ZERO   # knockback (a hook's pull, a launch) still carries a stunned player
+		if _chrono_left > 0.0:
+			knock = Vector2.ZERO   # stopped time: nothing moves you
 		if _charge_slot >= 0:
 			cancel_charge()   # a stun breaks the draw
 	else:
-		if _dash_pressed() and dash_charges > 0 and not burdened() and _frozen_left <= 0.0 and _rooted_left <= 0.0:
+		if _dash_pressed() and dash_charges > 0 and not burdened() and _frozen_left <= 0.0 and _rooted_left <= 0.0 and _hex_left <= 0.0:
 			_start_dash(move)
 		if _frozen_left > 0.0:
 			chase = Vector2.ZERO   # rooted: a held attack cannot walk you anywhere either
@@ -687,6 +846,8 @@ func _physics_process(delta: float) -> void:
 	if _ghost and _dash_time <= 0.0:
 		_end_ghost()
 	net_pos = position
+	_tick_stride()
+	_tick_fel()
 	_animate(move + chase)
 	if _update_sink(delta):
 		_fall()
@@ -701,7 +862,7 @@ const SHORE_LOOK := 56.0    ## hold-to-chase never steps toward water closer tha
 ## key wins over the chase, a stun or a dash interrupts it, and it never walks you into water. Returns the move vector.
 func _tick_chase(move: Vector2) -> Vector2:
 	var spell := spell_in(0)
-	if not _held(0) or spell.reach() <= 0.0 or buffed("chicken"):
+	if not _held(0) or spell.reach() <= 0.0 or buffed("chicken") or _hex_left > 0.0:
 		_chase = null
 		return Vector2.ZERO
 	if not is_instance_valid(_chase) or _chase.down or _chase.global_position.distance_to(global_position) > CHASE_MAX:
@@ -738,6 +899,8 @@ func _puppet_tick(delta: float) -> void:
 	else:
 		position = position.lerp(net_pos, 1.0 - exp(-20.0 * delta))
 	velocity = (position - before) / delta   # never moved by physics here; the soft lock leads a puppet by this
+	_tick_stride()
+	_tick_fel()
 	_animate(off if off.length() > 3.0 else Vector2.ZERO)
 
 ## Counts time over water (shared by owner and puppets so everyone sees the sinking). True once the drowning is complete.
@@ -766,14 +929,28 @@ func _apply_look() -> void:
 	_sprite.rotation = 0.0
 	if buffed("giant"):
 		s = GIANT_SCALE
-	elif buffed("chicken"):
+	elif buffed("chicken") or _hex_left > 0.0:
 		s = CHICKEN_SCALE
 		tint = hero.tint * Color(1.0, 0.95, 0.4)
 		_sprite.rotation = sin(Time.get_ticks_msec() * 0.03) * 0.15
-	if buffed("chicken") and Time.get_ticks_msec() > _cluck_at:
+	if _fiend_left > 0.0:
+		s *= 1.2
+		tint = tint * Color(1.4, 0.55, 0.5)
+	if (buffed("chicken") or _hex_left > 0.0) and Time.get_ticks_msec() > _cluck_at:
 		Sfx.play("cluck", global_position)
 		_cluck_at = Time.get_ticks_msec() + randi_range(900, 1500)
-	if _stun_left > 0.0:
+	if _chrono_left > 0.0:
+		tint = Color(0.55, 0.5, 0.75)   # stopped time: grey-violet, no wobble
+		if not _chrono_paused:
+			_chrono_paused = true
+			_sprite.pause()
+	elif _chrono_paused:
+		_chrono_paused = false
+		if not down:
+			_sprite.play()   # time runs again: pick the frame up where it stopped
+	if _chrono_left > 0.0:
+		pass
+	elif _stun_left > 0.0:
 		_sprite.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.22   # dizzy wobble
 		tint = tint * Color(1.0, 1.0, 0.55)
 	elif _frozen_left > 0.0:
@@ -794,6 +971,17 @@ func _apply_look() -> void:
 			_sprite.play()   # resumes the paused animation where it stopped
 	_sprite.self_modulate = Color(tint, (1.0 - sink) * (0.35 if _phase_left > 0.0 or veiled() else 1.0))
 	modulate.a = 0.0 if veiled() and not is_local(self) else 1.0   # veiled: gone from everyone else's screen, name and bar too
+	if stalking() and not veiled():
+		if is_local(self):
+			_sprite.self_modulate.a *= 0.45   # you see yourself faded
+		else:
+			modulate.a = _stalk_alpha()
+	if _vanish_left > 0.0:   # inside the Illusion Orb: gone (a ghost of himself on his own screen)
+		modulate.a = 0.25 if is_local(self) else 0.0
+	if (veiled() or stalking()) and not is_local(self) and is_inside_tree():
+		var me := _local_viewer(get_tree())
+		if me and me.sees_hidden(self):
+			modulate.a = maxf(modulate.a, 0.6)   # Darkvision: the Pactknight sees through it
 
 ## Drowned: the owner announces the death, crediting the last player who hit us recently.
 func _fall() -> void:
@@ -805,7 +993,7 @@ func _tick_timers(delta: float) -> void:
 	_tick_burn(delta)
 	_iframes = maxf(_iframes - delta, 0.0)
 	_cast_time = maxf(_cast_time - delta, 0.0)
-	_slow_left = maxf(_slow_left - delta, 0.0)
+	_tick_slows(delta)
 	_tick_stun(delta)
 	_phase_left = maxf(_phase_left - delta, 0.0)
 	_queued_time -= delta
@@ -822,6 +1010,8 @@ func _tick_timers(delta: float) -> void:
 			dash_recharge = DASH_RECHARGE
 
 func _dash_pressed() -> bool:
+	if _chat_locked():
+		return false
 	return ai.take_dash() if ai else Input.is_action_just_pressed(_p + "dash")
 
 ## The mouse buttons (LMB, RMB) belong to the panel under the cursor; the ult's key still works.
@@ -831,6 +1021,8 @@ func _on_ui(slot: int) -> bool:
 func _held(slot: int) -> bool:
 	if slot >= spells.size() or _on_ui(slot):
 		return false   # also a hero with no ult: F does nothing
+	if _chat_locked():
+		return false
 	return ai.held[slot] if ai else Input.is_action_pressed(_p + SLOTS[slot])
 
 func _update_aim(move: Vector2) -> void:
@@ -877,8 +1069,34 @@ func faces(from_pos: Vector2) -> bool:
 
 ## Slows movement to `mult` for `secs` (refreshing, not stacking). Only the owner simulates movement, so only it needs this.
 func apply_slow(mult: float, secs: float) -> void:
-	_slow_mult = mult
-	_slow_left = maxf(_slow_left, secs)
+	if secs <= 0.0:
+		return
+	for s in _slows:
+		if is_equal_approx(s[0], mult):   # the same slow again (a field tick, a burst of hits): refresh, never stack
+			s[1] = maxf(s[1], secs)
+			_refresh_slow()
+			return
+	_slows.append([mult, secs])
+	_refresh_slow()
+
+func _tick_slows(delta: float) -> void:
+	if _slows.is_empty():
+		_slow_left = 0.0
+		return
+	for s in _slows:
+		s[1] -= delta
+	_slows = _slows.filter(func(s: Array) -> bool: return s[1] > 0.0)
+	_refresh_slow()
+
+## The strongest active slow, alone, for as long as it lasts: a short hard slow no longer inherits a long weak
+## slow's timer (the old single slot kept a 0.3x hit slow for the whole length of an Ember Field).
+func _refresh_slow() -> void:
+	_slow_mult = 1.0
+	_slow_left = 0.0
+	for s in _slows:
+		if s[0] < _slow_mult:
+			_slow_mult = s[0]
+		_slow_left = maxf(_slow_left, s[1])
 
 func _tick_stun(delta: float) -> void:
 	_stun_immune = maxf(_stun_immune - delta, 0.0)
@@ -886,6 +1104,11 @@ func _tick_stun(delta: float) -> void:
 		_stun_left -= delta
 		if _stun_left <= 0.0:
 			_stun_left = 0.0
+			_stun_immune = STUN_IMMUNITY
+	if _chrono_left > 0.0:   # stopped time: when it runs again, the stun immunity follows
+		_chrono_left -= delta
+		if _chrono_left <= 0.0:
+			_chrono_left = 0.0
 			_stun_immune = STUN_IMMUNITY
 	if _frozen_left > 0.0:   # a freeze is a hold like a stun: when it thaws, the same immunity follows
 		_frozen_left -= delta
@@ -927,7 +1150,166 @@ func hit_freeze(secs: float) -> void:
 	_sprite.pause()
 
 func stunned() -> bool:
-	return _stun_left > 0.0
+	return _stun_left > 0.0 or _chrono_left > 0.0
+
+## Stillwake: held in stopped time for `secs` (refreshed while inside the field). Ignores the stun immunity on purpose:
+## it is an ult. When time runs again the immunity starts, so nothing chains off it. Safe on any peer.
+func chrono_hold(secs: float, label := "TIME STOP") -> void:
+	if down or secs <= 0.0 or _spin_left > 0.0:
+		return
+	if _chrono_left <= 0.0:
+		float_text(label, Color(0.75, 0.6, 1.0), 20)
+	_chrono_left = maxf(_chrono_left, secs)
+	_stun_left = 0.0
+	_frozen_left = 0.0
+	knock = Vector2.ZERO
+
+func time_stopped() -> bool:
+	return _chrono_left > 0.0
+
+## Cluckcurse: a chicken for `secs`: no attacks, no skills, no dash, slower. Safe on any peer.
+func hex(secs: float) -> void:
+	if down or secs <= 0.0 or _spin_left > 0.0:
+		return
+	float_text("CLUCK!", Color(1.0, 0.95, 0.4), 22)
+	_hex_left = maxf(_hex_left, secs)
+	if _charge_slot >= 0:
+		cancel_charge()
+
+func hexed() -> bool:
+	return _hex_left > 0.0
+
+## Illusion Orb: he rides inside the orb for `secs` (it ends early on landing, end_vanish). Safe on any peer.
+func vanish(secs: float) -> void:
+	_vanish_left = secs
+	phase(secs)
+	root(secs)
+
+func end_vanish() -> void:
+	_vanish_left = 0.0
+	_phase_left = 0.0
+	_rooted_left = 0.0
+	_iframes = minf(_iframes, 0.1)
+
+func vanished() -> bool:
+	return _vanish_left > 0.0
+
+## Connection Lost: basics recover twice as fast for `secs`. Set on every peer by the cast.
+func overclock(secs: float) -> void:
+	_overclock_left = secs
+
+## Rubber Band: snapping back drops every slow.
+func clear_slows() -> void:
+	_slows.clear()
+	_slow_left = 0.0
+	_slow_mult = 1.0
+
+## 67 Lives: ready to save him from the next lethal hit.
+func lives_ready() -> bool:
+	return hero != null and hero.lives_67 and _lives_cd <= 0.0
+
+## Keel Slam: this player deals WEAK_MULT damage for `secs`.
+func weaken(secs: float) -> void:
+	_weak_left = maxf(_weak_left, secs)
+
+func weakened() -> bool:
+	return _weak_left > 0.0
+
+## Ebb & Flow: this player takes BRACE_MULT damage for `secs`.
+func brace(secs: float) -> void:
+	_brace_left = maxf(_brace_left, secs)
+
+## Fiendform (Demonbound ult).
+func fiend(secs: float) -> void:
+	_fiend_left = secs
+
+func fiended() -> bool:
+	return _fiend_left > 0.0
+
+## Breaker Wave (Tidecaller passive): ready to ride the next swing.
+func wave_ready() -> bool:
+	return hero != null and hero.tide_wave and _wave_cd <= 0.0
+
+## A wave that found a foe pays back part of its own wait (once per wave, see BreakerWave).
+func wave_refund(secs: float) -> void:
+	_wave_cd = maxf(_wave_cd - secs, 0.0)
+
+## True when the passive tile on the HUD should glow.
+func passive_lit() -> bool:
+	if hero == null:
+		return false
+	return stalking() or wave_ready() or fiended() or (hero.fiend_toll and buffed("shield")) or lives_ready()
+
+## Fiend's Toll: a kill wraps the Pactknight in a short shield. Runs on every peer (from _net_died).
+func grant_toll() -> void:
+	shield_hp = maxi(shield_hp, TOLL_SHIELD)
+	buffs["shield"] = Time.get_ticks_msec() / 1000.0 + TOLL_TIME
+	float_text("BLESSING +%d" % TOLL_SHIELD, Color(0.85, 0.5, 1.0), 18)
+
+## Rumble Stride (Rampager passive): every STRIDE_STEP px moved stomps foes close by. Runs on every peer from the
+## movement it sees (a puppet's eased position too); the damage only lands on each victim's own peer, like any hit.
+func _tick_stride() -> void:
+	if hero == null or not hero.stride or down:
+		_stride_last = Vector2.INF
+		return
+	if _stride_last == Vector2.INF:
+		_stride_last = global_position
+		return
+	_stride += minf(global_position.distance_to(_stride_last), 40.0)   # a blink or respawn is not a marathon
+	_stride_last = global_position
+	while _stride >= STRIDE_STEP:
+		_stride -= STRIDE_STEP
+		var hit := false
+		for e in Spell.foes(self):
+			if e.global_position.distance_to(global_position) <= STRIDE_RADIUS:
+				e.take_damage(STRIDE_DMG, global_position, true, self)
+				hit = true
+		if is_inside_tree():   # every stomp shows (a dust puff), a stomp that hits shows bigger and louder
+			var puff := SheetFrames.play_once(get_parent(), global_position + Vector2(0, 18), SheetFrames.FX + "AoE/SwordAoE/", 0, 40.0, STRIDE_RADIUS / 110.0 * (0.6 if hit else 0.3))
+			puff.modulate = Color(hero.basic_color, 0.85 if hit else 0.4)
+			puff.z_index = 1
+			if hit:
+				Sfx.play("hit", global_position, -8.0, 0.6)
+
+## Hellwalker (Demonbound): lay burning ground along the way, thick where he dashed. Every peer, from the movement it
+## sees (a puppet's too), so every screen shows the same trail and its burn lands on each victim's own peer.
+func _tick_fel() -> void:
+	if hero == null or not hero.fel_trail or down or not is_inside_tree():
+		_fel_last = Vector2.INF
+		return
+	if not is_instance_valid(_fel):
+		_fel = FelTrail.new()
+		_fel.caster = self
+		_fel.color = hero.basic_color
+		get_parent().add_child(_fel)
+	var feet := global_position + Vector2(0, 14)
+	if _fel_last == Vector2.INF:
+		_fel_last = feet
+		return
+	var step := feet.distance_to(_fel_last)
+	if step > 200.0:   # a blink or respawn: start a new trail there
+		_fel_last = feet
+		return
+	var dashing := step > FelTrail.DASH_PX or _dash_time > 0.0
+	_fel_acc += step
+	if _fel_acc >= FelTrail.STEP or (dashing and _fel_acc >= FelTrail.STEP * 0.5):
+		_fel_acc = 0.0
+		_fel.add(feet, FelTrail.THICK if dashing else FelTrail.THIN)
+	_fel_last = feet
+
+func _exit_tree() -> void:
+	if is_instance_valid(_fel):
+		_fel.queue_free()
+
+## Darkvision (Pactknight): does this player see `other` although it is hidden?
+func sees_hidden(other: Node2D) -> bool:
+	return hero != null and hero.darkvision and global_position.distance_to(other.global_position) <= DARKVISION
+
+static func _local_viewer(tree: SceneTree) -> Player:
+	for n in tree.get_nodes_in_group("players"):
+		if is_local(n):
+			return n
+	return null
 
 ## True while a real dash or a phase is on: a locked-on bolt loses its target (a melee lunge does not count).
 ## ponytail: _ghost is only known on the owner's peer, so a shooter's own screen can show a bolt still homing on a
@@ -1027,6 +1409,15 @@ func free_spot(pos: Vector2) -> Vector2:
 
 ## Teleports toward `dest` (Shadow Step): stops at a hard wall on the way, never lands in a rock, and prefers dry ground.
 func blink_to(dest: Vector2) -> void:
+	position = blink_target(dest)
+	reset_physics_interpolation()
+	net_pos = position
+	velocity = Vector2.ZERO
+	knock = Vector2.ZERO
+
+## Where a blink toward `dest` would land (stopped by hard walls, walked back off water, out of rocks), without moving.
+## Spells that do something where he lands (Six Seven!) ask this so every peer uses the same spot.
+func blink_target(dest: Vector2) -> Vector2:
 	var target := dest
 	if is_inside_tree():
 		var q := PhysicsRayQueryParameters2D.create(global_position, dest, WALL_MASK)
@@ -1038,11 +1429,8 @@ func blink_to(dest: Vector2) -> void:
 	while _over_water(target) and not _over_water(position) and tries < 40 and target.distance_to(position) > 16.0:
 		target += back
 		tries += 1
-	position = free_spot(target)
-	reset_physics_interpolation()
-	net_pos = position
-	velocity = Vector2.ZERO
-	knock = Vector2.ZERO
+	return free_spot(target)
+
 
 func _start_dash(move: Vector2) -> void:
 	dash_charges -= 1
@@ -1110,7 +1498,7 @@ func _tick_charge(delta: float) -> bool:
 func hit_blocked(attacker: Node, reflected := false) -> String:
 	if not _burning and not reflected and attacker is Player and attacker != self and attacker.smoked() and randf() < SMOKE_MISS:
 		return "miss"
-	if _angel_left > 0.0 or _spin_left > 0.0:
+	if _angel_left > 0.0 or _spin_left > 0.0 or _lives_guard > 0.0:
 		return "immune"
 	if _parry_left > 0.0 and not _burning and not reflected:
 		return "parry"
@@ -1162,6 +1550,17 @@ func _tick_status(delta: float) -> void:
 	_veiled_left = maxf(_veiled_left - delta, 0.0)
 	_smoked_left = maxf(_smoked_left - delta, 0.0)
 	_revealed_left = maxf(_revealed_left - delta, 0.0)
+	_stalk_cd = maxf(_stalk_cd - delta, 0.0)
+	_ambush_left = maxf(_ambush_left - delta, 0.0)
+	_hex_left = maxf(_hex_left - delta, 0.0)
+	_vanish_left = maxf(_vanish_left - delta, 0.0)
+	_lives_cd = maxf(_lives_cd - delta, 0.0)
+	_lives_guard = maxf(_lives_guard - delta, 0.0)
+	_overclock_left = maxf(_overclock_left - delta, 0.0)
+	_weak_left = maxf(_weak_left - delta, 0.0)
+	_brace_left = maxf(_brace_left - delta, 0.0)
+	_fiend_left = maxf(_fiend_left - delta, 0.0)
+	_wave_cd = maxf(_wave_cd - delta, 0.0)
 	_ff_left = maxf(_ff_left - delta, 0.0)
 	if _parry_left > 0.0 and owns():
 		apply_slow(0.5, 0.1)   # braced: a slow shuffle
@@ -1191,6 +1590,41 @@ func veil(secs: float) -> void:
 
 func veiled() -> bool:
 	return _veiled_left > 0.0 and _revealed_left <= 0.0
+
+## Stalk (Rogue passive): faded right now (out of combat long enough, not revealed by a Lightning Bolt).
+func stalking() -> bool:
+	return hero != null and hero.stalk and not down and _stalk_cd <= 0.0 and _revealed_left <= 0.0
+
+## The current stab was started out of the fade: it counts as from behind (HeroBasic sweep).
+func ambushing() -> bool:
+	return _ambush_left > 0.0
+
+## Breaks the fade: an attack or a hit puts the Rogue back in the open for STALK_DELAY. Runs on every peer.
+func break_stalk() -> void:
+	_stalk_cd = STALK_DELAY
+
+## True when `viewer` cannot see (or lock onto) this player: a Smoke Screen veil, or a Stalk fade and the viewer is
+## farther than STALK_SEEN. Allies always see each other.
+func hidden_from(viewer: Node2D) -> bool:
+	if viewer is Player and viewer != self and team >= 0 and viewer.team == team:
+		return false
+	if viewer is Player and viewer != self and viewer.sees_hidden(self):
+		return false   # Darkvision
+	if veiled():
+		return true
+	return stalking() and viewer != null and viewer.global_position.distance_to(global_position) > STALK_SEEN
+
+## How visible a faded Rogue is to this screen's player: 0 far away, a shimmer (0.35) once inside STALK_SEEN.
+func _stalk_alpha() -> float:
+	var me: Player = null
+	for n in get_tree().get_nodes_in_group("players"):
+		if is_local(n):
+			me = n
+			break
+	if me == null or me == self or (team >= 0 and me.team == team):
+		return 1.0
+	var d := me.global_position.distance_to(global_position)
+	return clampf((STALK_SEEN + STALK_FADE - d) / STALK_FADE, 0.0, 1.0) * 0.35
 
 ## Focus Fire: auto-fire the basic at `t` for `secs` (FocusFire.RATE x faster, FocusFire.DAMAGE_MULT per arrow).
 func focus_fire_on(t: Node2D, secs: float) -> void:
@@ -1332,7 +1766,11 @@ func cancel_charge() -> void:
 	charge_show = 0.0
 
 func _try_cast() -> void:
-	if buffed("chicken") or _spin_left > 0.0:
+	if _chat_locked():
+		if _charge_slot >= 0:
+			cancel_charge()
+		return
+	if buffed("chicken") or _spin_left > 0.0 or _hex_left > 0.0 or _vanish_left > 0.0:
 		return   # a chicken cannot cast; Blade Fury is the attack while it spins
 	if _tick_charge(get_physics_process_delta_time()):
 		return   # the bow is drawn: nothing else goes out until it is loosed
@@ -1383,6 +1821,12 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int, lock_path
 		_ult_lock = spell.ult_lock()   # nothing charges the next ult until this one is over (its own ticks never pay for it)
 		if is_local(self):
 			Sfx.play("crown", global_position, -2.0, 1.3)
+	if slot == 0 and stalking():
+		_ambush_left = AMBUSH_TIME   # the opener out of the fade is a backstab
+	if slot == 0 and weapon == null and wave_ready():   # Breaker Wave rides this swing (every peer runs this)
+		_wave_cd = WAVE_CD
+		BreakerWave.spawn(self, dir)
+	break_stalk()
 	rng.seed = seed_value
 	spell.lock = null if lock_path.is_empty() else get_node_or_null(lock_path) as Node2D   # node paths match on every peer
 	spell.power = cast_power
@@ -1395,6 +1839,8 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int, lock_path
 		if weapon.uses <= 0:
 			weapons[slot] = null
 			float_text("%s empty" % weapon.display_name, Color(0.8, 0.8, 0.8))
+	if slot == 0 and weapon == null and _overclock_left > 0.0:
+		cd *= 0.5   # Connection Lost: overclocked
 	if slot == 0 and weapon == null and _ff_left > 0.0:
 		cd /= FocusFire.RATE   # Focus Fire: the bow sings
 	cooldowns[slot] = cd
@@ -1409,6 +1855,13 @@ const SWING_TIME := 0.3
 ## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
 func _play_cast(slot: int, spell: Spell) -> void:
 	Sfx.play(spell.sfx, global_position, spell.cast_vol, spell.cast_pitch)
+	if slot >= 1 and hero and is_inside_tree():   # a skill or an ult: a ring in the hero's colour at his feet, on every screen
+		var flash := CastFlash.new()
+		flash.color = hero.basic_color
+		flash.big = slot == ULT_SLOT
+		flash.position = position
+		flash.z_index = 2
+		get_parent().add_child(flash)
 	var anim := "cast"
 	if slot == 0 and _sprite.sprite_frames.has_animation("cast2"):
 		_swing = not _swing
@@ -1416,6 +1869,28 @@ func _play_cast(slot: int, spell: Spell) -> void:
 	var frames := _sprite.sprite_frames
 	_sprite.speed_scale = frames.get_frame_count(anim) / frames.get_animation_speed(anim) / _cast_time
 	_sprite.play(anim)
+
+## The cast flash (see _play_cast): one expanding ring for a skill, a ring and a glow for an ult.
+class CastFlash extends Node2D:
+	const LIFE := 0.35
+	var color := Color.WHITE
+	var big := false
+	var _age := 0.0
+
+	func _process(delta: float) -> void:
+		_age += delta
+		if _age >= LIFE:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var k := _age / LIFE
+		var r := (70.0 if big else 42.0) * (0.45 + 0.75 * k)
+		var at := Vector2(0, 14)
+		if big:
+			draw_circle(at, r * 0.85, Color(color, 0.28 * (1.0 - k)))
+		draw_arc(at, r, 0.0, TAU, 36, Color(color.lightened(0.3), 1.0 - k), 5.0 * (1.0 - k) + 1.0)
 
 ## Locomotion sheets by where the legs go, a quarter turn at a time clockwise from the aim (screen y points down,
 ## so clockwise of the facing is the hero's right).
@@ -1491,7 +1966,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 			return false
 	if attacker is Player and attacker.buffed("damage") and not reflected:   # victim-side hit: read the attacker's copy of the buff
 		amount *= 2
-	if hero and hero.front_mult < 1.0 and faces(from_pos) and not reflected:   # Bulwark: the shield takes the front
+	if hero and hero.front_mult < 1.0 and not shield_out and faces(from_pos) and not reflected:   # Bulwark: the shield takes the front
 		var blocked := amount - roundi(amount * hero.front_mult)
 		amount -= blocked
 		if blocked >= 3:
@@ -1500,6 +1975,10 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		amount += roundi(hp * attacker.hero.static_field)   # Static Field (Sorcerer): a slice of what you have left
 	if hero and hero.taken_mult != 1.0:   # Glass Cannon (Scout) takes more
 		amount = maxi(roundi(amount * hero.taken_mult), 1)
+	if attacker is Player and attacker != self and attacker.weakened() and not reflected:   # Keel Slam
+		amount = roundi(amount * WEAK_MULT)
+	if _brace_left > 0.0:   # Ebb & Flow
+		amount = roundi(amount * BRACE_MULT)
 	amount = form_damage(roundi(amount * RuleSet.current.damage))
 	break_channel()   # any hit drops a drop channel
 	if shield_hp > 0 and buffed("shield") and amount > 0:   # Shield drop: the bubble eats it first
@@ -1516,14 +1995,26 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		attacker.on_hit_landed(amount)   # attacker and victim simulated on the same peer (a bot, offline co-op)
 	if attacker is Player and attacker != self and attacker.hero and attacker.hero.kindling and not _burning and not reflected:
 		add_burn(1, attacker)   # Kindling: every Mage hit stacks another Burn
-	charge_ult(amount * ULT_TAKEN)
+	charge_ult(amount * ULT_TAKEN * (hero.ult_taken_mult if hero else 1.0))
+	var saved := false
+	if amount >= hp and lives_ready():   # 67 Lives: the killing blow leaves him at 67 instead
+		saved = true
+		amount = maxi(hp - mini(LIVES_HP, max_hp), 0)
+		_lives_cd = LIVES_CD
+		_lives_guard = LIVES_GUARD
+		float_text("67 LIVES!", hero.basic_color, 26)
+		Sfx.play("crown", global_position, 0.0, 1.4)
 	hp = maxi(hp - amount, 0)
+	if saved:
+		hp = mini(LIVES_HP, max_hp)
+	if amount > 0:
+		break_stalk()
 	if attacker is Player:
 		last_hit_peer = attacker.peer_id
 		last_hit_msec = Time.get_ticks_msec()
 	if not silent:   # rapid-tick hits (an ember field's burn) neither stagger nor grant i-frames
 		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
-		knock = (global_position - from_pos).normalized() * knock_for(amount, float(hp) / max_hp) * form_knock(attacker)
+		knock = Vector2.ZERO if basic_hit else (global_position - from_pos).normalized() * knock_for(amount, float(hp) / max_hp) * form_knock(attacker)   # a basic only flinches its target
 		var slow: Array = HIT_SLOW_HEAVY if amount > KNOCK_LIGHT_DMG else HIT_SLOW_LIGHT
 		apply_slow(slow[0], slow[1])
 		_punch = 1.0
@@ -1572,6 +2063,8 @@ func _die() -> void:
 	queue_redraw()
 	buffs.clear()
 	clear_weapons()
+	clear_passive()   # Friendslop: drops are lost on death, the Bonker comes back with an empty passive and ult
+	clear_drop_ult()
 	velocity = Vector2.ZERO
 	_sprite.modulate = Color(0.5, 0.5, 0.6, 0.6)
 	_sprite.rotation = PI / 2.0   # the owner stops calling _apply_look while down, so set the knocked-flat pose here too
@@ -1581,6 +2074,7 @@ func _die() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _net_hp(value: int) -> void:
 	if value < hp:   # a heal must not flash red
+		break_stalk()
 		_flash()
 		_hit_number(hp - value)
 		if Time.get_ticks_msec() - hit_sound_msec > 500:   # a bystander's peer: nothing predicted this hit, so the sound is due now
@@ -1598,6 +2092,10 @@ func _net_died(killer_peer: int, cause: String) -> void:
 	if cause != "fall":   # everyone sees the burst; only the killer and the victim feel the shake and the freeze
 		hit_fx(self, 99, is_local(self) or (cause == "hit" and killer_peer == Net.local_id()), true, is_local(self))
 	fragged.emit(self, killer_peer, cause)
+	if killer_peer != 0 and killer_peer != peer_id and is_inside_tree():   # Fiend's Toll
+		for n in get_tree().get_nodes_in_group("players"):
+			if n.peer_id == killer_peer and n.hero and n.hero.fiend_toll and not n.down:
+				n.grant_toll()
 	if owns():
 		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_respawn)
 
@@ -1612,7 +2110,9 @@ func _net_respawn(pos: Vector2) -> void:
 	net_pos = pos
 	knock = Vector2.ZERO
 	_dash_time = 0.0
+	_slows.clear()
 	_slow_left = 0.0
+	_slow_mult = 1.0
 	_stun_left = 0.0
 	_frozen_left = 0.0
 	_stun_immune = 0.0
@@ -1627,6 +2127,13 @@ func _net_respawn(pos: Vector2) -> void:
 	_revealed_left = 0.0
 	_ff_left = 0.0
 	_phase_left = 0.0
+	_hex_left = 0.0
+	_vanish_left = 0.0
+	_chrono_left = 0.0
+	_weak_left = 0.0
+	_brace_left = 0.0
+	_fiend_left = 0.0
+	_stride_last = Vector2.INF
 	if _ghost:
 		_end_ghost()
 	revive(1.0)

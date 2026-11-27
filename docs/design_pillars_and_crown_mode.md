@@ -66,9 +66,9 @@ One word per hero, and every slot must serve it. The basic alone should tell you
 
 | Hero | Archetype | Fantasy | Basic (LMB) | Reads as |
 |---|---|---|---|---|
-| Knight | **Tank** | Takes hits head-on, holds the front, launches people | **Cleave**: 0.5 s, 125 px, 155° arc, 0.16 s windup, 14 dmg, 3rd swing 1.8x + launch | Slow, wide, heavy, orange |
+| Knight | **Tank** | Takes hits head-on, holds the front, launches people | **Cleave**: 0.55 s, 140 px, 155° arc, 0.16 s windup, 14 dmg, 3rd swing 1.8x + launch | Slow, wide, heavy, orange |
 | Rogue | Stab | **Shadow Rush**: blink 380 px in a line; everyone passed takes 8 and is **Frozen** 0.8 s (no move / dash / turn, can still attack the locked way). 6 s cd | **Backstab**: 1.8x from behind. Rush through a foe that faces you = you land at its frozen back | **Smoke Screen** (Riki): cloud r200 at the cursor for 6 s. Foes inside miss 50% of their hits; the Rogue inside is invisible to others, can't be locked onto, and every stab is a backstab. Area hits still find him. Cost 70 | Built |
-| Ranger | Arrow | **Power Shot**: hold to draw (slowed), aim free, release. Draw 0→1 s: dmg 13→42, range 450→1100, knockback 100→650; full draw pierces 3. 5 s cd | **Steady Aim**: standing still draws 2x faster | **Focus Fire** (Windranger): 4 s of auto-fire at the foe near the cursor, 3x attack rate, 70% damage per arrow; move and Power Shot freely. Cost 150 | Built |
+| Ranger | Arrow | **Power Shot**: hold to draw (slowed), aim free, release. Draw 0→1 s: dmg 13→42, range 450→1100, knockback 100→650; full draw pierces 3. 6 s cd | **Steady Aim**: standing still draws 2x faster | **Focus Fire** (Windranger): 4 s of auto-fire at the foe near the cursor, 3x attack rate, 70% damage per arrow; move and Power Shot freely. Cost 150 | Built |
 | Mage | Fire Orb | **Ember Field**: eruption 16 dmg + slow to 40% for 1.4 s, then 3.5 s burn + 55% slow. 7 s cd | **Kindling**: every Mage hit adds 1 **Burn** stack to the target: 1 dmg/s per stack, max 12, one stack fades every 1.2 s. Field ticks count as hits | **Meteor**: cursor up to 620 px, 1 s telegraph, r170 = 40 dmg + launch outward. Cost 80 | Built |
 
 Mage feedback ("doesn't feel like a mage") was the old rapid-fire bolt with a 3-way fan: that is a gunner. The orb makes the basic a cast at a place, matching Ember Field and Meteor.
@@ -88,10 +88,10 @@ Slots: LMB basic · RMB skill · passive (no button) · F/E ult (gamepad Y). **E
 | Mage | Fire Bolt | **Ember Field**: no stun now. Eruption = 16 dmg + slow to 40% for 1.4 s (outlasts the field), then 3.5 s burn + 55% slow. 7 s cd | **Kindling**: every burn tick on a foe heals the Mage 2 (half the tick). 3 foes in the fire = real sustain | **Meteor**: cursor up to 620 px, 1 s telegraph (circle + falling rock), r170 = 40 dmg + launch outward (950 centre → 520 rim). No stun; ring-out tool. Needs a foe in the circle. Cost 80 | Built |
 | Ranger | Flame Arrow | **Power Shot**: HOLD to draw (slowed to 50%), aim free the whole time, RELEASE to fire. Draw 0→1 s: dmg 13→42, range 450→1100, speed 900→1800, knockback 100→650. Full draw pierces 3, gold line + ding. Auto-fires at 2.5 s. Stun or dash drops the draw (no cd). 5 s cd. No stun | **Steady Aim**: standing still draws 2x faster (full in 0.5 s) | **Arrow Rain**: cursor up to 650 px, 0.4 s delay, r160 for 3 s, volley every 0.3 s = 6 dmg + slow 60% (silent, no push). Needs a foe in the circle. Cost 75 | Built |
 | Paladin | **Hammer** (Dawnbreaker): thrown 260 px, hangs 0.12 s, flies back to the Paladin; hits once going out and once coming back (2 damage windows), 12 + 8% current HP each. 0.85 s cd | **Purification**: heal 30 and deal 30 to every foe within 150. 8 s cd | **Holy Might**: hammer scales with your HP; 25% of all your damage heals you | **Guardian Angel**: 3 s of no damage taken, your hits heal 50% more. Cost 170 | Built |
-| Shade | **Dagger**: thrown, 330 px, 0.4 s, 9 dmg, homes on a locked foe, no slow | **Fan of Knives**: 5 knives over 60°, 380 px, 7 + slow to 50% for 1.2 s each. 6 s cd | **Focus**: every 4th dagger in a row at the same target crits 2.5x (counted on the throw). No dice | **Blade Ring**: a small ring of blades (r120) orbits the Shade and moves with him, 3.5 s; anyone inside takes 7 every 0.25 s + slow. He keeps throwing daggers meanwhile. Cost 150 | Built |
+| Shade | **Dagger**: thrown, 240 px, 0.4 s, 9 dmg, homes on a locked foe, no slow | **Fan of Knives**: 5 knives over 60°, 380 px, 7 + slow to 50% for 1.2 s each. 6 s cd | **Focus**: every 4th dagger in a row at the same target crits 2.5x (counted on the throw). No dice | **Blade Ring**: a small ring of blades (r120) orbits the Shade and moves with him, 3.5 s; anyone inside takes 7 every 0.25 s + slow. He keeps throwing daggers meanwhile. Cost 150 | Built |
 | Sorcerer | **Chain Lightning**: instant zap at the foe near the cursor (380), jumps to 2 more within 230, 75% each jump | **Lightning Bolt** (Zeus): 0.3 s ring at the cursor (560), r75 = 26 + slow, and **reveals** anyone in a Smoke Screen for 2.5 s. 6 s cd | **Static Field** (Zeus): every hit also deals 5% of the target's current HP | **Thunderstorm** (Razor): 4 s, every 0.45 s one bolt hits the weakest foe within 320 for 7, +1 per earlier strike on that foe. Cost 90 | Built |
 | Scout | Quick Shot (0.3 s, 520 px, 5 per hit: 4 base x 1.35, fire arrow) | **Arrow Rain** (moved from the Ranger): cursor up to 650, 3 s of volleys, 6 + slow each. 9 s cd | **Glass Cannon**: +35% damage dealt and taken, 60 HP | **Assassinate** (Sniper): rooted, 1 s laser, then 55 (1.5x under 40% HP). Dash at the right time to dodge. Cost 70 | Built |
-| Bonker | Bonk | Hook | **Tenderize**: hooked foe takes +30% from the next 2 bonks | **Spin to Win**: 2 s spin, pulls in, every hit shoves | Proposed |
+| Bonker | Bonk (always; a weapon drop replaces it for a while) | Hook (always) | **Empty**: filled by a passive drop (Rare), kept until death, a new one swaps it | **Empty**: filled by an ult drop (Epic), ready on pickup, one use, lost on death | Built (drops: `scripts/fs_loot.gd`) |
 
 **Frozen** is the new soft hold (first step of the stun diet): rooted + facing locked, but the victim can still attack forward. It shares stun rules: no stacking with a stun or freeze, and the thaw starts the same STUN_IMMUNITY, so stun→freeze chains are impossible. Skill check for the Rogue: land behind = free backstabs; land in front = eat the frozen guy's swing.
 
@@ -214,6 +214,136 @@ crown mode → stun diet → one re-laid map → passives → ults → drops (§
 
 Boredom test: record a 4-player match, count every 10 s whether anyone *chose* something (retreat, wait, switch target, hold a skill). Now ≈ 0. Target 2+.
 
+## 9. Wave Defense (co-op, proposal)
+
+Status: proposal, 2026-11-27. Reference: **9x Hero Defense VN** (WC3 custom map, Vorse Raider, builds 2012–2018).
+
+### 9.1 What 9x does
+
+- Pick an anime hero. The team defends the main house against waves.
+- Roles: farm wood, main damage, house defender, crowd control.
+- Towers are bought at the house.
+- Mid and late game is farming bosses for crystals and materials, then fusing them into wings, god gear and rebirth items.
+- A match runs 60+ min.
+- Community lesson: veterans kicked "noob" players mid-game because the crafting route is hidden knowledge. Long sessions plus a knowledge wall drove people away.
+
+### 9.2 Feature map
+
+| 9x feature | Call | Chita version |
+|---|---|---|
+| Defend the house from waves | **Keep** | 4 players defend a core. Enemies come from 2–3 gates, so the team has to split. Boss every 5 waves |
+| Hero roles (farm / dps / defender / CC) | **Keep** | Already our archetypes. Knight holds a gate, Mage clears waves, Ranger and Scout kill bosses, Rogue hunts elites, Sorcerer chains through crowds. The roster stays as is (pillar 6) |
+| Skills | **Keep, retune** | Same 4-slot kit (pillar 3). Stuns are fine against mobs, so PvE can bring back what the stun diet cut. Ult charge needs a PvE rate, or creep damage fills it far too fast |
+| Hero leveling (XP) | **Drop flat stats → in-run upgrade picks** | After each wave or boss, each player picks 1 of 3 upgrades that change how a skill behaves (Hook pulls 2, Ember Field leaves a lingering zone). Same rule as passives: no stat sticks. Everything resets each run |
+| Item crafting / fusion tree | **Drop** | Too much hidden knowledge, too long, and the reason veterans kicked newbies |
+| Boss drops | **Bend** | A boss drops 1 relic with a fixed effect, and the team decides who takes it. Max 2 relic slots. Effects come from the §6.3 table (shield, ult spark, reset, warcry). Dice decide what drops, never what it does (pillar 2) |
+| Towers bought at the house | **Keep, small** | Gold from waves buys 3–4 tower types on fixed pads, each the answer to one enemy type (anti-swarm, anti-armor, slow). This is the actual TD layer |
+| Farming wood and gold | **Drop** | Gold comes from kills and wave clears. No second economy |
+| Rebirth / god gear | **Drop as power** | Things to chase after the run: wave record, hero mastery, cosmetics, harder modifiers to unlock (pillar 7) |
+| Boss mechanics | **Keep** | Telegraph, dodge, punish. Pillar 1 played against the AI |
+| Match events (§6.4) | **Reuse** | Become wave modifiers: Fog, Meteor Shower, Double Drop |
+| Bots (§7) | **Reuse** | Fill empty slots |
+
+### 9.3 Pillar conflicts
+
+- **Pillar 4 (rounds under 4 min):** TD can't fit in 4 minutes. Target 8–10 min runs with one checkpoint. This is a deliberate bend.
+- **Pillar 8 (one mode nailed first):** Crown mode isn't locked yet. Ship this as a co-op practice / bot playground built from existing systems (kits, bots, drops, events). Promote it to a real mode only after Crown is solid.
+
+### 9.4 Users
+
+| Segment | Role | Why |
+|---|---|---|
+| New / casual | Primary | Co-op, losing costs nothing, teaches the kits without PvP pressure |
+| Friend groups | Secondary | Shared goal. Late players get hard modifiers and wave records |
+| PvP-only players | Not served | Don't gate anything they want behind this mode |
+
+### 9.5 Pros / cons
+
+- **Pros:** reuses kits, bots, drops and events. Gives a no-pressure onboarding lane. Stuns and AoE get a home.
+- **Cons:** pulls effort from Crown. Needs enemy AI, wave tables and tower code. Longer sessions than the pillar allows.
+- **Biggest risk:** one dominant build (for example 4 Mages plus anti-swarm towers). Every wave type needs a counter that a different hero or tower handles best.
+
+### 9.6 Core and rescue rules
+
+Traditional hero defense: heroes hold the lanes, the tower is the life bar. **Lose only when the core tower hits 0 HP.** A hero dying never ends the run by itself.
+
+| Rule | Value | Why |
+|---|---|---|
+| Core HP | 100, shown big at the top of the HUD | One number = the run |
+| Leak damage | minion 1, elite 5, boss 25 (boss keeps hitting until killed) | A boss at the core is the real loss threat |
+| Core heal | +5 per wave cleared, never above 100 | Small comeback, no full reset |
+| Hero at 0 HP | **Downed**, not dead: crawls at 30% speed, no attacks, 10 s bleed-out ring | Gives teammates a reason to come |
+| Rescue | Teammate stands next to the downed hero, **2 s channel**, any hit on the rescuer cancels it. Up at 40% HP | Same channel language as rare drops (§6.3): "I'm on it, cover me" |
+| Bleed-out | Respawn at the core after 6 s + 1 s per wave (cap 15 s) | Dying costs time on the lane, not the run |
+| Everyone down | Run goes on. Enemies walk to the core while heroes respawn | Only the tower decides the loss |
+| Rescue hooks (later) | Paladin rescues in 1 s; Guardian Angel on a downed ally = instant rescue | Support role gets a sharp job |
+
+The decision this creates: **leave your lane to save a friend, or hold it and let him bleed out.** That is the bait / punish layer, now with a co-op twist.
+
+### 9.7 Open questions
+
+- Upgrade pool size per hero (start with 3 per slot?)
+- Tower gold vs. relic: one currency or none?
+- Boss leak: flat 25 or keeps hitting until killed? (current: keeps hitting)
+
 ## Sources
 
-PocketGamer / Flaregames / Red Bull on Brawl Stars; PC Gamer, Stunlock blog, Ten Ton Hammer, MeinMMO on Battlerite; PC Gamer, Icy Veins on Supervive; GGRecon on Brawlhalla; iGeeksBlog, Earnaldo on Roblox fighters; GamesRadar, PC Gamer, Game Informer on Marvel Rivals / Deadlock. Drops / events (§6): allthings.how on Hooked map events; PocketGamer on Blade Ball; TechWiser on Rivals; Ten Ton Hammer + Fandom on the Battlerite energy rune; MobileMatters + Brawl Stars wiki on Showdown modifiers; Brawlhalla wiki on gadgets; ludo.guide + PC Gamer on Supervive storm shifts; Rocket League wiki on Rumble.
+PocketGamer / Flaregames / Red Bull on Brawl Stars; PC Gamer, Stunlock blog, Ten Ton Hammer, MeinMMO on Battlerite; PC Gamer, Icy Veins on Supervive; GGRecon on Brawlhalla; iGeeksBlog, Earnaldo on Roblox fighters; GamesRadar, PC Gamer, Game Informer on Marvel Rivals / Deadlock. Drops / events (§6): allthings.how on Hooked map events; PocketGamer on Blade Ball; TechWiser on Rivals; Ten Ton Hammer + Fandom on the Battlerite energy rune; MobileMatters + Brawl Stars wiki on Showdown modifiers; Brawlhalla wiki on gadgets; ludo.guide + PC Gamer on Supervive storm shifts; Rocket League wiki on Rumble. Wave Defense (§9): wc3maps + Epic War map pages for 9x Hero Defense VN; Phutu forum guides (overview, item crafting); Scribd 9x Hero Defense VN 2022 guide.
+
+## Heroes 9-13 and the Knight's new shield (Nov 2026)
+
+Names read close to their Dota 2 inspiration (easy to place) without copying them. Numbers are first-pass; tune from
+real matches. Each hero has one signature colour (Hero.basic_color): its swing / bolt, its cast flash, its hit sparks.
+
+| Hero | Type | Colour | LMB | RMB | Passive | Ult (F) |
+|---|---|---|---|---|---|---|
+| Knight | Melee | amber | Cleave 13, 0.55 s, 140 px, 3rd launches | **Rebound Shield**: bounces between up to 3 foes (18 / 14 / 10), slows the first, flies home. 6 s | Bulwark: front hits -25%, off while the shield is out | Judgement |
+| Tidecaller | Melee | teal | Anchor Swing 15, 0.6 s, 165 px, 90° arc | **Anchor Slam**: r150, 18, hit foes deal 30% less for 3 s. 7 s | **Tide Breaker**: every 7 s (HUD shows the wait) the next swing sends a wave in the swing's own arc out to (165 + 260) / 2 ≈ 212 px: 12, no extra push; first hit refunds 1 s | **Ravaging Tide**: 6 lines out (18 + push), back in turned 30° (14 + pull); -30% dmg taken. Charges 2x from damage taken. Cost 170 |
+| Rampager | Melee | ochre | Claw 8, 0.45 s, 90 px, narrow | **Illusion Orb**: to the cursor (140-500 px), 16 to all it passes, auto-blink. Committed. 7 s | **Trampler**: every 90 px moved stomps foes within 95 px for 3 | **Earth Split**: rooted while a crack creeps out at 420 px/s to 700 px, splits 0.3 s later: 25% max HP, pulled onto the line, slowed 3 s. Cost 160 |
+| Demonbound | Ranged | crimson | Hellbolt 8, 0.7 s, 480 px, slow 450 px/s skillshot | **Dark Reflection**: r220; each foe's copy clings to its back for 5 s, hits it with 40% of its own basic no faster than every 0.9 s, slows it. 8 s | **Impetus Strike**: +1 per 40 px flown | **Demon Form**: 6 s, bolts 1.4x speed and range, 1.3x dmg, Reflection +1 s. Cost 160 |
+| Chaos Lord | Melee | magenta | Chaos Cleave 9 x roll, 0.75 s, 125 px | **Chaos Blast**: 8 dmg and 0.6 s stun, both x roll. 7 s | **Chaos Roll**: every cast rolls x0.5-x3.5 (seeded per cast) | **Time Sphere**: r180, 0.8 s x roll; ignores stun immunity, grants it after; freezes allies too. Cost 180 |
+| Pactknight (secret) | Ranged | violet | Eldritch Pull 10, 0.55 s, 420 px, pulls 25 px | **Chicken Hex**: 1.4 s chicken. 8 s | **Devil's Eye** (sees Stalk / Smoke Cloud within 200 px, self only) + **Dark Blessing** (kill = 15 HP shield, 5 s) | **Hunger Void**: r190, 4 s: slow, 5 / 0.5 s, 50% miss. Cost 150 |
+
+Other colours: Rogue slate-lilac, Mage fire, Ranger leaf green, Paladin gold, Shade emerald, Sorcerer electric blue,
+Scout coral. Rogue Stalk now fades after 1.5 s out of combat (was 2.5).
+
+Secret unlock: Konami code (arrows or d-pad, then B A) on the hero pick screen; saved in user://play_settings.cfg.
+
+Display renames (ids unchanged): Smoke Screen → Smoke Cloud, Focus Fire → Focus Volley, Power Shot → Power Arrow,
+Guardian Angel → Guardian Grace, Purification → Purify, Assassinate → Assassin Shot, Lightning Bolt → Lightning Strike,
+Static Field → Static Charge, Shackleshot → Shackle Arrow, Blade Fury → Blade Spin, Stifling Dagger → Crippling Dagger,
+Ball Lightning → Lightning Ball, Shadow Dance → Shadow Strikes.
+
+Effects pass: every bolt leaves a short streak in its hero's colour and its impact burst is tinted the same; arrows are
+drawn by hand (the sheet's flight frame was a 2 px sliver, invisible in game); hit sparks wear the hitter's colour;
+every RMB / ult cast flashes a ring at the caster's feet (an ult adds a glow).
+
+### Reach and swing pass (Nov 2026)
+
+Melee read apart by reach x arc (and windup): Rogue 85 px / 45° (0.04 s) · Rampager 95 / 70° (0.06) · Chaos Lord 115 /
+200° (0.18) · Knight 135 / 160° (0.16) · Tidecaller 165 / 90° (0.2). Ranged sit in bands ~40-70 px apart: Shade 220 ·
+Paladin 270 · Sorcerer 340 · Mage 390 · Pactknight 430 · Scout 470 · Demonbound 510 · Ranger 560.
+KNOCK_LIGHT_DMG 12 -> 15: a plain 13-15 dmg basic only flinches, so it no longer shoves its target out of a short
+melee reach (that, plus hold-to-chase, walked the Tidecaller forward on every held swing).
+
+### Round 3 (Nov 2026)
+
+- **Basic attacks only flinch** (all heroes): Player.basic_hit is raised around every basic's hit (swings, bolts, orb
+  bursts, Dagger, Hammer, Chain Lightning, Tide Breaker), and such a hit sets no knockback at all: punch, flash, brief
+  slow only. Launches belong to skills, ults and the Knight's 3rd-swing finisher.
+- **Rampager**: Trampler radius 110, every stomp puffs (bigger + a thud when it hits). Illusion Orb: he vanishes into
+  the orb (unseen, untouchable, rooted), it passes for 10, lands with a BANG (r120, 18), and he appears 0.12 s later.
+- **Demonbound**: passive is now **Hellwalker** (FelTrail): burning ground for 3 s, thin walking, thick on any dash.
+  On it: 4 / 0.5 s + slow. His bolts that cross it ignite: +6 and a 70 px blast (6). Impetus removed. Dark Reflection
+  3.5 s, a hit every >= 0.7 s, the copy drawn with a red outline, ring under the victim, tether, timer. **Demon Form**
+  adds a 60% chance of a second bolt per shot.
+- **Hero pick**: always two rows (6 + 6, or 7 + 6 with the secret hero), cards 120 px wide.
+
+### Secret hero 2: Six Seven (Nov 2026)
+
+Unlock: type `67` on the hero pick. Ranged, neon cyan, 67 HP, 267 speed, 467 range.
+- LMB **Packet Loss**: 11 dmg every 0.67 s; flies out, buffers 0.3 s mid-air, then homes on the closest foe.
+- RMB **Six Seven!**: blink up to 267 px toward the cursor and yell it: foes within 130 px of the landing take 7 and
+  are stunned (confused, "??") for 0.67 s (stun immunity applies). 6.7 s. Landing from Player.blink_target.
+- Passive **67 Lives**: a lethal hit leaves him at 67 HP (his max) and untouchable for 1 s, once per 67 s (HUD shows it).
+- Ult **Connection Lost**: foes within 260 frozen 1 s ("CONNECTION LOST"), then 3 s of double attack speed.

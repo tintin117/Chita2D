@@ -61,7 +61,7 @@ class Strike extends Node2D:
 		draw_circle(Vector2(0, 14), RADIUS * (1.0 - 0.5 * k), Color(1, 1, 1, 0.35 * k))
 
 func _init() -> void:
-	display_name = "Lightning Bolt"
+	display_name = "Lightning Strike"
 	cooldown = 6.0
 	damage = 26
 	sfx = "shoot"

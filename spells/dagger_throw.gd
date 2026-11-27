@@ -8,7 +8,7 @@ const PICK_RADIUS := 150.0
 const COLOR := Color(0.3, 1.0, 0.55)
 const CRIT_COLOR := Color(0.9, 1.0, 0.5)
 
-var range_px := 330.0
+var range_px := 240.0
 var focus_hits := 4
 var crit_mult := 2.5
 var _focus_target: Node = null
@@ -60,6 +60,7 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var at: Node2D = lock if is_instance_valid(lock) else Spell.pick_foe(caster, aim_pos, d, PICK_RADIUS, 0.4, range_px)
 	var crit := focus_mult(at)
 	var p := Projectile.new().setup(caster.global_position + d * 26.0 + Vector2(0, 8), d * SPEED, roundi(damage * crit), true, caster)
+	p.basic = true
 	p.radius = 12.0
 	p.life = range_px / SPEED
 	p.color = CRIT_COLOR if crit > 1.0 else COLOR

@@ -336,7 +336,7 @@ func _nearest_any(me: Vector2) -> Vector2:
 	var best := Vector2.INF
 	for n in _p.get_tree().get_nodes_in_group("players"):
 		var f := n as Player
-		if f and f != _p and not f.down and not f.veiled() and not (_p.team >= 0 and f.team == _p.team):
+		if f and f != _p and not f.down and not f.hidden_from(_p) and not (_p.team >= 0 and f.team == _p.team):
 			if best == Vector2.INF or me.distance_to(f.global_position) < me.distance_to(best):
 				best = f.global_position
 	return best
@@ -399,7 +399,7 @@ func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
 	if s is EmberField:
 		return dist < EmberField.MAX_RANGE - 20.0 and (dist > 70.0 or _p.hp < _p.max_hp)
 	if s is ChainLightning:
-		return dist < ChainLightning.RANGE - 10.0
+		return dist < _p.hero.attack_range - 10.0
 	if s is Purification:   # heal and burn: when hurt with someone close, or to finish a brawl
 		return dist < Purification.RADIUS - 10.0 and _p.hp < _p.max_hp * 0.85
 	if s is Riposte:   # brace when a foe is in its own striking distance
@@ -424,6 +424,24 @@ func _fits(s: Spell, dist: float, los: bool, tpos := Vector2.INF) -> bool:
 		return dist > 260.0 and dist < 1000.0 and los
 	if s is PowerShot:
 		return dist > 180.0 and dist < PowerShot.reach_at(1.0) - 80.0 and los
+	if s is PacketLoss:   # it finds its own way after the lag
+		return dist < s.range_px - 20.0
+	if s is SixSeven:   # blink in next to a foe so the yell catches it
+		return dist > 120.0 and dist < SixSeven.RANGE + SixSeven.RADIUS * 0.6
+	if s is RubberBand:   # anchor before diving in, or when hurt (it pulls him back out)
+		return dist < 300.0 and _p.hp < _p.max_hp * 0.6
+	if s is ReboundShield:   # best with a second foe close enough for a bounce, fine on one
+		return dist > 90.0 and dist < ReboundShield.RANGE - 30.0
+	if s is KeelSlam:
+		return dist < KeelSlam.RADIUS - 10.0
+	if s is WildOrb:   # dive onto a foe, or out when hurt (the move goal already points away then)
+		return (dist > 160.0 and dist < WildOrb.RANGE) or (_p.hp < _p.max_hp * 0.3 and dist < 220.0)
+	if s is MirrorTorment:
+		return dist < MirrorTorment.MAX_RANGE - 20.0
+	if s is RiftBolt:
+		return dist < RiftBolt.RANGE - 30.0 and los
+	if s is Cluckcurse:
+		return dist < Cluckcurse.RANGE - 30.0 and los
 	if s is ShieldCharge:
 		# close the gap and stun, or (better) pin a foe that stands with a rock behind it
 		return dist > 110.0 and dist < (330.0 if _backed_by_edge(tpos, _dir(_p.global_position, tpos)) else 215.0) and los
@@ -488,7 +506,17 @@ func _aim_for(s: Spell, from: Vector2, tpos: Vector2) -> Vector2:
 		return from + (from - tpos).normalized() * Tumble.ROLL
 	if s is BallLightning and _p.hp < _p.max_hp * 0.35:
 		return from + (from - tpos).normalized() * BallLightning.RANGE   # hurt: it is the escape
+	if s is WildOrb and _p.hp < _p.max_hp * 0.3:
+		return from + (from - tpos).normalized() * WildOrb.RANGE   # hurt: it is the escape
+	if s is FaultLine or s is MirrorTorment:
+		return tpos + (vel * 0.8).limit_length(120.0)
 	var speed := Hook.SPEED if s is Hook else 0.0
+	if s is RiftBolt:
+		speed = RiftBolt.SPEED
+	elif s is Cluckcurse:
+		speed = Cluckcurse.SPEED
+	elif s is ReboundShield:
+		speed = ReboundShield.SPEED
 	if s is FsWeapon:
 		speed = s.lead_speed
 	var hb := s as HeroBasic
@@ -541,7 +569,7 @@ func _foes() -> Array[Player]:
 	var out: Array[Player] = []
 	for n in _p.get_tree().get_nodes_in_group("players"):
 		var f := n as Player
-		if f and f != _p and not f.down and not f.veiled() and not (_p.team >= 0 and f.team == _p.team):   # a veiled Rogue is unseen
+		if f and f != _p and not f.down and not f.hidden_from(_p) and not (_p.team >= 0 and f.team == _p.team):   # a veiled Rogue is unseen
 			out.append(f)
 	return out
 
@@ -566,6 +594,10 @@ func _best_pickup(me: Vector2, hp_frac: float) -> Dictionary:
 		var value: float = PICKUP_VALUE.get(pk.kind, 0.0)
 		if PvpPickup.is_weapon(pk.kind):
 			value = 0.9 + 0.5 * PvpPickup.tier_of(pk.kind)
+		elif FsLoot.is_passive(pk.kind):
+			value = 0.6 if _p.hero.passive_name != "" else 1.4   # already has one: a swap is worth less
+		elif FsLoot.is_ult(pk.kind):
+			value = 0.5 if _p.ult_ready() else 1.9
 		if pk.kind == "heal":
 			value = 0.15 if hp_frac > 0.9 else 1.0 + (1.0 - hp_frac) * 3.0
 		if value <= 0.0:

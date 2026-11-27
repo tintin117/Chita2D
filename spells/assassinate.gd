@@ -71,7 +71,7 @@ class Lock extends Node2D:
 			draw_line(a, b, Color(1, 0.9, 0.6, k), 10.0 * k + 1.0)
 
 func _init() -> void:
-	display_name = "Assassinate"
+	display_name = "Assassin Shot"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 55
 	sfx = "shoot"
