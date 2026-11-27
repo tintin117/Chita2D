@@ -182,7 +182,7 @@ func _ready() -> void:
 	_pickup_timer = _cfg.first_pickup
 	_drops_open = int(_cfg.drop_after_deaths) <= 0
 	MatchEvent.current = MatchEvent.NONE
-	_map = WorldMap.new()
+	_map = Arenas.create(Net.arena)   # the lobby's pick (docs/iso_level_editing.md)
 	_map.name = "Arena"   # fixed names: RPC and replication paths must match on every peer
 	add_child(_map)
 	_map.generate_arena()

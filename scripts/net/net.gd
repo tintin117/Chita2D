@@ -39,6 +39,7 @@ var autostart := 0
 var solo := false                     ## practice against bots: no network, the roster holds the player and the bots
 var bot_skill := 0.6
 var mode := GameMode.CLASSIC          ## the match mode: the host's lobby choice (synced to every peer), or the solo menu choice
+var arena := 0                        ## index into Arenas.LIST: the host's lobby choice (synced), or the solo menu choice
 var solo_auto := false                ## dev: `-- --solo=N` skips the menu and the hero pick
 
 var _steam: Object                    ## the GodotSteam singleton, null when the extension is missing
@@ -56,6 +57,8 @@ func _ready() -> void:
 	for a in args:
 		if a.begins_with("--mode=") and GameMode.valid(a.get_slice("=", 1)):
 			mode = a.get_slice("=", 1)   # dev: before --solo (start_solo is deferred, but --autostart / --enet need it too)
+		if a.begins_with("--arena="):
+			arena = clampi(int(a.get_slice("=", 1)), 0, Arenas.LIST.size() - 1)
 	for a in args:
 		if a.begins_with("--name="):
 			my_name = a.get_slice("=", 1)
@@ -142,6 +145,18 @@ func set_mode(m: String) -> void:
 	mode = m
 	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
 		mode_sync.rpc(m)
+	roster_changed.emit()
+
+## Host only: choose the arena in the lobby; every peer follows.
+func set_arena(index: int) -> void:
+	arena = posmod(index, Arenas.LIST.size())
+	if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+		arena_sync.rpc(arena)
+	roster_changed.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func arena_sync(index: int) -> void:
+	arena = clampi(index, 0, Arenas.LIST.size() - 1)
 	roster_changed.emit()
 
 @rpc("authority", "call_remote", "reliable")
@@ -269,6 +284,7 @@ func _broadcast() -> void:
 	settings_changed.emit()
 	roster_sync.rpc(roster, settings)
 	mode_sync.rpc(mode)
+	arena_sync.rpc(arena)
 
 ## The team (0/1) with fewer players, for auto-balancing new joiners.
 func smaller_team() -> int:
@@ -357,10 +373,11 @@ func start_match() -> void:
 	for r: Dictionary in roster.values():
 		r.ready = false
 	_lock_heroes()
-	_begin_match.rpc(roster, settings, mode)
+	_begin_match.rpc(roster, settings, mode, arena)
 
 @rpc("authority", "call_local", "reliable")
-func _begin_match(r: Dictionary, s: Dictionary, match_mode: String) -> void:
+func _begin_match(r: Dictionary, s: Dictionary, match_mode: String, match_arena: int) -> void:
+	arena = clampi(match_arena, 0, Arenas.LIST.size() - 1)
 	roster = r
 	settings = s
 	mode = match_mode if GameMode.valid(match_mode) else GameMode.CLASSIC
