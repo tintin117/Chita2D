@@ -6,7 +6,7 @@ class_name GuardianAngel extends Spell
 const DURATION := 3.0
 
 func _init() -> void:
-	display_name = "Guardian Angel"
+	display_name = "Guardian Grace"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 0
 	sfx = "crown"

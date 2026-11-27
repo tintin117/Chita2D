@@ -56,7 +56,7 @@ class Cloud extends Node2D:
 		draw_arc(Vector2.ZERO, SmokeScreen.RADIUS, 0.0, TAU, 48, Color(0.7, 0.65, 0.8, 0.5 * fade), 2.0)
 
 func _init() -> void:
-	display_name = "Smoke Screen"
+	display_name = "Smoke Cloud"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 0
 	sfx = "explosion"

@@ -32,7 +32,7 @@ class Flash extends Node2D:
 			draw_line(Vector2(0, -20), Vector2(0, -20) + Vector2.from_angle(a) * 90.0 * k, Color(HOLY, 0.7 * (1.0 - k)), 3.0)
 
 func _init() -> void:
-	display_name = "Purification"
+	display_name = "Purify"
 	cooldown = 8.0
 	damage = HEAL
 	sfx = "crown"

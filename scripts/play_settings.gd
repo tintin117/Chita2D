@@ -12,6 +12,10 @@ static var aim_facing := false
 static var melee_step := false
 ## true: every bot shows its state (Roam / Engage / Retreat / Objective / Hold / Potato) over its head.
 static var bot_debug := false
+## The secret hero (Pactknight) is on the pick screen: unlocked once with the Konami code there, kept from then on.
+static var pact_unlocked := false
+## The second secret hero (Six Seven): type "67" on the hero pick.
+static var seven_unlocked := false
 
 static var _loaded := false
 
@@ -25,10 +29,14 @@ static func load_once() -> void:
 	aim_facing = bool(cfg.get_value("play", "aim_facing", aim_facing))
 	melee_step = bool(cfg.get_value("play", "melee_step", melee_step))
 	bot_debug = bool(cfg.get_value("play", "bot_debug", bot_debug))
+	pact_unlocked = bool(cfg.get_value("secret", "pact", pact_unlocked))
+	seven_unlocked = bool(cfg.get_value("secret", "seven", seven_unlocked))
 
 static func save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("play", "aim_facing", aim_facing)
 	cfg.set_value("play", "melee_step", melee_step)
 	cfg.set_value("play", "bot_debug", bot_debug)
+	cfg.set_value("secret", "pact", pact_unlocked)
+	cfg.set_value("secret", "seven", seven_unlocked)
 	cfg.save(PATH)

@@ -21,13 +21,26 @@ const TIER_COLORS := [Color(0.85, 0.95, 0.85), Color(0.4, 0.7, 1.0), Color(1.0, 
 const KIND_TIER := {"heal": Tier.COMMON, "speed": Tier.COMMON, "shield": Tier.COMMON, "ult": Tier.COMMON, "reset": Tier.RARE, "warcry": Tier.EPIC,
 	"damage": Tier.RARE, "mystery": Tier.RARE, "giant": Tier.EPIC, "chicken": Tier.EPIC, "bomb": Tier.EPIC,
 	"slingshot": Tier.COMMON, "firecracker": Tier.COMMON, "hammer": Tier.RARE, "frost_gun": Tier.RARE, "boomerang": Tier.RARE,
-	"bomb_launcher": Tier.RARE, "rocket": Tier.EPIC, "meteor": Tier.EPIC, "gatling": Tier.EPIC}
+	"bomb_launcher": Tier.RARE, "rocket": Tier.EPIC, "meteor": Tier.EPIC, "gatling": Tier.EPIC,
+	"pas_kindling": Tier.RARE, "pas_vampire": Tier.RARE, "pas_static": Tier.RARE, "pas_glass": Tier.RARE,
+	"pas_trampler": Tier.RARE, "pas_hellwalker": Tier.RARE, "pas_tide": Tier.RARE, "pas_bulwark": Tier.RARE,
+	"pas_devils_eye": Tier.RARE, "pas_stalk": Tier.RARE,
+	"ult_meteor": Tier.EPIC, "ult_judgement": Tier.EPIC, "ult_smoke": Tier.EPIC, "ult_storm": Tier.EPIC,
+	"ult_blade_ring": Tier.EPIC, "ult_ebb": Tier.EPIC, "ult_fault": Tier.EPIC, "ult_stillwake": Tier.EPIC,
+	"ult_dark": Tier.EPIC, "ult_angel": Tier.EPIC}
 ## Friendslop weapon pickups (the gameplay lives in FsWeapon.DEFS; a test keeps the two lists in step).
 const FS_WEAPONS := ["slingshot", "firecracker", "hammer", "frost_gun", "boomerang", "bomb_launcher", "rocket", "meteor", "gatling"]
-## Friendslop drop table: the classic kinds plus the weapons. Epics are ~13% of drops, rares and commons ~43% each.
+## Friendslop drop table: the classic kinds, the weapons (all LMB), the passive drops (pas_*, Rare, kept until death)
+## and the ult drops (ult_*, Epic, ready now, one use). See FsLoot; a test keeps these lists in step with it.
 const FS_WEIGHTS := {"heal": 5.0, "speed": 3.0, "slingshot": 5.0, "firecracker": 4.0,
 	"damage": 2.0, "mystery": 3.0, "hammer": 3.0, "frost_gun": 3.0, "boomerang": 3.0, "bomb_launcher": 3.0,
-	"giant": 0.8, "chicken": 0.5, "bomb": 0.5, "rocket": 1.1, "meteor": 1.0, "gatling": 1.1}
+	"giant": 0.8, "chicken": 0.5, "bomb": 0.5, "rocket": 1.1, "meteor": 1.0, "gatling": 1.1,
+	"pas_kindling": 0.6, "pas_vampire": 0.6, "pas_static": 0.6, "pas_glass": 0.6,
+	"pas_trampler": 0.6, "pas_hellwalker": 0.6, "pas_tide": 0.6, "pas_bulwark": 0.6,
+	"pas_devils_eye": 0.6, "pas_stalk": 0.6,
+	"ult_meteor": 0.25, "ult_judgement": 0.25, "ult_smoke": 0.25, "ult_storm": 0.25,
+	"ult_blade_ring": 0.25, "ult_ebb": 0.25, "ult_fault": 0.25, "ult_stillwake": 0.25,
+	"ult_dark": 0.25, "ult_angel": 0.25}
 const CATCHUP_TIER_GAIN := [-0.4, 0.5, 1.2]   ## per tier: weight change at full catch-up boost (commons thin out, epics get likelier)
 ## Per tier: beam height, beam half-width, ground rings, orbiting sparkles, badge corner count (0 = circle), badge radius.
 ## Shape and size differ per tier too, so the tiers read without colour.
@@ -37,21 +50,40 @@ const TIER_LOOK := [
 	{"beam": 900.0, "width": 20.0, "rings": 3, "sparkles": 8, "corners": 8, "radius": 26.0},
 ]
 const OUTCOMES := ["heal", "damage", "speed", "giant", "chicken", "bomb"]   ## what a mystery box can turn into (Friendslop)
+const PASSIVE_COLOR := Color(1.0, 0.82, 0.4)   ## passive drops (gold, like the HUD passive tile)
+const ULT_COLOR := Color(0.85, 0.5, 1.0)        ## ult drops (the HUD ult purple)
 const COLORS := {"heal": Color(0.35, 1.0, 0.45), "damage": Color(1.0, 0.3, 0.25), "speed": Color(0.3, 0.9, 1.0),
 	"shield": Color(0.92, 0.95, 1.0), "ult": Color(0.85, 0.5, 1.0), "reset": Color(0.4, 0.95, 0.9), "warcry": Color(1.0, 0.4, 0.2),
 	"mystery": Color(0.75, 0.45, 1.0), "giant": Color(1.0, 0.65, 0.2), "chicken": Color(1.0, 0.95, 0.3), "bomb": Color(0.95, 0.25, 0.55),
 	"slingshot": Color(0.8, 0.65, 0.4), "firecracker": Color(1.0, 0.55, 0.3), "hammer": Color(0.7, 0.72, 0.85), "frost_gun": Color(0.5, 0.85, 1.0),
 	"boomerang": Color(0.4, 0.9, 0.5), "bomb_launcher": Color(0.9, 0.4, 0.2), "rocket": Color(1.0, 0.35, 0.3), "meteor": Color(1.0, 0.5, 0.15),
-	"gatling": Color(1.0, 0.9, 0.4)}
+	"gatling": Color(1.0, 0.9, 0.4),
+	"pas_kindling": PASSIVE_COLOR, "pas_vampire": PASSIVE_COLOR, "pas_static": PASSIVE_COLOR, "pas_glass": PASSIVE_COLOR,
+	"pas_trampler": PASSIVE_COLOR, "pas_hellwalker": PASSIVE_COLOR, "pas_tide": PASSIVE_COLOR, "pas_bulwark": PASSIVE_COLOR,
+	"pas_devils_eye": PASSIVE_COLOR, "pas_stalk": PASSIVE_COLOR,
+	"ult_meteor": ULT_COLOR, "ult_judgement": ULT_COLOR, "ult_smoke": ULT_COLOR, "ult_storm": ULT_COLOR,
+	"ult_blade_ring": ULT_COLOR, "ult_ebb": ULT_COLOR, "ult_fault": ULT_COLOR, "ult_stillwake": ULT_COLOR,
+	"ult_dark": ULT_COLOR, "ult_angel": ULT_COLOR}
 const LABELS := {"heal": "Heal", "damage": "Double damage", "speed": "Speed boost", "mystery": "Mystery box",
 	"shield": "Shield", "ult": "Ult spark", "reset": "RESET", "warcry": "WARCRY!",
 	"giant": "GIANT!", "chicken": "Chicken curse", "bomb": "Hot potato!",
 	"slingshot": "Slingshot", "firecracker": "Firecracker", "hammer": "War Hammer", "frost_gun": "Frost Gun", "boomerang": "Boomerang",
-	"bomb_launcher": "Bomb Launcher", "rocket": "ROCKET LAUNCHER", "meteor": "METEOR STORM", "gatling": "GATLING GUN"}
+	"bomb_launcher": "Bomb Launcher", "rocket": "ROCKET LAUNCHER", "meteor": "METEOR STORM", "gatling": "GATLING GUN",
+	"pas_kindling": "Kindling", "pas_vampire": "Vampire", "pas_static": "Static Charge", "pas_glass": "Glass Cannon",
+	"pas_trampler": "Trampler", "pas_hellwalker": "Hellwalker", "pas_tide": "Tide Breaker", "pas_bulwark": "Bulwark",
+	"pas_devils_eye": "Devil's Eye", "pas_stalk": "Stalk",
+	"ult_meteor": "ULT: METEOR", "ult_judgement": "ULT: JUDGEMENT", "ult_smoke": "ULT: SMOKE CLOUD",
+	"ult_storm": "ULT: THUNDERSTORM", "ult_blade_ring": "ULT: BLADE RING", "ult_ebb": "ULT: RAVAGING TIDE",
+	"ult_fault": "ULT: EARTH SPLIT", "ult_stillwake": "ULT: TIME SPHERE", "ult_dark": "ULT: HUNGER VOID",
+	"ult_angel": "ULT: GUARDIAN GRACE"}
 const ICONS := {"heal": "+", "damage": "x2", "speed": ">>", "mystery": "?", "giant": "XL", "chicken": "bk", "bomb": "!!",
 	"shield": "()", "ult": "F", "reset": "cd", "warcry": "!>",
 	"slingshot": "sl", "firecracker": "fc", "hammer": "HM", "frost_gun": "ice", "boomerang": "bm", "bomb_launcher": "BL",
-	"rocket": "RK", "meteor": "MT", "gatling": "GT"}
+	"rocket": "RK", "meteor": "MT", "gatling": "GT",
+	"pas_kindling": "P", "pas_vampire": "P", "pas_static": "P", "pas_glass": "P", "pas_trampler": "P",
+	"pas_hellwalker": "P", "pas_tide": "P", "pas_bulwark": "P", "pas_devils_eye": "P", "pas_stalk": "P",
+	"ult_meteor": "U", "ult_judgement": "U", "ult_smoke": "U", "ult_storm": "U", "ult_blade_ring": "U",
+	"ult_ebb": "U", "ult_fault": "U", "ult_stillwake": "U", "ult_dark": "U", "ult_angel": "U"}
 const FALL_TIME := 0.55   ## spawn-in: the badge drops from the sky this long
 const FALL_HEIGHT := 600.0
 
@@ -94,6 +126,13 @@ static func fs_weight(k: String, boost: float) -> float:
 
 static func is_weapon(k: String) -> bool:
 	return k in FS_WEAPONS
+
+## Friendslop kit drops: fill the Bonker's empty passive / ult (FsLoot).
+static func is_passive(k: String) -> bool:
+	return FsLoot.is_passive(k)
+
+static func is_ult_drop(k: String) -> bool:
+	return FsLoot.is_ult(k)
 
 ## What a mystery box becomes; r in [0, 1). In Friendslop the weapons are in the box too.
 static func mystery_outcome(r: float, with_weapons := false) -> String:

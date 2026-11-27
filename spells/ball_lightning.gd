@@ -42,7 +42,7 @@ class Streak extends Node2D:
 		draw_circle(head, 10.0, Color(1, 1, 1, fade))
 
 func _init() -> void:
-	display_name = "Ball Lightning"
+	display_name = "Lightning Ball"
 	cooldown = 7.0
 	damage = 16
 	sfx = "dash"

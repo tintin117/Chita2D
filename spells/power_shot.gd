@@ -33,8 +33,8 @@ static func pierce_at(p: float) -> int:
 	return FULL_PIERCE if p >= 1.0 else 0
 
 func _init() -> void:
-	display_name = "Power Shot"
-	cooldown = 5.0
+	display_name = "Power Arrow"
+	cooldown = 6.0
 	damage = 42
 	sfx = "shoot"
 

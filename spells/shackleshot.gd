@@ -103,7 +103,7 @@ class Tie extends Node2D:
 		draw_polyline(pts, Color(COLOR, 0.9 * k), 3.0)
 
 func _init() -> void:
-	display_name = "Shackleshot"
+	display_name = "Shackle Arrow"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 20
 	sfx = "shoot"

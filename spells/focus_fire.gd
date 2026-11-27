@@ -11,7 +11,7 @@ const RANGE := 700.0
 const PICK_RADIUS := 220.0
 
 func _init() -> void:
-	display_name = "Focus Fire"
+	display_name = "Focus Volley"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 0
 	sfx = "crown"

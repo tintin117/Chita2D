@@ -19,6 +19,63 @@ var _skill_name: Label
 var _skill_text: Label
 var _hero: Hero
 var _skill := 1            ## kit slot whose text is open; hovering a tile previews it without changing this
+var _cards: GridContainer
+var _card_group: ButtonGroup
+var _card_color := "Blue"
+var _konami := 0           ## how far into the Konami code the last presses got
+
+const KONAMI_KEYS := [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT, KEY_B, KEY_A]
+const KONAMI_PAD := [JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_LEFT,
+	JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_B, JOY_BUTTON_A]
+
+const SEVEN_CODE := "67"   ## Six Seven
+var _typed := ""           ## the last few characters typed here
+
+## Secret codes on this screen, each unlocking a hero on this machine for good:
+##  - the Konami code (arrows + B A, or the d-pad + B A): Pactknight
+##  - typing "67": Six Seven
+func _input(event: InputEvent) -> void:
+	if ChatBox.typing:
+		return
+	if not PlaySettings.seven_unlocked and event is InputEventKey and event.pressed and not event.echo and event.unicode > 0:
+		_typed = (_typed + char(event.unicode).to_lower()).right(SEVEN_CODE.length())
+		if _typed == SEVEN_CODE:
+			_typed = ""
+			PlaySettings.seven_unlocked = true
+			_unlock(Hero.six_seven())
+			return
+	if PlaySettings.pact_unlocked:
+		return
+	var code := -1   # this press, in the sequence's own terms; -1 = not a press we read
+	var want: int
+	if event is InputEventKey and event.pressed and not event.echo:
+		code = event.keycode
+		want = KONAMI_KEYS[_konami]
+	elif event is InputEventJoypadButton and event.pressed:
+		code = event.button_index
+		want = KONAMI_PAD[_konami]
+	if code == -1:
+		return
+	if code != want:
+		var first: int = KONAMI_KEYS[0] if event is InputEventKey else KONAMI_PAD[0]
+		_konami = 1 if code == first else 0
+		return
+	_konami += 1
+	if _konami < KONAMI_KEYS.size():
+		return
+	_konami = 0
+	PlaySettings.pact_unlocked = true
+	_unlock(Hero.secret())
+
+## A code went in: save it, add the hero's card (still two rows) and pick him.
+func _unlock(hero: Hero) -> void:
+	PlaySettings.save()
+	Sfx.play("crown", Vector2.INF, 0.0, 0.8)
+	var card := _card(hero, _card_color, _card_group, false)
+	_cards.columns = ceili(Hero.pickable().size() / 2.0)   # 7 + 6 or 7 + 7: still two rows, nothing pushed off the screen
+	_cards.add_child(card)
+	card.button_pressed = true
+	card.pressed.emit()   # picks him (Net.set_hero) and shows his card
 
 func _ready() -> void:
 	_online = not Net.roster.is_empty()
@@ -42,17 +99,22 @@ func _ready() -> void:
 		header.add_child(_timer_label)
 	box.add_child(header)
 
-	var cards := GridContainer.new()   # 8 heroes: two rows of four
-	cards.columns = 4
+	var cards := GridContainer.new()   # always two rows: 6 + 6, or 7 + 6 once the secret hero is unlocked
+	cards.columns = ceili(Hero.pickable().size() / 2.0)
+	cards.add_theme_constant_override("h_separation", 6)
+	cards.add_theme_constant_override("v_separation", 6)
 	box.add_child(cards)
+	_cards = cards
 	var group := ButtonGroup.new()
+	_card_group = group
 	var selected := Hero.by_id(Net.my_hero)
 	var color := Player.COLORS[0]
 	if _online and Net.roster.has(Net.local_id()):
 		var info: Dictionary = Net.roster[Net.local_id()]
 		color = Player.TEAM_SPRITES[info.team] if Net.is_team_mode() else Player.COLORS[info.slot % Player.COLORS.size()]
+	_card_color = color
 	var initial: Button
-	for hero in Hero.all():
+	for hero in Hero.pickable():
 		var card := _card(hero, color, group, selected.id == hero.id)
 		cards.add_child(card)
 		if selected.id == hero.id:
@@ -143,6 +205,9 @@ func _ready() -> void:
 		actions.add_child(enter)
 	if is_instance_valid(initial) and not initial.disabled:
 		ArenaUi.defer_focus(initial)
+	var chat := ChatBox.new()   # online only (ChatBox.online_only)
+	chat.bottom_margin = 48.0
+	add_child(chat)
 
 func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> Button:
 	var card := ArenaUi.button("", func() -> void:
@@ -152,16 +217,16 @@ func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> But
 	card.button_group = group
 	card.button_pressed = selected
 	card.tooltip_text = hero.display_name
-	card.custom_minimum_size = Vector2(186, 132)
+	card.custom_minimum_size = Vector2(120, 112)   # 7 across still fits the 904 px column
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.text = hero.display_name
 	card.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	card.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card.expand_icon = false
-	card.add_theme_constant_override("icon_max_width", 96)
+	card.add_theme_constant_override("icon_max_width", 76)
 	if hero.base_id != "":
 		card.modulate = hero.tint.lerp(Color.WHITE, 0.4)   # heroes 5-8 share sprite layouts with 1-4: the tint tells them apart
-	card.add_theme_font_size_override("font_size", 22)
+	card.add_theme_font_size_override("font_size", 17)
 	card.icon = ArenaUi.portrait(hero, color)
 	_hero_buttons.append(card)
 	return card
@@ -206,7 +271,7 @@ func _go_back() -> void:
 		get_tree().change_scene_to_file(Net.MENU_SCENE)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("ui_cancel") and not ChatBox.typing:
 		get_viewport().set_input_as_handled()
 		_go_back()
 

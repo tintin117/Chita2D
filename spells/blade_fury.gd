@@ -29,7 +29,7 @@ class Fury extends Node2D:
 			Sfx.play("swing", global_position, -10.0, 1.3 + randf() * 0.3)
 
 func _init() -> void:
-	display_name = "Blade Fury"
+	display_name = "Blade Spin"
 	cooldown = 0.6     # the charge is the real gate; this only covers the cast lock
 	damage = 6
 	sfx = "swing"

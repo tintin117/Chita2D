@@ -34,6 +34,11 @@ var tex_scale := 1.0
 var impact_scale := 0.12    ## size of the burst where it stops
 var slow := Vector2.ZERO    ## (speed multiplier, seconds) on a hit that lands (Stifling Dagger); zero = none        ## extra size of the sprite (Power Shot grows with the draw)
 var _burst_done := false
+var fel: Node                ## Hellwalker: the caster's FelTrail; flying over it sets this bolt alight once
+var _ignited := false
+var basic := false          ## fired by a basic attack: its hits only flinch (Player.basic_hit)
+var impetus := 0.0          ## Long Malice: + damage per px flown, added when it hits
+var pull := 0.0             ## Grasping Blast: px a hit drags the victim toward the caster
 var color := Color(1.0, 0.55, 0.15)
 var _hit: Array[Node] = []
 var _anim_t := 0.0
@@ -76,6 +81,11 @@ func _draw() -> void:
 		draw_circle(Vector2(-3, -3), radius * 0.45, Color(1, 1, 0.9, 0.9))
 		draw_line(Vector2.ZERO, -velocity.normalized() * radius * 2.5, Color(color, 0.4), radius)
 		return
+	draw_set_transform(Vector2.ZERO, velocity.angle(), Vector2.ONE)
+	var glow := minf(_flown, 70.0 * tex_scale)   # a short streak in the shooter's colour: every bolt reads at a glance
+	if glow > 2.0 and trail <= 0.0:
+		draw_line(Vector2(-glow, 0), Vector2.ZERO, Color(color, 0.2), radius * 1.3)
+		draw_line(Vector2(-glow * 0.7, 0), Vector2.ZERO, Color(color.lightened(0.45), 0.6), 3.0)
 	var dir := arrow_tex
 	if dir == "":
 		dir = SPELL % ("Ice" if color.b > color.r else ("Death" if color.b > 0.6 else "Fire"))
@@ -105,7 +115,14 @@ func _physics_process(delta: float) -> void:
 	position += velocity * delta
 	_flown += velocity.length() * delta
 	_anim_t += delta
-	queue_redraw()   # next animation frame / the orb pulses
+	if fel != null and not _ignited and is_instance_valid(fel) and fel.covers(global_position + Vector2(0, 6)):
+		_ignited = true   # it crossed his burning trail
+		damage += FelTrail.IGNITE_BONUS
+		color = Color(1.0, 0.55, 0.2)
+		tex_scale *= 1.3
+		radius += 4.0
+		SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, 0.18)
+	queue_redraw()   # next animation frame / the streak grows / the orb pulses
 	life -= delta
 	if life <= 0.0:
 		if splash > 0.0:
@@ -125,7 +142,24 @@ func _on_body_entered(body: Node) -> void:
 		if body in _hit:
 			return
 		_hit.append(body)
-		var landed: bool = body.take_damage(damage, global_position, silent and from_player, source) == true   # PvE enemies return nothing
+		var dmg := damage + roundi(_flown * impetus)
+		var from := global_position
+		var toward := Vector2.ZERO
+		if pull > 0.0 and is_instance_valid(source) and source is Node2D:
+			toward = (source.global_position - body.global_position).normalized()
+			from = body.global_position - toward * 12.0   # hit "from behind": the flinch points at the caster too
+		Player.basic_hit = basic
+		var landed: bool = body.take_damage(dmg, from, silent and from_player, source) == true   # PvE enemies return nothing
+		Player.basic_hit = false
+		if landed and _ignited and is_instance_valid(source):   # an ignited bolt bursts: a small blast on everyone else close by
+			for e in Spell.foes(source):
+				if e != body and e.global_position.distance_to(global_position) <= FelTrail.BLAST_RADIUS + 14.0:
+					Player.basic_hit = basic
+					e.take_damage(FelTrail.BLAST_DMG, global_position, false, source)
+					Player.basic_hit = false
+			SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 34.0, FelTrail.BLAST_RADIUS / 110.0).modulate = color
+		if landed and toward != Vector2.ZERO:
+			Spell.shove(body, toward * sqrt(2.0 * Player.KNOCK_DECEL * pull))
 		if landed and slow.y > 0.0 and body.has_method("apply_slow"):
 			body.apply_slow(slow.x, slow.y)
 		if landed and maxf(stun, stun_far) > 0.0:
@@ -137,7 +171,7 @@ func _on_body_entered(body: Node) -> void:
 		if pierce > 0:
 			pierce -= 1
 			return
-	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, impact_scale)
+	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, impact_scale).modulate = color.lightened(0.25)
 	queue_free()
 
 ## Orb burst: everyone hostile within `splash` takes `damage` once (the one it touched included). Runs on every peer;
@@ -146,10 +180,12 @@ func _burst() -> void:
 	if _burst_done:
 		return
 	_burst_done = true
-	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 34.0, splash / 120.0)
+	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 34.0, splash / 120.0).modulate = color.lightened(0.2)
 	Sfx.play("explosion", global_position, -9.0, 1.5)
 	if is_instance_valid(source) and source is Node2D and source.is_inside_tree():
 		for e in Spell.foes(source):
 			if e.global_position.distance_to(global_position) <= splash + 14.0:
+				Player.basic_hit = basic
 				e.take_damage(damage, global_position, silent, source)
+				Player.basic_hit = false
 	queue_free()

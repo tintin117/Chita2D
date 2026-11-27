@@ -1,10 +1,11 @@
 class_name ChainLightning extends Spell
-## Sorcerer basic: an instant zap at the foe nearest the cursor (or in the aim cone) within RANGE, which then jumps to
+## Sorcerer basic: an instant zap at the foe nearest the cursor (or in the aim cone) within range_px, which then jumps to
 ## the nearest foe not yet hit within JUMP of the last one, CHAINS targets in all, each jump weaker (FALLOFF).
 ## No foe in reach: a short fizzle toward the aim, so a miss still reads. The chain is picked on every peer from the
 ## same positions (like Shadow Dance); the victim's own peer decides each hit.
 
-const RANGE := 380.0
+const RANGE := 380.0   ## default; the hero's attack_range overrides it through range_px
+var range_px := RANGE
 const JUMP := 230.0
 const CHAINS := 3
 const FALLOFF := 0.75        ## each jump deals this much of the one before
@@ -79,25 +80,27 @@ func _init() -> void:
 	cast_pitch = 1.6
 
 func reach() -> float:
-	return RANGE
+	return range_px
 
 func target(caster: Node2D, aim_pos: Vector2, dir: Vector2) -> Node2D:
 	if caster.get("ai"):
 		return null
-	return Spell.pick_foe(caster, aim_pos, dir, LOCK_RADIUS, ASSIST, RANGE)
+	return Spell.pick_foe(caster, aim_pos, dir, LOCK_RADIUS, ASSIST, range_px)
 
 func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 	var from: Vector2 = caster.global_position + Vector2(0, -20)
 	var foes := Spell.foes(caster)
-	var first: Node2D = lock if is_instance_valid(lock) else Spell.pick_foe(caster, aim_pos, aim_dir, LOCK_RADIUS, ASSIST, RANGE)
+	var first: Node2D = lock if is_instance_valid(lock) else Spell.pick_foe(caster, aim_pos, aim_dir, LOCK_RADIUS, ASSIST, range_px)
 	var links := chain(first, foes, CHAINS)
 	var pts := PackedVector2Array([from])
 	for i in links.size():
 		var e := links[i]
 		pts.append(e.global_position + Vector2(0, -10))
+		Player.basic_hit = true
 		e.take_damage(link_damage(damage, i), from if i == 0 else links[i - 1].global_position, i > 0, caster)
+		Player.basic_hit = false
 	if links.is_empty():   # a fizzle: the zap goes a little way and dies
-		pts.append(from + aim_dir.normalized() * RANGE * 0.35)
+		pts.append(from + aim_dir.normalized() * range_px * 0.35)
 	var arc := Arc.new()
 	arc.points = pts
 	caster.get_parent().add_child(arc)

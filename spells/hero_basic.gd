@@ -28,6 +28,11 @@ const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 p
 @export var might := 0.0             ## + this x the caster's current HP as damage (Paladin Holy Might)
 @export var focus_hits := 0          ## the Nth hit in a row on one target crits (Shade Focus); 0 = off
 @export var crit_mult := 2.5
+@export var chaos_lo := 0.0           ## Loaded Dice (Chaos Lord): every cast rolls a damage multiplier in [chaos_lo, chaos_hi]; 0 = off
+@export var chaos_hi := 0.0
+@export var impetus := 0.0           ## Long Malice (Demonbound): + this much damage per px the bolt flew
+@export var pull := 0.0              ## Grasping Blast (Pactknight): px a hit drags the foe toward the caster
+@export var homing := true           ## bolt: a locked bolt steers at its target. false = a skillshot (Ranger): it flies straight, aim matters
 const EMPOWER_MULT := 2.5            ## Tumble (Scout): the next shot's damage
 const EMPOWER_PIERCE := 2
 
@@ -102,7 +107,7 @@ class Sweep extends Node2D:
 			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0 + atan2(20.0, off.length()):   # the edge of the cone counts the foe's body, not just its centre
 				_hit.append(e)
 				var hit := dmg
-				var unseen: bool = caster.has_method("veiled") and caster.veiled()   # Smoke Screen: every stab is from behind
+				var unseen: bool = caster.has_method("veiled") and (caster.veiled() or caster.ambushing())   # Smoke Screen / a stab out of Stalk: from behind
 				if back_mult > 1.0 and (unseen or Sweep.from_behind(e, position)):
 					hit = roundi(dmg * back_mult)
 					if e.has_method("float_text"):
@@ -112,7 +117,9 @@ class Sweep extends Node2D:
 					hit = roundi(hit * crit)
 					if e.has_method("float_text"):
 						e.float_text("CRIT", Color(0.4, 1.0, 0.6), 24)
+				Player.basic_hit = not finisher   # the Knight's finisher still launches; every other swing only flinches
 				e.take_damage(hit, position, false, caster)   # the hit sound plays from take_damage, only when the hit lands
+				Player.basic_hit = false
 				if finisher:
 					Spell.shove(e, dir * FINISHER_SHOVE)   # the 3rd hit launches; hits 1-2 only flinch, so the combo keeps landing
 
@@ -182,6 +189,12 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 		dmg = maxi(roundi(dmg * FocusFire.DAMAGE_MULT), 1)
 	if might > 0.0 and "hp" in caster:   # Holy Might: the healthier the Paladin, the harder it hits
 		dmg += roundi(caster.hp * might)
+	if chaos_hi > 0.0 and caster is Player:   # Loaded Dice: the cast's seed is shared, so every peer rolls the same
+		dmg = maxi(roundi(dmg * Chaos.roll(caster, chaos_lo, chaos_hi)), 1)
+	var fiend: bool = caster is Player and caster.fiended()
+	var speed_k := Fiendform.SPEED if fiend else 1.0   # Fiendform: faster bolts over the same flight time = more range
+	if fiend:
+		dmg = roundi(dmg * Fiendform.DAMAGE)
 	var empowered: bool = mode == "bolt" and caster.has_method("consume_empower") and caster.consume_empower()
 	var scene := caster.get_tree().current_scene
 	if mode == "arc":
@@ -213,9 +226,20 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 		scene.add_child(fx)
 	else:
 		var extra := finisher_spread if finisher else 0
+		var dirs: Array[Vector2] = []
 		for i in extra * 2 + 1:
-			var dir := aim_dir.rotated((i - extra) * 0.22)
-			var p := Projectile.new().setup(caster.global_position + dir * 28.0 + Vector2(0, 8), dir * bolt_speed, dmg, true, caster)
+			dirs.append(aim_dir.rotated((i - extra) * 0.22))
+		if fiend and caster.rng.randf() < Fiendform.DOUBLE_CHANCE:   # Demon Form: often a second bolt, just off the first
+			dirs.append(aim_dir.rotated(Fiendform.DOUBLE_SPREAD * (1.0 if caster.rng.randf() < 0.5 else -1.0)))
+		var trail_node: Node = caster.get("_fel") if caster is Player else null
+		for i in dirs.size():
+			var dir := dirs[i]
+			var p := Projectile.new().setup(caster.global_position + dir * 28.0 + Vector2(0, 8), dir * bolt_speed * speed_k, dmg, true, caster)
+			p.impetus = impetus
+			p.basic = true
+			if is_instance_valid(trail_node):
+				p.fel = trail_node   # Hellwalker: crossing his own trail sets the bolt alight
+			p.pull = pull
 			p.radius = bolt_radius
 			p.life = bolt_life
 			p.pierce = bolt_pierce
@@ -232,7 +256,8 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 			if splash > 0.0:   # an orb: lands on the cursor (never past the range) and bursts there
 				p.splash = splash
 				p.life = orb_life(caster.global_position, aim_pos)
-			if lock and i == extra:   # only the middle bolt of a fan homes
+			var ff: bool = caster.has_method("focus_firing") and caster.focus_firing()
+			if lock and i == extra and (homing or ff):   # only the middle bolt of a fan homes; a skillshot only under Focus Fire
 				p.target = lock
 				p.life = bolt_life * 1.5   # room to catch a target that is running away
 			scene.add_child(p)

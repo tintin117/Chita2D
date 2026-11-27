@@ -10,6 +10,7 @@ signal roster_changed
 signal settings_changed
 signal player_left(peer_id: int)
 signal match_go                       ## every peer has finished loading the match scene
+signal chat_received(line: Dictionary) ## {peer, name, text, team, slot, at}; the line is already in chat_log
 
 const APP_ID := 480                   ## Spacewar (Valve's test app); replace with the real App ID before shipping
 const GAME_TAG := "chita-pvp"
@@ -26,6 +27,8 @@ const MATCH_SCENE := "res://scenes/pvp_match.tscn"
 
 const DEFAULT_SETTINGS := {"mode": "ffa", "time_limit": 300, "kill_limit": 15, "friendly_fire": false}   ## time/kill limit 0 = off
 const TEAM_NAMES := ["Red", "Blue"]
+const CHAT_MAX := 120                 ## chars per chat line
+const CHAT_LOG := 50                  ## lines kept
 
 var settings := DEFAULT_SETTINGS.duplicate()   ## host-owned, synced with the roster
 var roster := {}                      ## peer_id -> {name: String, hero: String, slot: int, team: int}
@@ -41,6 +44,7 @@ var bot_skill := 0.6
 var mode := GameMode.CLASSIC          ## the match mode: the host's lobby choice (synced to every peer), or the solo menu choice
 var arena := 0                        ## index into Arenas.LIST: the host's lobby choice (synced), or the solo menu choice
 var solo_auto := false                ## dev: `-- --solo=N` skips the menu and the hero pick
+var chat_log: Array[Dictionary] = []  ## the session's chat (see ChatBox); cleared on leaving
 
 var _steam: Object                    ## the GodotSteam singleton, null when the extension is missing
 var _steam_ready := false
@@ -448,11 +452,43 @@ func _back() -> void:
 	in_match = false
 	get_tree().change_scene_to_file(MENU_SCENE)
 
+# --- chat --------------------------------------------------------------------------
+
+## Sends a chat line to everyone (offline / solo: just shows it here).
+func send_chat(text: String) -> void:
+	text = text.strip_edges().left(CHAT_MAX)
+	if text.is_empty():
+		return
+	var peer := multiplayer.multiplayer_peer
+	if solo or roster.is_empty() or peer == null or peer is OfflineMultiplayerPeer:
+		_push_chat(local_id() if peer != null else 1, text)
+	else:
+		_chat.rpc(text)
+
+@rpc("any_peer", "call_local", "reliable")
+func _chat(text: String) -> void:
+	var from := multiplayer.get_remote_sender_id()
+	if from == 0:
+		from = local_id()
+	_push_chat(from, text.strip_edges().left(CHAT_MAX))   # trimmed again: never trust the sender
+
+func _push_chat(from: int, text: String) -> void:
+	if text.is_empty():
+		return
+	var info: Dictionary = roster.get(from, {})
+	var line := {"peer": from, "name": info.get("name", my_name), "text": text, "team": int(info.get("team", -1)),
+		"slot": int(info.get("slot", 0)), "at": Time.get_ticks_msec()}
+	chat_log.append(line)
+	if chat_log.size() > CHAT_LOG:
+		chat_log.pop_front()
+	chat_received.emit(line)
+
 ## Drop the connection and return to the lobby screen (also used when the host disappears).
 func leave() -> void:
 	_reset("")
 
 func _reset(message: String) -> void:
+	chat_log.clear()
 	if _steam_ready and lobby_id != 0:
 		_steam.leaveLobby(lobby_id)
 	lobby_id = 0

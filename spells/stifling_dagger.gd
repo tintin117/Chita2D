@@ -10,7 +10,7 @@ const PICK_RADIUS := 180.0
 const COLOR := Color(0.3, 1.0, 0.55)
 
 func _init() -> void:
-	display_name = "Stifling Dagger"
+	display_name = "Crippling Dagger"
 	cooldown = 6.0
 	damage = 14
 	sfx = "shoot"
