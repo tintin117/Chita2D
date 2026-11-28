@@ -13,6 +13,8 @@ const IMG_C := Vector2(1000, 707)
 const FLOOR := Rect2(150, 205, 1700, 1005)      ## the sand inside the stands
 const CORNER := 330.0                           ## its corner radius
 const POOLS := [Rect2(548, 205, 252, 285), Rect2(1200, 205, 252, 285), Rect2(548, 925, 252, 285), Rect2(1200, 925, 252, 285)]
+const POOL_CAUSEWAYS := [Rect2(534, 274, 280, 78), Rect2(1186, 274, 280, 78),
+	Rect2(534, 1062, 280, 78), Rect2(1186, 1062, 280, 78)]
 const POOL_CUT := 400.0                         ## the pools' inner corners are cut by this circle round the centre
 const MOAT := Vector2(230, 310)                 ## inner / outer radius of the moat ring
 const BRIDGE_HALF := 60.0                       ## the bridges cross the moat where |y| < this
@@ -61,6 +63,9 @@ func water_at(world: Vector2) -> bool:
 	if d > POOL_CUT:
 		for r: Rect2 in POOLS:
 			if r.has_point(p):
+				for causeway: Rect2 in POOL_CAUSEWAYS:
+					if causeway.has_point(p):
+						return false
 				return true
 	return false
 

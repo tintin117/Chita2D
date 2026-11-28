@@ -46,6 +46,7 @@ func _ready() -> void:
 
 ## Appends the volume, display and playtest controls to `box` (this menu, and the gym's side panel).
 static func add_settings(box: Container, playtest_caption := true) -> void:
+	PlaySettings.load_once()
 	var bus := AudioServer.get_bus_index("Master")
 	var volume := HSlider.new()
 	var value := ArenaUi.label("", 18, ArenaUi.MUTED)
@@ -63,21 +64,27 @@ static func add_settings(box: Container, playtest_caption := true) -> void:
 	box.add_child(value)
 	box.add_child(volume)
 
-	var display := ArenaUi.button("", Callable())
-	var update_display := func() -> void:
-		var mode := (Engine.get_main_loop() as SceneTree).root.mode
-		var full := mode == Window.MODE_FULLSCREEN or mode == Window.MODE_EXCLUSIVE_FULLSCREEN
-		display.text = "Display: Fullscreen" if full else "Display: Windowed"
-	display.pressed.connect(func() -> void:
-		var window := display.get_window()
-		var full := window.mode == Window.MODE_FULLSCREEN or window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN
-		window.mode = Window.MODE_WINDOWED if full else Window.MODE_FULLSCREEN
-		update_display.call())
-	update_display.call()
-	box.add_child(display)
+	var display_controls: Container = box
+	if not playtest_caption:
+		display_controls = HBoxContainer.new()
+		box.add_child(display_controls)
+
+	var display := ArenaUi.button("Fullscreen [F11]", Callable())
+	display.size_flags_horizontal = SIZE_EXPAND_FILL
+	display.toggle_mode = true
+	display.set_pressed_no_signal(ClientDisplay.is_fullscreen())
+	display.toggled.connect(ClientDisplay.set_fullscreen)
+	ClientDisplay.fullscreen_changed.connect(display.set_pressed_no_signal)
+	display_controls.add_child(display)
+
+	var cursor := ArenaUi.button("Cursor: Custom" if PlaySettings.custom_cursor else "Cursor: System", Callable())
+	cursor.size_flags_horizontal = SIZE_EXPAND_FILL
+	cursor.pressed.connect(func() -> void:
+		ClientDisplay.set_custom_cursor(not PlaySettings.custom_cursor)
+		cursor.text = "Cursor: Custom" if PlaySettings.custom_cursor else "Cursor: System")
+	display_controls.add_child(cursor)
 
 	# playtest feel toggles (local only, saved per machine: see PlaySettings)
-	PlaySettings.load_once()
 	if playtest_caption:
 		box.add_child(ArenaUi.label("Playtest", 18, ArenaUi.MUTED))
 	var aim_btn := ArenaUi.button("", Callable())

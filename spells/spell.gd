@@ -32,6 +32,10 @@ func ult_lock() -> float:
 func reach() -> float:
 	return 0.0
 
+## World-to-screen scale for a basic attack's lock-on reach.
+func range_projection() -> Vector2:
+	return Vector2.ONE
+
 ## Hold-and-release spells (Power Shot): seconds of holding for a full charge; 0 = a normal press-to-cast spell.
 ## While held the Player draws (see Player._tick_charge), the aim stays free, and the cast goes out on release.
 func charge_time() -> float:
@@ -81,8 +85,9 @@ static func shove(foe: Node, vec: Vector2) -> void:
 
 ## Aim assist: `dir` bent toward the closest foe inside `max_angle` (radians) and `max_dist`; unchanged if none.
 ## With `lead_speed` (a projectile's px/s) it is a soft lock: pointing at a moving foe aims at where the shot will meet it.
-static func assist_dir(caster: Node2D, dir: Vector2, max_angle: float, max_dist: float, lead_speed := 0.0) -> Vector2:
-	var e := pick_foe(caster, Vector2.INF, dir, 0.0, max_angle, max_dist)
+static func assist_dir(caster: Node2D, dir: Vector2, max_angle: float, max_dist: float, lead_speed := 0.0,
+		projection := Vector2.ONE) -> Vector2:
+	var e := pick_foe(caster, Vector2.INF, dir, 0.0, max_angle, max_dist, projection)
 	if e == null:
 		return dir
 	var from := caster.global_position
@@ -93,20 +98,27 @@ static func assist_dir(caster: Node2D, dir: Vector2, max_angle: float, max_dist:
 
 ## The foe a cast is meant for: the one closest to `aim_pos` (the cursor) within `pick_radius`, else the one closest to
 ## the aim line within `max_angle`. Only foes within `max_dist` of the caster count. Null if nobody qualifies.
-static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius: float, max_angle: float, max_dist: float) -> Node2D:
+static func pick_foe(caster: Node2D, aim_pos: Vector2, dir: Vector2, pick_radius: float, max_angle: float,
+		max_dist: float, projection := Vector2.ONE) -> Node2D:
 	var near: Node2D = null
 	var near_d := pick_radius
 	var cone: Node2D = null
 	var cone_off := max_angle
+	var direction := dir / projection
 	for e: Node2D in foes(caster):
-		var off: Vector2 = e.global_position - caster.global_position
-		if off.length() > max_dist or (e.has_method("hidden_from") and e.hidden_from(caster)):
-			continue   # out of reach, or unseen (Smoke Screen, a Stalk fade from afar): nothing to lock onto
+		var off := (e.global_position - caster.global_position) / projection
+		if off.length() > max_dist:
+			continue
+		if caster is Player and caster.ai and e is Player:
+			if not caster.ai.can_see_foe(e):
+				continue
+		elif e.has_method("hidden_from") and e.hidden_from(caster):
+			continue
 		var d := e.global_position.distance_to(aim_pos)
 		if d < near_d:
 			near_d = d
 			near = e
-		var ang: float = absf(dir.angle_to(off))
+		var ang: float = absf(direction.angle_to(off))
 		if ang <= cone_off:
 			cone_off = ang
 			cone = e

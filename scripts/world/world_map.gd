@@ -524,7 +524,9 @@ func _build_cover() -> void:
 		circle.radius = cover_r
 		cs.shape = circle
 		rock.add_child(cs)
-		if colosseum == null:   # the Colosseum draws its braziers itself (ColosseumArt)
+		if colosseum:
+			rock.add_child(ColosseumArt.Brazier.new())
+		else:
 			rock.add_child(_iso_sprite(COVER_TILES[i % 4], 4.0))
 		add_child(rock)
 		_owned.append(rock)
@@ -679,15 +681,15 @@ func nav_next(from: Vector2, to: Vector2) -> Vector2:
 			return (p - from).normalized()
 	return (to - from).normalized() if to.distance_to(from) > 1.0 else Vector2.ZERO
 
-## Walking path from `from` to `to` (world points, nearest open cells at both ends); empty if none.
-func nav_path(from: Vector2, to: Vector2) -> PackedVector2Array:
+## Walking path between the nearest open cells. A partial path can stop short of a disconnected goal.
+func nav_path(from: Vector2, to: Vector2, allow_partial := true) -> PackedVector2Array:
 	if nav == null:
 		return PackedVector2Array()
 	var a := _nav_nearest_open(from)
 	var b := _nav_nearest_open(to)
 	if a.x < 0 or b.x < 0:
 		return PackedVector2Array()
-	return nav.get_point_path(a, b, true)
+	return nav.get_point_path(a, b, allow_partial)
 
 ## Which way to walk from `from` to reach `to`: straight if the line is clear, else toward the farthest waypoint of the
 ## path that can be walked to in a straight line. Maps without a grid (and unreachable goals): straight.
@@ -720,36 +722,40 @@ func dry_dir(feet: Vector2) -> Vector2:
 func nav_length(from: Vector2, to: Vector2) -> float:
 	if nav == null or nav_clear(from, to):
 		return from.distance_to(to)
-	var path := nav_path(from, to)
-	if path.size() < 2:
+	var path := nav_path(from, to, false)
+	if path.is_empty():
 		return INF
 	var total := from.distance_to(path[0])
 	for i in range(1, path.size()):
 		total += path[i - 1].distance_to(path[i])
 	return total + path[path.size() - 1].distance_to(to)
 
-## A dash that saves a long walk: the direction to dash from `from` toward `to`, or zero. A dash goes through rails
-## and braziers (its mask is the room walls only) and can jump a water channel as long as it lands dry, so this covers
-## hopping a rail onto a platform, cutting past a brazier, and jumping the moat (plus its rail) onto the crown circle.
-## Conditions: the straight walk is blocked; the dash (up to `dash_px`) lands on an open nav cell; every point of it is
-## inside the stands (walls stop dashes) and its water stretch is jumped, not landed in; and it cuts the walk to `to` by a
-## third or more (or the walk has no route at all and the landing is closer).
+## Length of a full dash followed by a walk to the goal, or INF if either leg is unavailable.
+func _dash_route_length(from: Vector2, to: Vector2, dash_px: float) -> float:
+	var land := from + from.direction_to(to) * dash_px
+	var feet := Vector2(0, 14)
+	if not nav_open(nav_cell(land)) or off_ground(land + feet) or off_ground(from + feet):
+		return INF
+	if colosseum:
+		for i in 9:
+			if not colosseum.inside(from.lerp(land, i / 8.0) + feet):
+				return INF
+	return dash_px + nav_length(land, to)
+
+## Route cost for decisions. A dash is only useful if it saves at least a third of the walk or creates a route.
+func nav_travel_length(from: Vector2, to: Vector2, dash_px := 0.0) -> float:
+	var walk := nav_length(from, to)
+	if dash_px > 0.0 and nav != null and walk * 0.67 > maxf(dash_px, from.distance_to(to)):
+		var hop := _dash_route_length(from, to, dash_px)
+		if hop < walk * 0.67:
+			return hop
+	return walk
+
 func dash_shortcut(from: Vector2, to: Vector2, dash_px := 220.0) -> Vector2:
 	if nav == null or nav_clear(from, to):
 		return Vector2.ZERO
-	var d := (to - from).normalized()
-	var land := from + d * minf(dash_px, from.distance_to(to))
-	if not nav_open(nav_cell(land)) or is_water(land + Vector2(0, 14)) or is_water(from + Vector2(0, 14)):
-		return Vector2.ZERO
-	if colosseum:
-		for i in 9:
-			if not colosseum.inside(from.lerp(land, i / 8.0) + Vector2(0, 14)):
-				return Vector2.ZERO   # would hit the wall mid-dash
-	var walk := nav_length(from, to)
-	var hop := from.distance_to(land) + nav_length(land, to)
-	if walk == INF:
-		return d if land.distance_to(to) < from.distance_to(to) - 60.0 else Vector2.ZERO
-	return d if hop < walk * 0.67 else Vector2.ZERO
+	var hop := _dash_route_length(from, to, dash_px)
+	return from.direction_to(to) if is_finite(hop) and hop < nav_length(from, to) * 0.67 else Vector2.ZERO
 
 ## Old name (rails were the first shortcut): see dash_shortcut.
 func rail_hop(from: Vector2, to: Vector2, dash_px := 220.0) -> Vector2:

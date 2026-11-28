@@ -194,15 +194,19 @@ func _draw_skills() -> void:
 			continue
 		var spell: Spell = player.spells[i] if i < player.spells.size() else null
 		if spell:
-			draw_texture_rect(ArenaUi.skill_icon(player.hero, i), Rect2(r.position + Vector2(8, 8), Vector2(32, 32)), false)
+			var dedicated := ArenaUi.has_kit_art(player.hero)
+			var icon_top := 3.0 if dedicated else 8.0
+			draw_texture_rect(ArenaUi.skill_icon(player.hero, i), Rect2(r.position + Vector2(8, icon_top), Vector2(32, 32)), false)
 			if not player.weapon_active(i):
 				_draw_skill_caption(r, spell.display_name, ArenaUi.MUTED)
 			var cd := player.cooldowns[i]
 			if cd > 0.0:
 				var frac := clampf(cd / maxf(player.cooldown_max[i], 0.01), 0.0, 1.0)
-				draw_rect(Rect2(r.position, Vector2(SLOT, roundf(SLOT * frac))), Color(0, 0, 0, 0.7))
+				draw_rect(Rect2(r.position, Vector2(SLOT, roundf(SLOT * frac))), Color(0, 0, 0, 0.36 if dedicated else 0.7))
 				if player.cooldown_max[i] >= 2.0:
-					_text(r.position + Vector2(0, 31), str(ceili(cd)) if cd >= 1.0 else "%.1f" % cd, 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+					var label_y := 43.0 if dedicated else 31.0
+					_text(r.position + Vector2(0, label_y), str(ceili(cd)) if cd >= 1.0 else "%.1f" % cd,
+						12 if dedicated else 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 			if not player.online:
 				for k in player.prog.ranks[i]:
 					draw_rect(Rect2(r.position + Vector2(5 + k * 8, SLOT - 8), Vector2(6, 4)), GOLD)
@@ -211,7 +215,7 @@ func _draw_skills() -> void:
 		_draw_weapon(i, r)
 		_under_slot(r, SLOT + 18, hints[i], ArenaUi.INK)
 
-## The ult: no icon sheet row for it yet, so a charge bar filling the slot from the bottom; it pulses once ready.
+## The ult charge fills from the bottom, with the ability icon and a pulse when ready.
 func _draw_ult(r: Rect2) -> void:
 	if player.spells.size() <= Player.ULT_SLOT or player.ult_slot_empty():
 		_draw_empty(r, ULT_COLOR)
@@ -223,14 +227,19 @@ func _draw_ult(r: Rect2) -> void:
 	var inner := r.grow(-3)
 	var fill := roundf(inner.size.y * frac)
 	draw_rect(Rect2(inner.position + Vector2(0, inner.size.y - fill), Vector2(inner.size.x, fill)), Color(ULT_COLOR, 0.85 if full else 0.45))
-	_text(r.position + Vector2(0, 30), "ULT" if full else "%d%%" % int(frac * 100.0), 16,
-		Color.WHITE if full else ArenaUi.INK, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	var icon := ArenaUi.ult_icon(player.hero)
+	if icon:
+		draw_texture_rect(icon, Rect2(r.position + Vector2(8, 3), Vector2(32, 32)), false)
+		_text(r.position + Vector2(0, 43), "READY" if full else "%d%%" % int(frac * 100.0), 12,
+			Color.WHITE if full else ArenaUi.INK, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	else:
+		_text(r.position + Vector2(0, 30), "ULT" if full else "%d%%" % int(frac * 100.0), 16,
+			Color.WHITE if full else ArenaUi.INK, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 	if full:
 		draw_rect(r, Color(ULT_COLOR, 0.6 + 0.4 * pulse), false, 3.0)
 	_draw_skill_caption(r, spell.display_name, ULT_COLOR if full else ArenaUi.MUTED)
 
-## The passive: no button and no cooldown, so a gold-edged tile with its initials; it lights up while it is doing
-## something you can see (Ranger: Steady Aim doubling the draw right now).
+## The passive tile uses dedicated art or initials, and lights up when its active state can be shown.
 func _draw_passive(r: Rect2) -> void:
 	var h := player.hero
 	if h.passive_name == "":
@@ -238,13 +247,16 @@ func _draw_passive(r: Rect2) -> void:
 		return
 	var lit := (h.steady_aim and player.charge_show > 0.0 and player.draw_rate() > 1.0) or player.passive_lit()   # Stalk faded, a wave ready, Fiendform...
 	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
-	var words := h.passive_name.split(" ")
-	var initials := ""
-	for w in words:
-		if w != "":
-			initials += w[0]
 	draw_rect(r.grow(-4), Color(PASSIVE_COLOR, 0.35 + 0.35 * pulse) if lit else Color(PASSIVE_COLOR, 0.12))
-	_text(r.position + Vector2(0, 31), "67" if h.lives_67 else initials.to_upper(), 20, Color.WHITE if lit else PASSIVE_COLOR, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
+	var icon := ArenaUi.passive_icon(h)
+	if icon:
+		draw_texture_rect(icon, Rect2(r.position + Vector2(8, 8), Vector2(32, 32)), false)
+	else:
+		var initials := ""
+		for w in h.passive_name.split(" "):
+			if w != "":
+				initials += w[0]
+		_text(r.position + Vector2(0, 31), "67" if h.lives_67 else initials.to_upper(), 20, Color.WHITE if lit else PASSIVE_COLOR, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 	if lit and h.steady_aim:
 		_text(r.position + Vector2(0, 45), "x2", 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, SLOT)
 	if h.lives_67 and player._lives_cd > 0.0:   # 67 Lives has a wait: shown like a skill cooldown

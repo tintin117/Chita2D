@@ -20,19 +20,18 @@ static func inside(at: Vector2, pos: Vector2) -> bool:
 	return pos.distance_to(at) <= RADIUS
 
 class Cloud extends Node2D:
+	const SOOT := preload("res://assets/isometric_projecttile/Spells/Rogue/SmokeScreen.png")
+	const SOOT_CELL := Vector2(176, 176)
+	const SOOT_COLUMNS := 8
+	const SOOT_FRAMES := 56
+	const SOOT_FPS := 12.0
 	var caster: Node2D
 	var _age := 0.0
-	var _puffs: Array[Vector3] = []   ## x, y, size: visual only
 
 	func _ready() -> void:
 		z_index = 8   # above the players: you cannot see who is in there
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_to_group("zones")
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 99
-		for i in 26:
-			var a := rng.randf() * TAU
-			var r := sqrt(rng.randf()) * SmokeScreen.RADIUS * 0.85
-			_puffs.append(Vector3(cos(a) * r, sin(a) * r * 0.8, rng.randf_range(40.0, 70.0)))
 
 	func _physics_process(delta: float) -> void:
 		_age += delta
@@ -48,12 +47,13 @@ class Cloud extends Node2D:
 		queue_redraw()
 
 	func _draw() -> void:
-		var fade := clampf(_age / 0.3, 0.0, 1.0) * clampf((SmokeScreen.DURATION - _age) / 0.5, 0.0, 1.0)
-		draw_circle(Vector2.ZERO, SmokeScreen.RADIUS, Color(0.35, 0.33, 0.4, 0.35 * fade))
-		for p in _puffs:
-			var wob := sin(_age * 1.3 + p.x * 0.05) * 6.0
-			draw_circle(Vector2(p.x + wob, p.y), p.z, Color(0.55, 0.52, 0.6, 0.3 * fade))
-		draw_arc(Vector2.ZERO, SmokeScreen.RADIUS, 0.0, TAU, 48, Color(0.7, 0.65, 0.8, 0.5 * fade), 2.0)
+		var frame := mini(int(_age * SOOT_FPS), SOOT_FRAMES - 1)
+		var column := frame % SOOT_COLUMNS
+		@warning_ignore("integer_division")
+		var row := frame / SOOT_COLUMNS
+		var cell := Rect2(Vector2(column, row) * SOOT_CELL, SOOT_CELL)
+		var half_extent := Vector2.ONE * SmokeScreen.RADIUS
+		draw_texture_rect_region(SOOT, Rect2(-half_extent, half_extent * 2.0), cell)
 
 ## Bots: drop it on a fight, not on empty ground (a foe near the spot it lands).
 func worth_casting(caster: Node2D, aim_pos: Vector2) -> bool:

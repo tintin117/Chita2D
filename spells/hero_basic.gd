@@ -5,6 +5,18 @@ class_name HeroBasic extends Spell
 ## heroes without it hit the same every time. No auto-lunge: a locked swing only steps in with PlaySettings.melee_step.
 
 const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 px slide with its own knockback)
+const COMBO_WINDOW_MSEC := 900
+const ROGUE_STAB_HIT := "rogue_stab"
+const ROGUE_RUSH_HIT := "rogue_rush"
+
+static func rogue_impact(victim: Node2D, direction: Vector2, rush: bool) -> void:
+	var sprite := SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -16),
+		SheetFrames.FX + "Spells/Rogue/SilverImpact.png", 5, 38.0, 1.5)
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sprite.z_index = 20
+	sprite.rotation = direction.angle()
+	if rush:
+		sprite.modulate = Color(0.62, 0.82, 1.0)
 
 @export var mode := "bolt"
 @export var radius := 115.0          ## arc reach
@@ -24,6 +36,9 @@ const FINISHER_SHOVE := 250.0   ## extra launch on the melee finisher (~50-100 p
 @export var combo := true            ## false: no finisher, every cast is the same
 @export var splash := 0.0            ## bolt: > 0 = an orb that bursts in this radius at the cursor or on the first thing it touches
 @export var fx_color := Color(1.0, 0.5, 0.15)   ## sweep / orb colour, so each hero's basic reads apart
+@export var knight_cleave_fx := false
+@export var chaos_cleave_fx := false          ## use the cut in the floor and the split impact
+@export var rogue_stab_art := false
 @export var arrow_tex := ""          ## bolt: arrow frame folder ("" = the default spell sprite)
 @export var might := 0.0             ## + this x the caster's current HP as damage (Paladin Holy Might)
 @export var focus_hits := 0          ## the Nth hit in a row on one target crits (Shade Focus); 0 = off
@@ -76,12 +91,14 @@ class Sweep extends Node2D:
 	var active := 0.12
 	var dmg := 12
 	var finisher := false
+	var pose: StringName
 	var lunge_speed := 0.0
 	var lunge_time := 0.08
 	var lock: Node2D      ## lock-on: the swing turns to this foe when it goes live
 	var back_mult := 1.0
 	var color := Color(1.0, 0.5, 0.15)
 	var basic: HeroBasic   ## the spell that swung it (Focus counts on it)
+	var chaos_power := 0.0
 	var _age := 0.0
 	var _lunged := false
 	var _hit: Array[Node] = []
@@ -92,19 +109,28 @@ class Sweep extends Node2D:
 			queue_free()
 			return
 		position = caster.global_position + Vector2(0, 8)
+		if not pose.is_empty() and caster is Player and caster._knight_sweep == self:
+			if caster._sprite.animation == pose and caster._cast_time > 0.0 and (caster._freeze <= 0.0 or not _lunged and _age >= windup):
+				var frame := KnightFx.cleave_frame(pose, _age, windup, Player.SWING_TIME)
+				caster._sprite.set_frame_and_progress(frame, 0.0)
 		if _age < windup:
 			return
 		if not _lunged:
 			_lunged = true
 			if is_instance_valid(lock) and not lock.down:
 				dir = (lock.global_position - caster.global_position).normalized()   # it moved during the windup
+				if caster is Player and basic and (basic.chaos_cleave_fx or basic.knight_cleave_fx or basic.rogue_stab_art) and caster._cast_time > 0.0:
+					if caster._sprite.animation in [&"cast", &"cast2", &"cast_finisher"]:
+						caster._face_cast(dir)
 			if lunge_speed > 0.0:
 				caster.lunge(dir, lunge_time, lunge_speed)
+		var projection := basic.range_projection() if basic else Vector2.ONE
+		var axis := dir / projection
 		for e in Spell.foes(caster):
-			var off := e.global_position - position
+			var off := (e.global_position - position) / projection
 			if e in _hit or off.length() > reach + 20.0:
 				continue
-			if off.length() < 24.0 or absf(dir.angle_to(off)) <= angle / 2.0 + atan2(20.0, off.length()):   # the edge of the cone counts the foe's body, not just its centre
+			if off.length() < 24.0 or absf(axis.angle_to(off)) <= angle / 2.0 + atan2(20.0, off.length()):   # the edge of the cone counts the foe's body, not just its centre
 				_hit.append(e)
 				var hit := dmg
 				var unseen: bool = caster.has_method("veiled") and (caster.veiled() or caster.ambushing())   # Smoke Screen / a stab out of Stalk: from behind
@@ -118,7 +144,14 @@ class Sweep extends Node2D:
 					if e.has_method("float_text"):
 						e.float_text("CRIT", Color(0.4, 1.0, 0.6), 24)
 				Player.basic_hit = not finisher   # the Knight's finisher still launches; every other swing only flinches
-				e.take_damage(hit, position, false, caster)   # the hit sound plays from take_damage, only when the hit lands
+				if basic and basic.chaos_cleave_fx:
+					e.take_damage(hit, position, false, caster, ChaosFx.CLEAVE, chaos_power)
+				elif basic and basic.knight_cleave_fx:
+					e.take_damage(hit, position, false, caster, KnightFx.FINISHER if finisher else KnightFx.CLEAVE)
+				elif basic and basic.rogue_stab_art:
+					e.take_damage(hit, position, false, caster, ROGUE_STAB_HIT)
+				else:
+					e.take_damage(hit, position, false, caster)   # the hit sound plays only when the hit lands
 				Player.basic_hit = false
 				if finisher:
 					Spell.shove(e, dir * FINISHER_SHOVE)   # the 3rd hit launches; hits 1-2 only flinch, so the combo keeps landing
@@ -135,6 +168,14 @@ class Sweep extends Node2D:
 		queue_redraw()
 
 	func _draw() -> void:
+		if basic and basic.rogue_stab_art:
+			return   # the silver glint is painted at the moving stiletto tip
+		if basic and basic.chaos_cleave_fx:
+			ChaosFx.draw_boundary(self, dir, angle, reach, _age, windup, active, chaos_power)
+			return
+		if basic and basic.knight_cleave_fx:
+			KnightFx.draw_cleave(self, dir, angle, reach, _age, windup, finisher, pose == &"cast")
+			return
 		var base := dir.angle() - angle / 2.0
 		var pts := PackedVector2Array([Vector2.ZERO])
 		if _age < windup:   # telegraph: faint outline growing toward full reach
@@ -158,29 +199,41 @@ func reach() -> float:
 		return radius + (LOCK_STEP if PlaySettings.melee_step else 0.0)
 	return bolt_speed * bolt_life
 
+func range_projection() -> Vector2:
+	return ChaosFx.GROUND_SCALE if chaos_cleave_fx else Vector2.ONE
+
 ## Lock-on (point and click): the foe under the cursor, or failing that the one in the aim cone. A locked bolt homes
 ## and a locked swing steps in to reach; a dash or a phase shakes it off. Bots aim for themselves: no lock.
 func target(caster: Node2D, aim_pos: Vector2, dir: Vector2) -> Node2D:
 	if caster.get("ai"):
 		return null
-	return Spell.pick_foe(caster, aim_pos, dir, LOCK_RADIUS, assist_angle, reach())
+	return Spell.pick_foe(caster, aim_pos, dir, LOCK_RADIUS, assist_angle, reach(), range_projection())
 
 ## Free-aimed casts (no lock): melee snaps to the nearest foe in reach, bolts lead a foe near the aim line.
 func aim(caster: Node2D, dir: Vector2) -> Vector2:
 	if mode == "arc":
-		return Spell.assist_dir(caster, dir, assist_angle, radius + 40.0)
-	return Spell.assist_dir(caster, dir, assist_angle, bolt_speed * bolt_life, 0.0 if caster.get("ai") else bolt_speed)
+		return Spell.assist_dir(caster, dir, assist_angle, radius + 40.0, 0.0, range_projection())
+	if caster is Player and caster.ai:
+		var assist := clampf(inverse_lerp(0.3, 0.9, caster.ai.skill), 0.0, 1.0)
+		if assist == 0.0:
+			return dir
+		var corrected := Spell.assist_dir(caster, dir, assist_angle, bolt_speed * bolt_life)
+		return dir.lerp(corrected, assist).normalized()
+	return Spell.assist_dir(caster, dir, assist_angle, bolt_speed * bolt_life, bolt_speed)
 
 ## Orb: seconds of flight to burst on `aim_pos` (at least a short throw, at most the full range).
 func orb_life(from: Vector2, aim_pos: Vector2) -> float:
 	return clampf(from.distance_to(aim_pos), 90.0, bolt_speed * bolt_life) / bolt_speed
 
+func combo_step() -> int:
+	return _combo if combo and Time.get_ticks_msec() - _last_msec <= COMBO_WINDOW_MSEC else 0
+
 func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
+	_combo = combo_step()
 	var now := Time.get_ticks_msec()
-	if now - _last_msec > 900:
-		_combo = 0
 	_last_msec = now
 	var finisher := combo and _combo == 2
+	var opening := _combo == 0
 	cast_pitch = 0.8 if finisher else 0.95 + 0.1 * _combo   # the swing sound climbs 1-2-3, then the finisher lands deep and loud
 	cast_vol = 3.0 if finisher else 0.0
 	_combo = 0 if finisher or not combo else _combo + 1
@@ -189,8 +242,11 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 		dmg = maxi(roundi(dmg * FocusFire.DAMAGE_MULT), 1)
 	if might > 0.0 and "hp" in caster:   # Holy Might: the healthier the Paladin, the harder it hits
 		dmg += roundi(caster.hp * might)
+	var chaos_power := 0.0
 	if chaos_hi > 0.0 and caster is Player:   # Loaded Dice: the cast's seed is shared, so every peer rolls the same
-		dmg = maxi(roundi(dmg * Chaos.roll(caster, chaos_lo, chaos_hi)), 1)
+		var roll := Chaos.roll(caster, chaos_lo, chaos_hi)
+		dmg = maxi(roundi(dmg * roll), 1)
+		chaos_power = inverse_lerp(chaos_lo, chaos_hi, roll)
 	var fiend: bool = caster is Player and caster.fiended()
 	var speed_k := Fiendform.SPEED if fiend else 1.0   # Fiendform: faster bolts over the same flight time = more range
 	if fiend:
@@ -207,13 +263,19 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 		fx.active = active
 		fx.dmg = dmg
 		fx.finisher = finisher
+		if knight_cleave_fx and caster is Player:
+			fx.pose = &"cast_finisher" if finisher else (&"cast" if opening else &"cast2")
+			caster._knight_sweep = fx
 		fx.lunge_speed = lunge_speed * (2.0 if finisher else 1.0)   # finisher steps in harder
 		fx.lunge_time = 0.12 if finisher else 0.08
 		fx.lock = lock
 		fx.color = fx_color
 		fx.basic = self
+		fx.chaos_power = chaos_power
 		if lock and PlaySettings.melee_step:   # step in far enough to put the target inside the blade (up to ~LOCK_STEP)
-			var gap := caster.global_position.distance_to(lock.global_position) - radius * 0.8
+			var to_lock := lock.global_position - caster.global_position
+			var screen_scale := 1.0 / (to_lock.normalized() / range_projection()).length() if to_lock != Vector2.ZERO else 1.0
+			var gap := to_lock.length() - radius * 0.8 * screen_scale
 			if gap < 12.0:
 				fx.lunge_speed = 0.0   # already inside the blade: no step-in (players do not collide, so it would run through the target)
 			else:
@@ -221,7 +283,9 @@ func cast(caster: Node2D, aim_dir: Vector2, aim_pos: Vector2) -> float:
 				fx.lunge_time = clampf(gap / fx.lunge_speed, 0.03, 0.3)
 				fx.active = maxf(active, fx.lunge_time + 0.05)
 		fx.back_mult = back_mult
-		fx.z_index = 5
+		fx.z_index = -1 if chaos_cleave_fx or knight_cleave_fx else 5
+		if knight_cleave_fx:
+			fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		fx.position = caster.global_position + Vector2(0, 8)
 		scene.add_child(fx)
 	else:

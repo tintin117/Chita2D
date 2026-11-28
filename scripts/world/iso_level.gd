@@ -12,6 +12,7 @@ extends WorldMap
 const PROP_R := 20.0   ## collision radius of a Props tile (world px)
 
 @export var crown_hold_radius := 200.0   ## bots holding the crown stay this close to Center
+@export var walled_arena := false       ## a separately authored wall encloses the painted playing surface
 
 var _ground: TileMapLayer
 var _radii: Array[float] = []   ## collision radius of each `cover` entry
@@ -25,7 +26,7 @@ func hold_radius() -> float:
 func generate_arena(build_visuals := true) -> void:
 	_ground = $Ground
 	_begin_fixed(ARENA_HALF)   # resets the base map's lists; its plateau is replaced by the painted ground below
-	open_shore = true
+	open_shore = not walled_arena
 	cover_r = PROP_R
 	spawn_point = $Center.position
 	gate_pos = spawn_point

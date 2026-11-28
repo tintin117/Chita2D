@@ -21,11 +21,11 @@ const MODES := [CLASSIC, CROWN, FRIENDSLOP]
 const CONFIG := {
 	CLASSIC: {"name": "Classic", "blurb": "Pick a hero, fight it out.", "hero_pick": true, "hero": "",
 		"pickup_every": 15.0, "first_pickup": 3.0, "max_pickups": 2, "spawn_clear": 380.0, "apart": 300.0,
-		"drop_after_deaths": 3, "drop_per_deaths": 3, "pickup_life": 15.0, "channel": [0.0, 0.8, 1.5], "centre_rares": true, "events": true,
+		"drop_after_deaths": 3, "drop_per_deaths": 3, "pickup_life": 15.0, "channel": [0.0, 0.5, 1.0], "centre_rares": true, "events": true,
 		"kill_limit": 15, "time_limit": 300.0, "weapons": false, "crown": false},
 	CROWN: {"name": "Crown", "blurb": "Grab the crown, wear it to score. Everyone hunts the king.", "hero_pick": true, "hero": "",
 		"pickup_every": 15.0, "first_pickup": 3.0, "max_pickups": 2, "spawn_clear": 380.0, "apart": 300.0,
-		"drop_after_deaths": 3, "drop_per_deaths": 3, "pickup_life": 15.0, "channel": [0.0, 0.8, 1.5], "centre_rares": false, "events": true,
+		"drop_after_deaths": 3, "drop_per_deaths": 3, "pickup_life": 15.0, "channel": [0.0, 0.5, 1.0], "centre_rares": false, "events": true,
 		"kill_limit": 0, "time_limit": 300.0, "weapons": false, "crown": true,
 		"score_limit": 60, "crown_delay": 5.0, "crown_grace": 2.0, "crown_reset": 10.0, "crown_bounty": 2, "crown_speed": 0.85},
 	FRIENDSLOP: {"name": "Friendslop", "blurb": "Same hero for all. Loot the drops, wreck your friends.", "hero_pick": false, "hero": "bonker",

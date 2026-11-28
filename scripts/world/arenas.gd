@@ -5,17 +5,21 @@ class_name Arenas extends RefCounted
 
 const LIST := [
 	{"name": "Four Quarters", "scene": "res://scenes/levels/iso_arena.tscn",
-		"blurb": "All-round. A moated crown circle, four bridges, four pools."},
+		"blurb": "Four crown approaches, with cover and paths around the offset ponds."},
 	{"name": "Pillar Court", "scene": "res://scenes/levels/pillar_court.tscn",
-		"blurb": "Tight duels. Four big pillars to break line of sight."},
+		"blurb": "An open court with four pillar terraces and narrow lanes beside the pools."},
 	{"name": "Three Bridges", "scene": "res://scenes/levels/three_bridges.tscn",
-		"blurb": "Team lanes. Two home islands, three ways across."},
+		"blurb": "Push the short stone bridge or flank through two bent timber crossings."},
 	{"name": "The Wheel", "scene": "res://scenes/levels/wheel.tscn",
-		"blurb": "Ring-outs. A loop round the water, four spokes to the hub."},
+		"blurb": "Fight around the outer track or cut across four spokes with cover at the landings."},
 	{"name": "Archipelago", "scene": "res://scenes/levels/archipelago.tscn",
-		"blurb": "Mobility. Walk the bridges or dash the gaps."},
-	{"name": "Colosseum", "scene": "",
-		"blurb": "The current main-game map, for comparison."},
+		"blurb": "Follow the docks to the crown or dash across the stepping islands."},
+	{"name": "Colosseum", "scene": "res://scenes/levels/colosseum.tscn",
+		"blurb": "An open fighting bowl framed by ruined sandstone arcades and braziers."},
+	{"name": "Brookside Village", "scene": "res://scenes/levels/market_square.tscn",
+		"blurb": "Clash at the market bend or flank through the orchard and back lane."},
+	{"name": "Forest Shrine", "scene": "res://scenes/levels/forest_shrine.tscn",
+		"blurb": "Fight across ruined stone terraces or circle through the pines."},
 ]
 
 static func info(index: int) -> Dictionary:

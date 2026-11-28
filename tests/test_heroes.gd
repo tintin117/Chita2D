@@ -51,7 +51,10 @@ func test_kit_is_basic_skill_and_maybe_an_ult() -> void:
 		assert_eq(kit.size(), 3 if h.ult_skill != "" else 2, h.id + " has LMB + RMB (+ F when it has an ult)")
 		assert_true(kit[0] is HeroBasic or h.basic_spell != "", h.id + " basic")
 		seen[kit[1].display_name] = true
-		assert_true(kit[1].cooldown >= 5.0 and kit[1].cooldown <= 9.0, h.id + " skill cooldown 5-9s")
+		if h.rmb_cd > 0.0:
+			assert_eq(kit[1].cooldown, h.rmb_cd, h.id + " configured signature cooldown")
+		else:
+			assert_true(kit[1].cooldown >= 5.0 and kit[1].cooldown <= 9.0, h.id + " default signature cooldown 5-9s")
 	assert_eq(seen.size(), Hero.all().size(), "every hero has its own right click")
 	assert_eq(Player.SLOTS.size(), 3)
 	assert_eq(Progression.SLOTS, 2, "the ult has no skill ranks")
@@ -200,13 +203,23 @@ func test_judgement_lands_in_range_and_never_in_the_water() -> void:
 	assert_true(shore.x <= 250.0 + 0.01, "backed off the water toward the start")
 	assert_gt(shore.x, 200.0)
 
-func test_judgement_slam_catches_the_circle() -> void:
-	var in_a := _foe_at(Vector2(100, 0), Vector2.LEFT)
-	var out_a := _foe_at(Vector2(400, 0), Vector2.LEFT)
-	var foes: Array[Node2D] = [in_a, out_a]
-	var got := Judgement.caught(Vector2.ZERO, foes)
-	assert_eq(got.size(), 1)
-	assert_eq(got[0], in_a)
+func test_judgement_slam_catches_the_projected_area() -> void:
+	var east := _foe_at(Vector2(Judgement.HIT_RADIUS, 0), Vector2.LEFT)
+	var south := _foe_at(Vector2(0, Judgement.HIT_RADIUS * 0.5), Vector2.UP)
+	var north_out := _foe_at(Vector2(0, -Judgement.HIT_RADIUS * 0.5 - 1), Vector2.DOWN)
+	var west_out := _foe_at(Vector2(-Judgement.HIT_RADIUS - 1, 0), Vector2.RIGHT)
+	var foes: Array[Node2D] = [east, south, north_out, west_out]
+	assert_eq(Judgement.caught(Vector2.ZERO, foes), [east, south])
+
+func test_judgement_holds_then_reaches_ground_on_impact() -> void:
+	var hold_mid := Judgement.RISE + Judgement.HOLD * 0.5
+	var drop_mid := Judgement.DROP + Judgement.DESCENT * 0.5
+	assert_eq(Judgement.height_at(hold_mid), Judgement.HEIGHT)
+	assert_eq(Judgement.pose_at(hold_mid), 4)
+	assert_gt(Judgement.height_at(drop_mid), 0.0)
+	assert_gt(Judgement.pose_at(drop_mid), 4)
+	assert_eq(Judgement.height_at(Judgement.LEAP), 0.0)
+	assert_eq(Judgement.pose_at(Judgement.LEAP), 9)
 
 # --- Mage: Ember Field (no stun) + Kindling + Meteor
 
@@ -410,33 +423,37 @@ func test_paladin_heals_on_hit_and_hits_harder_healthy() -> void:
 	var b := p.spells[0] as HammerThrow
 	assert_true(b != null, "the Paladin throws his hammer")
 	assert_gt(b.might, 0.0)
+	assert_gt(p.hero.lifesteal, 0.0)
 	p.hp = 40
-	p.on_hit_landed(20)
-	assert_eq(p.hp, 45, "Hammer lifesteal: a quarter of 20")
+	var damage := 40
+	var base_heal := roundi(damage * p.hero.lifesteal)
+	p.on_hit_landed(damage)
+	assert_eq(p.hp, 40 + base_heal, "Hammer applies Holy Might lifesteal")
 	p.guardian(3.0)
 	assert_true(p.guarded())
-	p.on_hit_landed(20)
-	assert_eq(p.hp, 60, "Guardian Angel adds half on top")
+	p.on_hit_landed(damage)
+	assert_eq(p.hp, 40 + 2 * base_heal + 20, "Guardian Angel adds half on top")
 	assert_eq(p.hit_blocked(null), "immune", "nothing lands while the angel is up")
 
-func test_purification_catches_the_circle() -> void:
-	var near := _foe_at(Vector2(100, 0), Vector2.LEFT)
-	var far := _foe_at(Vector2(Purification.RADIUS + 80.0, 0), Vector2.LEFT)
-	var foes: Array[Node2D] = [near, far]
-	assert_eq(Purification.caught(Vector2.ZERO, foes), [near] as Array[Node2D])
+func test_purification_uses_the_projected_ground_distance() -> void:
+	var center := Vector2(200, 150)
+	assert_eq(Purification.ground_distance(center, center + Vector2(100, 0)), 100.0)
+	assert_eq(snappedf(Purification.ground_distance(center, center + Vector2(0, 58)), 0.1), 100.0)
+	assert_gt(Purification.ground_distance(center, center + Vector2(0, 105)), Purification.RADIUS + Purification.HIT_MARGIN)
 
 # --- Shade
 
-func test_focus_crits_every_4th_hit_on_one_target_only() -> void:
+func test_focus_crits_at_configured_streak_on_one_target_only() -> void:
 	var b := _hero("shade").spells[0] as DaggerThrow
 	assert_true(b != null, "the Shade's basic is the thrown dagger")
+	assert_gt(b.focus_hits, 1, "Focus requires a streak")
 	var a := Node.new()
 	var c := Node.new()
 	track(a)
 	track(c)
-	assert_eq([b.focus_mult(a), b.focus_mult(a), b.focus_mult(a)], [1.0, 1.0, 1.0])
-	assert_eq(b.focus_mult(a), b.crit_mult, "the 4th hit in a row crits")
-	b.focus_mult(a)
+	for i in b.focus_hits - 1:
+		assert_eq(b.focus_mult(a), 1.0, "no crit before the streak is complete")
+	assert_eq(b.focus_mult(a), b.crit_mult, "the completed streak crits")
 	b.focus_mult(a)
 	assert_eq(b.focus_mult(c), 1.0, "a new target starts over")
 	assert_eq(b.focus_count(), 1)
@@ -556,7 +573,7 @@ func test_round3_kits() -> void:
 	assert_gt(sorc.static_field, 0.0)
 	var scout := Hero.by_id("scout").make_kit()
 	assert_true(scout[1] is ArrowRain, "the Scout throws the rain now")
-	assert_eq(scout[1].cooldown, 9.0, "with a real cooldown on the RMB")
+	assert_gt(scout[1].cooldown, ArrowRain.new().cooldown, "the signature has its own longer cooldown")
 	assert_true(Hero.by_id("ranger").make_kit()[2] is FocusFire)
 
 func test_blade_wall_is_a_line_across_the_aim() -> void:

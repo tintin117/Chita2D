@@ -16,6 +16,7 @@ var _burn_decay := 0.0
 var _burning := false
 var _status := ""
 var _status_left := 0.0
+var _chrono_left := 0.0
 var _hits: Array[Vector2] = []   ## (time, damage)
 var _label: Label
 
@@ -48,6 +49,7 @@ func _physics_process(delta: float) -> void:
 	elif position.distance_to(home) > 2.0:
 		position = position.move_toward(home, 220.0 * delta)
 	_status_left = maxf(_status_left - delta, 0.0)
+	_chrono_left = maxf(_chrono_left - delta, 0.0)
 	if burn > 0:
 		_burn_tick -= delta
 		if _burn_tick <= 0.0:
@@ -67,6 +69,16 @@ func stun(secs: float) -> void:
 
 func freeze(secs: float) -> void:
 	_show_status("FROZEN %.1fs" % secs, secs)
+
+func chrono_hold(secs: float, label := "TIME STOP") -> void:
+	_chrono_left = maxf(_chrono_left, secs)
+	_show_status("%s %.1fs" % [label, _chrono_left], _chrono_left)
+
+func time_stopped() -> bool:
+	return _chrono_left > 0.0
+
+func hidden_from(_viewer: Node2D) -> bool:
+	return modulate.a <= 0.0
 
 func _show_status(text: String, secs: float) -> void:
 	_status = text
@@ -90,7 +102,10 @@ func _draw() -> void:
 	draw_line(Vector2(0, 14), f, Color(0.4, 0.8, 1.0, 0.8), 3.0)
 	draw_colored_polygon(PackedVector2Array([f + aim_dir.normalized() * 12.0, f + aim_dir.orthogonal() * 8.0, f - aim_dir.orthogonal() * 8.0]), Color(0.4, 0.8, 1.0, 0.8))
 	if _status_left > 0.0:
-		draw_arc(Vector2(0, 14), 30.0, 0.0, TAU, 24, Color(0.55, 0.85, 1.0) if _status.begins_with("FROZEN") else Color(1.0, 0.95, 0.4), 3.0)
+		var rim := Color(0.55, 0.85, 1.0) if _status.begins_with("FROZEN") else Color(1.0, 0.95, 0.4)
+		if time_stopped():
+			rim = ChaosFx.EDGE
+		draw_arc(Vector2(0, 14), 30.0, 0.0, TAU, 24, rim, 3.0)
 	draw_rect(Rect2(-6, -34, 12, 50), Color(0.45, 0.3, 0.18))        # post
 	draw_rect(Rect2(-26, -22, 52, 9), Color(0.55, 0.38, 0.22))       # arm
 	draw_circle(Vector2(0, -46), 15, Color(0.85, 0.7, 0.42))         # straw head
@@ -99,7 +114,7 @@ func _draw() -> void:
 		draw_arc(Vector2(0, -46), r, 0.0, TAU, 20, Color(0.8, 0.2, 0.2), 2.0)   # target rings
 	draw_rect(Rect2(-18, 16, 36, 8), Color(0.3, 0.2, 0.12))          # base
 
-func take_damage(amount: int, _from_pos: Vector2, silent := false, _attacker: Node = null) -> bool:
+func take_damage(amount: int, from_pos: Vector2, silent := false, _attacker: Node = null, cause := "", impact_power := 0.0) -> bool:
 	_hits.append(Vector2(Time.get_ticks_msec() / 1000.0, amount))
 	if _attacker is Player and _attacker.owns():
 		_attacker.on_hit_landed(amount)   # the gym is where an ult (and lifesteal) gets tried out
@@ -110,7 +125,10 @@ func take_damage(amount: int, _from_pos: Vector2, silent := false, _attacker: No
 		burn = mini(burn + 1, Player.BURN_MAX)
 		_burn_by = _attacker
 	if not silent:
-		Player.hit_fx(self, amount, true)   # the gym is where the hit feel gets tuned
+		var custom_impact := Player.has_custom_impact(cause)
+		if custom_impact:
+			Player.play_custom_impact(self, cause, (global_position - from_pos).normalized(), impact_power)
+		Player.hit_fx(self, amount, true, false, false, null, cause != Player.PURIFY_IMPACT and not custom_impact)
 	var l := Label.new()
 	l.text = str(amount)
 	l.modulate = Color(1, 0.85, 0.3)

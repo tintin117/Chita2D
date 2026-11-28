@@ -1,0 +1,330 @@
+{
+  "hero": "rogue",
+  "design_reference": "Costume and base body artwork are cut from tools/art/rogue/sources/skeleton-reference.png.",
+  "texture_filter": "nearest",
+  "collision": "Visual assets only",
+  "assets": [
+    {
+      "path": "assets/isometric_character/11Rogue/CastSpell.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py"
+      },
+      "license": "User-supplied Chita artwork. Third-party terms were not independently verified.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/Idle.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py"
+      },
+      "license": "User-supplied Chita artwork. Third-party terms were not independently verified.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/Melee.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py"
+      },
+      "license": "User-supplied Chita artwork. Third-party terms were not independently verified.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/Run.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py",
+        "locomotion": "assets/isometric_character/2Archer/Run.png"
+      },
+      "license": "Rogue costume from the user-supplied sheet. Leg frames use the existing Chita Ranger sprite and inherit its upstream terms.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/RunBackwards.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py",
+        "locomotion": "assets/isometric_character/2Archer/RunBackwards.png"
+      },
+      "license": "Rogue costume from the user-supplied sheet. Leg frames use the existing Chita Ranger sprite and inherit its upstream terms.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/Special1.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py"
+      },
+      "license": "User-supplied Chita artwork. Third-party terms were not independently verified.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/StrafeLeft.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py",
+        "locomotion": "assets/isometric_character/2Archer/StrafeLeft.png"
+      },
+      "license": "Rogue costume from the user-supplied sheet. Leg frames use the existing Chita Ranger sprite and inherit its upstream terms.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/StrafeRight.png",
+      "size": [
+        1920,
+        1024
+      ],
+      "max_colors": 5000,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py",
+        "locomotion": "assets/isometric_character/2Archer/StrafeRight.png"
+      },
+      "license": "Rogue costume from the user-supplied sheet. Leg frames use the existing Chita Ranger sprite and inherit its upstream terms.",
+      "technical_checks_passed": true,
+      "frame_grid": [
+        15,
+        8
+      ],
+      "cell_size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        64
+      ],
+      "sprite_offset": [
+        0,
+        -16
+      ]
+    },
+    {
+      "path": "assets/isometric_character/11Rogue/Portrait.png",
+      "size": [
+        144,
+        144
+      ],
+      "max_colors": 750,
+      "source": {
+        "kind": "user_supplied_reference",
+        "path": "tools/art/rogue/sources/skeleton-reference.png",
+        "editor": "tools/art/rogue/sprites.py"
+      },
+      "license": "User-supplied Chita artwork. Third-party terms were not independently verified.",
+      "technical_checks_passed": true
+    },
+    {
+      "path": "assets/isometric_projecttile/Spells/Rogue/SkillIcons.png",
+      "size": [
+        16,
+        64
+      ],
+      "max_colors": 24,
+      "source": {
+        "kind": "original",
+        "editor": "tools/art/rogue/effects.py"
+      },
+      "license": "Original artwork created for Chita.",
+      "technical_checks_passed": true
+    },
+    {
+      "path": "assets/isometric_projecttile/Spells/Rogue/SilverImpact.png",
+      "size": [
+        160,
+        32
+      ],
+      "max_colors": 16,
+      "source": {
+        "kind": "original",
+        "editor": "tools/art/rogue/effects.py"
+      },
+      "license": "Original artwork created for Chita.",
+      "technical_checks_passed": true
+    },
+    {
+      "path": "assets/isometric_projecttile/Spells/Rogue/SmokeScreen.png",
+      "size": [
+        1408,
+        1232
+      ],
+      "frame_grid": [
+        8,
+        7
+      ],
+      "cell_size": [
+        176,
+        176
+      ],
+      "max_colors": 3200,
+      "source": {
+        "kind": "ai_generated",
+        "tool": "OpenAI built-in image generation",
+        "reference": "Approved Rogue concept, crimson-and-charcoal Smoke Screen panel",
+        "prompt": "Isolate the broad, low crimson and charcoal soot burst from the concept on transparent alpha. Preserve the sweeping folded black billows and red central surge. Remove the character and environment.",
+        "editor": "tools/art/rogue/effects.py",
+        "path": "tools/art/rogue/sources/crimson-soot.png"
+      },
+      "license": "Generated for Chita under OpenAI\u2019s applicable terms.",
+      "technical_checks_passed": true,
+      "coverage": "The crimson spray and suspended blood mist are animated at 12 fps and stay inside the cast radius."
+    }
+  ]
+}

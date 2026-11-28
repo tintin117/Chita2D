@@ -138,6 +138,7 @@ func _on_body_entered(body: Node) -> void:
 	if splash > 0.0:   # an orb bursts on the first foe or rock it meets; the burst does the damage
 		_burst()
 		return
+	var landed := false
 	if body.has_method("take_damage"):
 		if body in _hit:
 			return
@@ -149,7 +150,7 @@ func _on_body_entered(body: Node) -> void:
 			toward = (source.global_position - body.global_position).normalized()
 			from = body.global_position - toward * 12.0   # hit "from behind": the flinch points at the caster too
 		Player.basic_hit = basic
-		var landed: bool = body.take_damage(dmg, from, silent and from_player, source) == true   # PvE enemies return nothing
+		landed = _damage_body(body, dmg, from)
 		Player.basic_hit = false
 		if landed and _ignited and is_instance_valid(source):   # an ignited bolt bursts: a small blast on everyone else close by
 			for e in Spell.foes(source):
@@ -171,8 +172,14 @@ func _on_body_entered(body: Node) -> void:
 		if pierce > 0:
 			pierce -= 1
 			return
-	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, impact_scale).modulate = color.lightened(0.25)
+	_finish_impact(landed)
 	queue_free()
+
+func _damage_body(body: Node, amount: int, from: Vector2) -> bool:
+	return body.take_damage(amount, from, silent and from_player, source) == true   # PvE enemies return nothing
+
+func _finish_impact(_landed: bool) -> void:
+	SheetFrames.play_once(get_parent(), global_position, SheetFrames.FX + "AoE/FireAoE/", 0, 40.0, impact_scale).modulate = color.lightened(0.25)
 
 ## Orb burst: everyone hostile within `splash` takes `damage` once (the one it touched included). Runs on every peer;
 ## damage lands on each victim's own peer like any hit.

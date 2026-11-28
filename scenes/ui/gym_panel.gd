@@ -1,11 +1,15 @@
 class_name GymPanel extends PanelContainer
 ## The gym's side panel (top left): the picked hero, one-click hero swap, the gym tools and every setting.
-## The arrow in the header (or Esc) folds it away. Nothing here takes focus, so Space and Tab stay with the hero.
+## The arrow in the header (or Esc) folds it away. Gamepad focus is enabled only while the gym is paused for panel navigation.
 
 signal hero_picked(index: int)
 signal free_spells(on: bool)
+signal fog_preview(on: bool)
 signal reset
 signal quit
+signal controller_toggle_requested
+signal controller_close_requested
+signal keyboard_toggle_requested
 
 const WIDTH := 264.0
 const FONT := 16
@@ -17,8 +21,10 @@ var _role: Label
 var _fold: Button
 var _body: VBoxContainer
 var _cards: Array[Button] = []
+var controller_navigation := false
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	theme = ArenaUi.THEME
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size.x = WIDTH
@@ -81,12 +87,45 @@ func _ready() -> void:
 	tools.add_child(free)
 	tools.add_child(ArenaUi.button("Reset [R]", reset.emit))
 
+	var debug := HBoxContainer.new()
+	_body.add_child(debug)
+	var debug_label := ArenaUi.label("DEBUG", FONT, ArenaUi.SUN)
+	debug_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	debug.add_child(debug_label)
+	var fog := ArenaUi.button("Fog: Off", Callable())
+	fog.toggle_mode = true
+	fog.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fog.toggled.connect(func(on: bool) -> void:
+		fog.text = "Fog: On" if on else "Fog: Off"
+		fog_preview.emit(on))
+	debug.add_child(fog)
+
 	_section("Settings")
 	MatchOverlay.add_settings(_body, false)   # no room for the "Playtest" caption under "SETTINGS"
 	_body.add_child(ArenaUi.button("Quit to menu", quit.emit))
 	_compact(self)
 	for card in _cards:   # after _compact: the hero cards are bigger than the text buttons
 		card.custom_minimum_size = Vector2(56 if grid.columns == 4 else 44, 46)
+
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	var pad := event as InputEventJoypadButton
+	if pad and pad.button_index == JOY_BUTTON_START and pad.pressed:
+		get_viewport().set_input_as_handled()
+		controller_toggle_requested.emit()
+		return
+	if pad and pad.button_index == JOY_BUTTON_B and controller_navigation:
+		get_viewport().set_input_as_handled()
+		if not pad.pressed:
+			controller_close_requested.emit()
+		return
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		if controller_navigation:
+			controller_close_requested.emit()
+		else:
+			keyboard_toggle_requested.emit()
 
 ## Marks hero `i` as the one being played.
 func show_hero(i: int) -> void:
@@ -100,6 +139,35 @@ func toggle() -> void:
 	_body.visible = not _body.visible
 	_fold.text = "<" if _body.visible else ">"
 	reset_size()   # shrink to the header when folded
+	if controller_navigation:
+		ArenaUi.defer_focus(_selected_card() if _body.visible else _fold)
+
+func set_controller_navigation(active: bool) -> void:
+	if active and not _body.visible:
+		toggle()
+	if not active:
+		var focused := get_viewport().gui_get_focus_owner()
+		if is_instance_valid(focused) and is_ancestor_of(focused):
+			focused.release_focus()
+	controller_navigation = active
+	_set_controller_focus(self, active)
+	if active:
+		ArenaUi.defer_focus(_selected_card())
+
+func body_open() -> bool:
+	return _body.visible
+
+func _selected_card() -> Control:
+	for card in _cards:
+		if card.button_pressed:
+			return card
+	return _fold
+
+func _set_controller_focus(node: Node, enabled: bool) -> void:
+	if node is Button or node is Slider:
+		(node as Control).focus_mode = Control.FOCUS_ALL if enabled else Control.FOCUS_NONE
+	for child in node.get_children():
+		_set_controller_focus(child, enabled)
 
 ## The hero's portrait with the empty border of its atlas cell cut off, so it reads at this size.
 func _face(hero: Hero) -> Texture2D:
@@ -110,11 +178,11 @@ func _face(hero: Hero) -> Texture2D:
 func _section(title: String) -> void:
 	_body.add_child(ArenaUi.label(title.to_upper(), FONT, ArenaUi.SUN))
 
-## Smaller text, rows and gaps than the full-screen menus use (the panel must end above the HUD), and no keyboard
-## focus anywhere.
+## Smaller text, rows and gaps than the full-screen menus use (the panel must end above the HUD). Focus stays off
+## during play and turns on while the controller has paused the gym for menu navigation.
 func _compact(node: Node) -> void:
 	if node is BoxContainer or node is GridContainer:
-		node.add_theme_constant_override("separation", 3)
+		node.add_theme_constant_override("separation", 2 if node is VBoxContainer else 3)
 		node.add_theme_constant_override("h_separation", 4)
 		node.add_theme_constant_override("v_separation", 3)
 	if node is Button or node is Slider:

@@ -14,6 +14,7 @@ const MAX_RANGE_FOR_UI := 700.0
 @export var display_name := "Hero"
 @export var description := ""
 @export var units: Array = ["3Wizard"]      ## isometric_character folders, picked by player colour so look-alikes differ
+@export var skill_anims := false            ## use the unit's CastSpell and Special1 sheets for signature and ult
 @export var attack_type := "ranged"        ## "melee" | "ranged"
 @export var attack_range := 380.0          ## px
 @export var basic_name := "Fire Bolt"
@@ -75,29 +76,29 @@ static func all() -> Array[Hero]:
 	if _all.is_empty():
 		_all = [
 			_make({"id": "knight", "display_name": "Knight", "units": ["1Knight"], "attack_type": "melee",
-				"archetype": "Tank", "attack_range": 135.0,
+				"archetype": "Tank", "attack_range": 145.0,
 				"description": "Tank. Slow, wide, heavy cleaves that hit everyone in front; the third one launches. Takes hits head-on and throws a shield that rebounds between foes.",
-				"basic_name": "Cleave", "basic_damage": 13, "max_hp": 140, "speed": 245.0, "finisher_mult": 1.8,
-				"basic_cd": 0.55, "arc_angle": 2.8, "windup": 0.16, "basic_color": Color(1.0, 0.62, 0.15),
+				"basic_name": "Cleave", "basic_damage": 14, "max_hp": 140, "speed": 252.0, "finisher_mult": 1.8,
+				"basic_cd": 0.50, "arc_angle": 2.8, "windup": 0.16, "basic_color": Color(1.0, 0.62, 0.15),
 				"rmb_skill": "rebound_shield", "rmb_text": "Throw your shield: it rebounds between up to 3 foes (each hit weaker), slows the first, then flies back to you.",
 				"front_mult": 0.75,
 				"passive_name": "Bulwark", "passive_text": "Hits from the front deal 25% less, but only while you hold your shield: it is off while the shield is thrown.",
 				"ult_skill": "judgement", "ult_cost": 180.0,
-				"ult_text": "Leap to the cursor over rocks and slam down: heavy damage, 1 s stun, shove out. Walk out of the circle to dodge."}),
-			_make({"id": "rogue", "display_name": "Rogue", "units": ["7DeathKnight"], "attack_type": "melee", "attack_range": 85.0,
+				"ult_text": "Leap over rocks to the cursor, hang briefly, then slam. Deals heavy damage, stuns for 1 s, and shoves foes out. Move out of the marked area to dodge."}),
+			_make({"id": "rogue", "display_name": "Rogue", "units": ["11Rogue"], "attack_type": "melee", "attack_range": 112.0,
 				"archetype": "Assassin",
 				"description": "Assassin. Fastest hero. Quick narrow stabs, all the same, that hit for 1.8x from behind. Flank, burst, vanish. Dies if caught in the open.",
-				"basic_name": "Stab", "basic_damage": 8, "max_hp": 85, "speed": 315.0, "combo": false,
-				"basic_cd": 0.3, "arc_angle": 0.8, "windup": 0.04, "back_mult": 1.8, "basic_color": Color(0.62, 0.6, 0.9), "stalk": true,
-				"rmb_skill": "shadow_rush", "rmb_text": "Blink through a line. Everyone you pass is Frozen: can't move, dash or turn, but can still swing forward.",
+				"basic_name": "Stab", "basic_damage": 14, "max_hp": 95, "speed": 325.0, "combo": false,
+				"basic_cd": 0.3, "arc_angle": 0.95, "windup": 0.04, "back_mult": 1.8, "basic_color": Color(0.62, 0.6, 0.9), "stalk": true,
+				"rmb_skill": "shadow_rush", "rmb_cd": 5.0, "rmb_text": "Blink through a line. Everyone you pass is Frozen: can't move, dash or turn, but can still swing forward.",
 				"passive_name": "Stalk", "passive_text": "Hits from behind deal 1.8x. 1.5 s without attacking or being hit: you fade, unseen by foes farther than 260 px and a faint shimmer closer in. Your first stab out of the fade is always a backstab.",
 				"ult_skill": "smoke_screen", "ult_cost": 140.0,
 				"ult_text": "A cloud of smoke for 4.5 s: foes inside miss half their hits; you inside are invisible and every stab is a backstab."}),
 			_make({"id": "wizard", "display_name": "Mage", "units": ["3Wizard"], "attack_type": "ranged",
 				"archetype": "Artillery", "attack_range": 390.0,
 				"description": "Artillery caster. Every basic is a spell: a fire orb you throw at a spot that bursts and hits everyone there. Burn the ground, call the meteor. Soft up close.",
-				"basic_name": "Fire Orb", "basic_damage": 14, "max_hp": 95, "speed": 255.0, "bolt_speed": 800.0, "finisher_spread": 0,
-				"basic_cd": 0.6, "combo": false, "splash": 70.0, "basic_color": Color(1.0, 0.45, 0.1),
+				"basic_name": "Fire Orb", "basic_damage": 13, "max_hp": 95, "speed": 255.0, "bolt_speed": 800.0, "finisher_spread": 0,
+				"basic_cd": 0.68, "combo": false, "splash": 68.0, "basic_color": Color(1.0, 0.45, 0.1),
 				"rmb_skill": "ember_field", "rmb_text": "Blast a patch of ground: foes hit are slowed hard. It burns and slows for a while.",
 				"kindling": true,
 				"passive_name": "Kindling", "passive_text": "Every hit you land adds a Burn stack: 1 damage per second each, up to 12. One stack fades every 2 s.",
@@ -106,8 +107,8 @@ static func all() -> Array[Hero]:
 			_make({"id": "ranger", "display_name": "Ranger", "units": ["2Archer", "9Longbow"], "attack_type": "ranged", "attack_range": 560.0,
 				"archetype": "Marksman",
 				"description": "Marksman. One long arrow at a time, piercing a foe. It flies straight: lead your shots. Longest reach; draw a Power Arrow to blow them off the island. Fragile up close.",
-				"basic_name": "Arrow", "basic_damage": 11, "max_hp": 80, "speed": 270.0, "bolt_speed": 1300.0, "homing": false, "bolt_pierce": 1, "finisher_spread": 0,
-				"basic_cd": 0.45, "combo": false, "basic_color": Color(0.95, 0.9, 0.75), "basic_arrow": "res://assets/isometric_projecttile/Arrows/Arrow/",
+				"basic_name": "Arrow", "basic_damage": 10, "max_hp": 80, "speed": 270.0, "bolt_speed": 1300.0, "homing": false, "bolt_pierce": 1, "finisher_spread": 0,
+				"basic_cd": 0.50, "combo": false, "basic_color": Color(0.95, 0.9, 0.75), "basic_arrow": "res://assets/isometric_projecttile/Arrows/Arrow/",
 				"rmb_skill": "power_shot", "rmb_text": "Hold to draw, release to fire. Aim freely while drawing. Longer draw = harder, farther, more knockback; full draw pierces.",
 				"steady_aim": true,
 				"passive_name": "Steady Aim", "passive_text": "Standing still while drawing Power Arrow fills it twice as fast. Plant your feet, or kite with a slower draw.",
@@ -116,47 +117,47 @@ static func all() -> Array[Hero]:
 		]
 		# Heroes 5-8: own kits. base_id = the core hero whose skill icons they borrow until they get their own art.
 		_all.append_array([
-			_clone("knight", {"id": "paladin", "display_name": "Paladin", "units": ["4Paladin"], "tint": Color(1.0, 0.92, 0.6),
+			_clone("knight", {"id": "paladin", "display_name": "Paladin", "units": ["4Paladin"], "skill_anims": true, "tint": Color(1.0, 0.92, 0.6),
 				"archetype": "Holy Tank", "attack_type": "ranged", "attack_range": 270.0,
-				"description": "Holy Tank. Health is damage and damage is health: the thrown Hammer hits going out and coming back and heals you, Purify heals you and burns everyone near.",
-				"basic_spell": "hammer_throw", "basic_name": "Hammer", "basic_damage": 12, "basic_cd": 0.9,
-				"max_hp": 150, "speed": 240.0, "basic_color": Color(1.0, 0.88, 0.35),
-				"lifesteal": 0.25, "might": 0.06, "front_mult": 1.0,
-				"rmb_skill": "purification", "rmb_text": "Heal 30 and deal 30 to every foe around you.",
-				"passive_name": "Holy Might", "passive_text": "Your Hammer deals +6% of your current HP on each of its two hits, and a quarter of all your damage heals you.",
-				"ult_skill": "guardian_angel", "ult_cost": 170.0,
+				"description": "Holy Tank. The thrown Hammer hits going out and coming back. Purify sends holy light outward, then draws it back in.",
+				"basic_spell": "hammer_throw", "basic_name": "Hammer", "basic_damage": 12, "basic_cd": 1.18,
+				"max_hp": 112, "speed": 240.0, "basic_color": Color(1.0, 0.88, 0.35),
+				"lifesteal": 0.09, "might": 0.035, "front_mult": 1.0,
+				"rmb_skill": "purification", "rmb_cd": 11.0, "rmb_text": "Send a ring outward, then draw it back in. The ring follows you. Each sweep heals you for 15 and deals 15 damage per foe crossed.",
+				"passive_name": "Holy Might", "passive_text": "Your Hammer deals +3.5% of your current HP on each of its two hits, and 9% of all your damage heals you.",
+				"ult_skill": "guardian_angel", "ult_cost": 200.0,
 				"ult_text": "3 s of taking no damage; your hits heal you for half. Back off and wait it out."}),
 			_clone("rogue", {"id": "shade", "display_name": "Shade", "units": ["8DarkLord"], "tint": Color(0.65, 1.0, 0.75),
-				"archetype": "Duelist", "attack_type": "ranged", "attack_range": 220.0, "stalk": false,
-				"description": "Duelist. Throws daggers at short range: stay on one target and every 4th dagger is a sure crit. A fan of knives slows them, a ring of blades traps them.",
-				"basic_spell": "dagger_throw", "basic_name": "Dagger", "basic_damage": 9, "basic_cd": 0.4,
-				"max_hp": 95, "speed": 290.0, "back_mult": 1.0, "basic_color": Color(0.2, 1.0, 0.6),
-				"focus_hits": 4, "crit_mult": 2.5,
-				"rmb_skill": "fan_of_knives", "rmb_text": "A fan of 5 knives toward the cursor: each one hits and slows.",
-				"passive_name": "Focus", "passive_text": "Every 4th dagger in a row at the same target is a 2.5x crit. Switching target starts over.",
+				"archetype": "Duelist", "attack_type": "ranged", "attack_range": 305.0, "stalk": false,
+				"description": "Duelist. Throws daggers at short range: stay on one target and every 3rd dagger is a sure crit. A fan of knives slows them, a ring of blades traps them.",
+				"basic_spell": "dagger_throw", "basic_name": "Dagger", "basic_damage": 14, "basic_cd": 0.35,
+				"max_hp": 112, "speed": 290.0, "back_mult": 1.0, "basic_color": Color(0.2, 1.0, 0.6),
+				"focus_hits": 3, "crit_mult": 2.5,
+				"rmb_skill": "fan_of_knives", "rmb_cd": 5.0, "rmb_text": "A fan of 5 knives toward the cursor: each one hits and slows.",
+				"passive_name": "Focus", "passive_text": "Every 3rd dagger in a row at the same target is a 2.5x crit. Switching target starts over.",
 				"ult_skill": "blade_ring", "ult_cost": 150.0,
 				"ult_text": "A small ring of blades orbits you for 3.5 s: anyone close is cut and slowed. Keep throwing daggers."}),
 			_clone("wizard", {"id": "sorcerer", "display_name": "Sorcerer", "units": ["6Mage"], "tint": Color(0.7, 0.8, 1.25),
-				"archetype": "Storm Caster", "attack_range": 340.0,
+				"archetype": "Storm Caster", "attack_range": 310.0,
 				"description": "Storm Caster. Lightning that jumps from foe to foe and eats a slice of their health every hit. Bolts from the sky find anyone hiding.",
-				"basic_spell": "chain_lightning", "basic_name": "Chain Lightning", "basic_damage": 9, "basic_cd": 0.45,
+				"basic_spell": "chain_lightning", "basic_name": "Chain Lightning", "basic_damage": 5, "basic_cd": 0.88,
 				"max_hp": 85, "speed": 260.0, "kindling": false, "basic_color": Color(0.55, 0.75, 1.0),
-				"static_field": 0.05,
-				"rmb_skill": "lightning_bolt", "rmb_text": "A bolt from the sky on the cursor: damage, slow, and it reveals anyone in a Smoke Cloud.",
-				"passive_name": "Static Charge", "passive_text": "Every hit you land also deals 5% of the target's current HP: tanks feel it most.",
-				"ult_skill": "thunderstorm", "ult_cost": 180.0,
+				"static_field": 0.02,
+				"rmb_skill": "lightning_bolt", "rmb_cd": 9.5, "rmb_text": "A bolt from the sky on the cursor: damage, slow, and it reveals anyone in a Smoke Cloud.",
+				"passive_name": "Static Charge", "passive_text": "Every hit you land also deals 2% of the target's current HP: tanks feel it most.",
+				"ult_skill": "thunderstorm", "ult_cost": 220.0,
 				"ult_text": "For 3.5 s a storm follows you: every 0.45 s a bolt hits the weakest foe within 320, harder each time it hits the same one."}),
 			_clone("ranger", {"id": "scout", "display_name": "Scout", "units": ["5CamoArcher"], "tint": Color(1.0, 0.75, 0.7),
 				"archetype": "Glass Cannon", "attack_range": 470.0,
-				"description": "Glass Cannon. The most damage and the least health in the game. Fast short arrows, a rain of arrows to zone, and a sniper ult. Never get caught.",
-				"basic_name": "Quick Shot", "basic_damage": 4, "max_hp": 60, "speed": 290.0, "bolt_speed": 1400.0, "bolt_pierce": 0, "homing": true,   # 4 x 1.35 = 5 per hit
-				"basic_cd": 0.3, "combo": false, "basic_color": Color(1.0, 0.55, 0.5), "steady_aim": false,
+				"description": "Glass Cannon. The least health in the game. Fast short arrows, a rain of arrows to zone, and a sniper ult. Never get caught.",
+				"basic_name": "Quick Shot", "basic_damage": 4, "max_hp": 60, "speed": 290.0, "bolt_speed": 1400.0, "bolt_pierce": 0, "homing": true,
+				"basic_cd": 0.39, "combo": false, "basic_color": Color(1.0, 0.55, 0.5), "steady_aim": false,
 				"basic_arrow": "res://assets/isometric_projecttile/Arrows/FireArrow/",
-				"damage_dealt": 1.35, "taken_mult": 1.35,
-				"rmb_skill": "arrow_rain", "rmb_cd": 9.0,
+				"damage_dealt": 1.12, "taken_mult": 1.35,
+				"rmb_skill": "arrow_rain", "rmb_cd": 10.0,
 				"rmb_text": "Rain arrows on the cursor for 3 s: everyone inside keeps taking hits and is slowed. Leave or bleed.",
-				"passive_name": "Glass Cannon", "passive_text": "You deal 35% more damage and take 35% more.",
-				"ult_skill": "assassinate", "ult_cost": 140.0,
+				"passive_name": "Glass Cannon", "passive_text": "You deal 12% more damage and take 35% more.",
+				"ult_skill": "assassinate", "ult_cost": 160.0,
 				"ult_text": "Root yourself and lock a laser on a foe for 1 s, then a huge shot (1.5x under 40% HP). A dash at the right time dodges it."}),
 		])
 		# Heroes 9-12: Tidecaller, Rampager, Demonbound, Chaos Lord. Built on a core hero for sprite layout and icons;
@@ -165,40 +166,40 @@ static func all() -> Array[Hero]:
 			_clone("knight", {"id": "tidecaller", "display_name": "Tidecaller", "units": ["4Paladin"], "tint": Color(0.6, 0.95, 1.2),
 				"archetype": "Bruiser", "attack_type": "melee", "attack_range": 165.0,
 				"description": "Bruiser. Heavy anchor swings that send a wave every few seconds. The more he is hit, the sooner the tide comes in and out of his body.",
-				"basic_name": "Anchor Swing", "basic_damage": 15, "basic_cd": 0.6, "max_hp": 145, "speed": 240.0,
-				"combo": false, "finisher_mult": 1.0, "arc_angle": 1.6, "windup": 0.2, "basic_color": Color(0.15, 0.85, 0.85),
+				"basic_name": "Anchor Swing", "basic_damage": 15, "basic_cd": 0.56, "max_hp": 145, "speed": 245.0,
+				"combo": false, "finisher_mult": 1.0, "arc_angle": 1.6, "windup": 0.18, "basic_color": Color(0.15, 0.85, 0.85),
 				"front_mult": 1.0, "tide_wave": true,
 				"rmb_skill": "keel_slam", "rmb_text": "Slam the anchor around you: damage, and everyone hit deals 30% less damage for 3 s.",
 				"passive_name": "Tide Breaker", "passive_text": "Every 7 s (shown like a cooldown) your next swing also sends a wave the same shape as the swing, out to about 210 px: 12 damage. The first foe it hits takes 1 s off the wait.",
 				"ult_skill": "ebb_and_flow", "ult_cost": 170.0, "ult_taken_mult": 2.0,
 				"ult_text": "Six lines of water burst out of you (damage, push), then rush back in between them (damage, pull to you). You take 30% less meanwhile. Charges 2x from damage taken."}),
 			_clone("rogue", {"id": "rampager", "display_name": "Rampager", "units": ["7DeathKnight"], "tint": Color(1.2, 0.8, 0.55),
-				"archetype": "Diver", "attack_type": "melee", "attack_range": 95.0,
+				"archetype": "Diver", "attack_type": "melee", "attack_range": 130.0,
 				"description": "Diver. Hurls an orb and lands where it does, then runs circles: every step stomps. Splits the earth to drag a whole line of foes in.",
-				"basic_name": "Claw", "basic_damage": 8, "basic_cd": 0.45, "max_hp": 115, "speed": 295.0,
-				"combo": false, "arc_angle": 1.2, "windup": 0.06, "back_mult": 1.0, "stalk": false, "stride": true,
+				"basic_name": "Claw", "basic_damage": 12, "basic_cd": 0.40, "max_hp": 136, "speed": 309.0,
+				"combo": false, "arc_angle": 1.35, "windup": 0.06, "back_mult": 1.0, "stalk": false, "stride": true,
 				"basic_color": Color(0.85, 0.6, 0.3),
-				"rmb_skill": "wild_orb", "rmb_text": "Hurl a slow orb at the cursor: it hits everyone it passes, and you blink to where it lands. No take-backs.",
+				"rmb_skill": "wild_orb", "rmb_cd": 0.0, "rmb_text": "Hurl a slow orb at the cursor: it hits everyone it passes, and you blink to where it lands. No take-backs.",
 				"passive_name": "Trampler", "passive_text": "Every 90 px you move (walk, dash or blink) stomps foes right next to you for 3.",
 				"ult_skill": "fault_line", "ult_cost": 160.0,
 				"ult_text": "Plant your feet and crack the ground: the crack creeps out in a long line, then splits: 25% of max HP, everyone on it is pulled to the line and slowed for 3 s."}),
 			_clone("ranger", {"id": "demonbound", "display_name": "Demonbound", "units": ["8DarkLord"], "tint": Color(1.25, 0.55, 0.55),
-				"archetype": "Sniper Caster", "attack_type": "ranged", "attack_range": 510.0,
+				"archetype": "Sniper Caster", "attack_type": "ranged", "attack_range": 485.0,
 				"description": "Sniper Caster. Leaves burning ground wherever he goes, thick where he dashes. Kite in lines and shoot back through them: bolts that cross the fire burn hotter and burst.",
-				"basic_name": "Hellbolt", "basic_damage": 10, "basic_cd": 0.7, "max_hp": 85, "speed": 255.0,
+				"basic_name": "Hellbolt", "basic_damage": 9, "basic_cd": 0.76, "max_hp": 85, "speed": 255.0,
 				"bolt_speed": 600.0, "bolt_pierce": 0, "homing": false, "basic_arrow": "", "basic_color": Color(0.95, 0.15, 0.25),
-				"steady_aim": false, "impetus": 0.0, "fel_trail": true, "rmb_cd": 0.0,
+				"steady_aim": false, "impetus": 0.0, "fel_trail": true, "rmb_cd": 9.0,
 				"rmb_skill": "mirror_torment", "rmb_text": "Curse a spot: every foe there gets a dark copy clinging to its back that hits it with its own attack and slows it for 3.5 s.",
 				"passive_name": "Hellwalker", "passive_text": "You leave burning ground for 3 s: thin when you walk, thick when you dash. Foes on it burn and are slowed. Your bolts that cross it catch fire: +6 damage and a small blast.",
 				"ult_skill": "fiendform", "ult_cost": 160.0,
 				"ult_text": "Become the demon for 6 s: bolts fly 40% farther and faster, hit 30% harder, and 60% of them come with a second bolt. Dark Reflection lasts 1 s longer."}),
-			_clone("knight", {"id": "chaoslord", "display_name": "Chaos Lord", "units": ["1Knight"], "tint": Color(0.85, 0.6, 1.25),
-				"archetype": "Gambler", "attack_type": "melee", "attack_range": 115.0,
+			_clone("knight", {"id": "chaoslord", "display_name": "Chaos Lord", "units": ["10ChaosLord"], "skill_anims": true,
+				"archetype": "Gambler", "attack_type": "melee", "attack_range": 145.0,
 				"description": "Gambler. Slow swings that roll the dice: anything from a tickle to a crater. Every skill rolls too, even how long time stops.",
-				"basic_name": "Chaos Cleave", "basic_damage": 9, "basic_cd": 0.75, "max_hp": 130, "speed": 260.0,
-				"combo": false, "finisher_mult": 1.0, "arc_angle": 3.5, "windup": 0.18, "basic_color": Color(0.95, 0.3, 0.85),
+				"basic_name": "Chaos Cleave", "basic_damage": 13, "basic_cd": 0.53, "max_hp": 155, "speed": 275.0,
+				"combo": false, "finisher_mult": 1.0, "arc_angle": 3.5, "windup": 0.16, "basic_color": Color(0.95, 0.3, 0.85),
 				"front_mult": 1.0, "chaos_lo": 0.5, "chaos_hi": 3.5,
-				"rmb_skill": "rift_bolt", "rmb_text": "A bolt at the foe near the cursor. The roll scales both its damage and its stun (0.3 to 2.1 s).",
+				"rmb_skill": "rift_bolt", "rmb_cd": 4.6, "rmb_text": "A bolt at the foe near the cursor. The roll scales both its damage and its stun (0.3 to 2.1 s).",
 				"passive_name": "Chaos Roll", "passive_text": "Everything you do rolls x0.5 to x3.5: your swing's damage, Chaos Blast's damage and stun, Time Sphere's length.",
 				"ult_skill": "stillwake", "ult_cost": 180.0,
 				"ult_text": "Stop time in a circle at the cursor: everyone inside but you is held for 0.4 to 2.8 s (rolled). Walk in and swing."}),
@@ -214,7 +215,7 @@ static func secret() -> Hero:
 		_pact = _clone("wizard", {"id": "pactknight", "display_name": "Pactknight", "units": ["4Paladin"], "tint": Color(0.8, 0.6, 1.25),
 			"archetype": "Hexblade", "attack_type": "ranged", "attack_range": 430.0,
 			"description": "Hexblade. A knight who signed the wrong pact: blasts that drag foes in, a curse that makes chickens, eyes that see in the dark.",
-			"basic_name": "Eldritch Pull", "basic_damage": 11, "basic_cd": 0.55, "max_hp": 95, "speed": 260.0,
+			"basic_name": "Eldritch Pull", "basic_damage": 14, "basic_cd": 0.45, "max_hp": 110, "speed": 260.0,
 			"bolt_speed": 1100.0, "splash": 0.0, "kindling": false, "combo": false, "finisher_spread": 0, "pull": 25.0,
 			"basic_color": Color(0.7, 0.25, 1.0),
 			"darkvision": true, "fiend_toll": true,
@@ -321,6 +322,9 @@ func make_basic() -> Spell:
 	s.finisher_mult = finisher_mult
 	s.combo = combo
 	s.fx_color = basic_color
+	s.chaos_cleave_fx = id == "chaoslord"
+	s.knight_cleave_fx = id == "knight"
+	s.rogue_stab_art = id == "rogue"
 	s.might = might
 	s.focus_hits = focus_hits
 	s.crit_mult = crit_mult
@@ -413,11 +417,23 @@ func dir_frames(color: String) -> Array[SpriteFrames]:
 	var d := UNIT_PATH % units[maxi(COLOR_ORDER.find(color), 0) % units.size()]
 	var hit := "Melee" if ResourceLoader.exists(d + "Melee.png") else "Attack1"
 	var hit2 := "Melee2" if hit == "Melee" else "Attack2"
-	var anims := {"idle": [d + "Idle.png", 15, 12.0], "run": [d + "Run.png", 15, 24.0],
+	var stride_fps := 29.0 if id == "rogue" else 24.0
+	var anims := {"idle": [d + "Idle.png", 15, 12.0], "run": [d + "Run.png", 15, stride_fps],
 		"cast": [d + hit + ".png", 15, 30.0, false], "cast2": [d + hit2 + ".png", 15, 30.0, false]}
+	if id == "rogue":
+		anims.erase("cast2")
+	if id == "knight":
+		anims["cast"] = [KnightFx.ART + "CleaveOpening.png", 15, 30.0, false]
+		anims["cast2"] = [KnightFx.ART + "CleaveReturn.png", 15, 30.0, false]
+		anims["cast_finisher"] = [KnightFx.ART + "CleaveFinisher.png", 15, 30.0, false]
+	if skill_anims or id in ["knight", "rogue"]:
+		var release_frame := 4 if id == "knight" else 0
+		anims["skill"] = [d + "CastSpell.png", 15, 30.0, false, release_frame]
+		var ult_pose := "ShieldBlockStart" if ult_skill == "guardian_angel" else "Special1"
+		anims["ult"] = [d + ult_pose + ".png", 15, 30.0, false]
 	for a: String in Player.RUN_ANIMS:   # backpedal / strafe sheets; a unit without one falls back to "run" (Player._run_anim)
 		if not anims.has(a) and ResourceLoader.exists(d + Player.RUN_SHEETS[a]):
-			anims[a] = [d + Player.RUN_SHEETS[a], 15, 24.0]
+			anims[a] = [d + Player.RUN_SHEETS[a], 15, stride_fps]
 	return SheetFrames.build_dirs(anims)
 
 ## Facing the camera (south).

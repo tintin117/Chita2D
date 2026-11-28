@@ -8,6 +8,14 @@ const BACKDROP := preload("res://assets/ui/arena-diorama.png")
 const ABILITIES := preload("res://assets/ui/ability-icons.png")
 const EQUIPMENT := preload("res://assets/ui/equipment-icons.png")
 const PORTRAITS := preload("res://assets/ui/fighter-sprites.png")
+const CHAOS_LORD_PORTRAIT := preload("res://assets/isometric_character/10ChaosLord/Portrait.png")
+const ROGUE_PORTRAIT := preload("res://assets/isometric_character/11Rogue/Portrait.png")
+const HERO_SKILLS := {
+	"knight": preload("res://assets/isometric_projecttile/Spells/Knight/SkillIcons.png"),
+	"rogue": preload("res://assets/isometric_projecttile/Spells/Rogue/SkillIcons.png"),
+	"paladin": preload("res://assets/isometric_projecttile/Spells/Paladin/SkillIcons.png"),
+	"chaoslord": preload("res://assets/isometric_projecttile/Spells/ChaosLord/SkillIcons.png"),
+}
 const CROWN := preload("res://assets/ui/crown.png")
 const SWORDS := preload("res://assets/ui/crossed-swords.png")
 # Navy, blue and gold from the sheet, plus parchment text; the last three only say something (health, ready, danger).
@@ -39,7 +47,7 @@ const PORTRAIT_CELLS := {
 const SKILL_COLUMNS := 5
 const SKILL_COLUMNS_BY_HERO := {"knight": 0, "rogue": 1, "wizard": 2, "ranger": 3, "bonker": 4}
 
-static var _skills: Dictionary[int, Texture2D] = {}
+static var _skills: Dictionary[String, Texture2D] = {}
 static var _faded: StyleBoxFlat
 
 static func backdrop(root: Control, veil := 0.0) -> void:
@@ -185,16 +193,46 @@ static func focusable(node: Control) -> Array[Control]:
 			items.append_array(focusable(child))
 	return items
 
+static func selection_portrait(hero: Hero) -> Texture2D:
+	var path := "res://assets/ui/hero_portraits/%s.png" % hero.id
+	if ResourceLoader.exists(path, "Texture2D"):
+		return load(path) as Texture2D
+	return portrait(hero, Hero.COLOR_ORDER[0])
+
+static func draw_selection_portrait(canvas: CanvasItem, texture: Texture2D, rect: Rect2) -> void:
+	var texture_size := texture.get_size()
+	var zoom := maxf(rect.size.x / texture_size.x, rect.size.y / texture_size.y) * 1.08
+	var crop_size := rect.size / zoom
+	# Bias the crop up so the face stays in view when the slot is wider than the portrait.
+	var crop_origin := (texture_size - crop_size) * Vector2(0.5, 0.18)
+	canvas.draw_texture_rect_region(texture, rect, Rect2(crop_origin, crop_size))
+
 static func portrait(hero: Hero, color: String) -> Texture2D:
+	if hero.id == "chaoslord":
+		return _atlas_cell(CHAOS_LORD_PORTRAIT, 0, 1)
+	if hero.id == "rogue":
+		return _atlas_cell(ROGUE_PORTRAIT, 0, 1)
 	var variant := maxi(Hero.COLOR_ORDER.find(color), 0) % hero.units.size()
 	return _atlas_cell(PORTRAITS, PORTRAIT_CELLS.get(hero.units[variant], 0), 3)
 
+static func has_kit_art(hero: Hero) -> bool:
+	return HERO_SKILLS.has(hero.id)
+
+static func passive_icon(hero: Hero) -> Texture2D:
+	return skill_icon(hero, 2) if has_kit_art(hero) else null
+
+static func ult_icon(hero: Hero) -> Texture2D:
+	return skill_icon(hero, 3) if has_kit_art(hero) else null
+
 static func skill_icon(hero: Hero, slot: int) -> Texture2D:
+	var art: Texture2D = HERO_SKILLS.get(hero.id, ABILITIES)
+	var columns := 1 if art != ABILITIES else SKILL_COLUMNS
 	var column: int = SKILL_COLUMNS_BY_HERO.get(hero.base_id if hero.base_id != "" else hero.id, 0)   # a placeholder borrows its base's icons
-	var cell := column + slot * SKILL_COLUMNS
-	if not _skills.has(cell):
-		_skills[cell] = _atlas_cell(ABILITIES, cell, SKILL_COLUMNS)
-	return _skills[cell]
+	var cell := column + slot * columns if art == ABILITIES else slot
+	var key := "%s:%d" % [art.resource_path, cell]
+	if not _skills.has(key):
+		_skills[key] = _atlas_cell(art, cell, columns)
+	return _skills[key]
 
 static func gear_icon(slot: String) -> Texture2D:
 	var cell: int = {"weapon": 1, "armor": 2, "trinket": 3}[slot]
@@ -242,8 +280,7 @@ static func skill_info(hero: Hero, slot: int) -> Array[String]:
 		return ["No ult yet", "This hero has no ult."]
 	return [Hero.make_skill(hero.ult_skill).display_name, hero.ult_text]
 
-## Draws kit slot `slot` as a tile in `r`: the icon sheet for the basic and RMB; the passive and the ult have no art
-## yet, so the same initials / ULT tiles the in-game HUD uses.
+## Draws a kit tile, with initials for passives without dedicated artwork.
 static func draw_skill(canvas: CanvasItem, hero: Hero, slot: int, r: Rect2) -> void:
 	var font := BODY
 	canvas.draw_rect(r, SHADE)
@@ -251,17 +288,25 @@ static func draw_skill(canvas: CanvasItem, hero: Hero, slot: int, r: Rect2) -> v
 		0, 1:
 			canvas.draw_texture_rect(skill_icon(hero, slot), r.grow(-r.size.x / 6.0), false)
 		2:
-			var initials := ""
-			for w in hero.passive_name.split(" "):
-				if w != "":
-					initials += w[0]
 			canvas.draw_rect(r.grow(-4.0), Color(PASSIVE_COLOR, 0.15))
-			canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 7), initials.to_upper() if initials != "" else "-",
-				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 20, PASSIVE_COLOR)
+			var icon := passive_icon(hero)
+			if icon:
+				canvas.draw_texture_rect(icon, r.grow(-r.size.x / 6.0), false)
+			else:
+				var initials := ""
+				for w in hero.passive_name.split(" "):
+					if w != "":
+						initials += w[0]
+				canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 7), initials.to_upper() if initials != "" else "-",
+					HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 20, PASSIVE_COLOR)
 		3:
 			canvas.draw_rect(r.grow(-4.0), Color(ULT_COLOR, 0.25))
-			canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 6), "ULT" if hero.ult_skill != "" else "-",
-				HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16, ULT_COLOR)
+			var icon := ult_icon(hero)
+			if icon:
+				canvas.draw_texture_rect(icon, r.grow(-r.size.x / 6.0), false)
+			else:
+				canvas.draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 6), "ULT" if hero.ult_skill != "" else "-",
+					HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16, ULT_COLOR)
 	canvas.draw_rect(r, EDGE, false, 2.0)
 
 ## The ornate menu panel. `corners` adds the flourishes along its bottom edge (and the room they need); without them

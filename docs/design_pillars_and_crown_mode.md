@@ -144,7 +144,7 @@ Weights: shield 5, ult 5, speed 4, heal 3, reset 3, warcry 1 (epic ~5%).
 | Then | one every 15 s, and one more every 3 further deaths | Kills pace the drops, not the clock. "Someone died, something fell" |
 | On the ground at once | 2 | 3 became decoration |
 | Despawn | 15 s, the ring shrinks, blinks the last 3 s | Now or never |
-| Take it | **commons: walk over.** Rare + epic: **channel**, stand still on it, no attack, 0.8 s rare / 1.5 s epic. Any hit, step or dash cancels | Cheap drops stay quick. The channel on the big ones is the telegraph: "I'm on it, come stop me." Bait / punish, the layer the FFA was missing |
+| Take it | **commons: walk over.** Rare + epic: **channel**, stand still on it, no attack, 0.5 s rare / 1.0 s epic. Any hit, step or dash cancels | Cheap drops stay quick. The channel on the big ones is the telegraph: "I'm on it, come stop me." Bait / punish, the layer the FFA was missing |
 | Rare + epic | fall on the centre circle only | The beam says "come to the fort". Everyone converges, the fight resolves |
 | Catch-up | a drop sometimes lands 300–600 px from whoever trails (chance grows with the gap). **Same kind**, only first option | Position, never power (pillar 7) |
 

@@ -10,6 +10,7 @@ signal fragged(victim: Player, killer_peer: int, cause: String)   ## online: emi
 
 const SLOTS := ["basic", "skill", "ult"]   ## input action suffixes; slot 0 = LMB basic, slot 1 = RMB skill, slot 2 = F ult (only heroes that have one)
 const ULT_SLOT := 2
+const PURIFY_IMPACT := "purify"
 const ULT_TAKEN := 0.35    ## damage taken fills the ult at this rate of damage dealt: the one getting beaten on gets a way back
 const WEAPON_CAST := 10    ## _net_cast slot offset meaning "the Friendslop weapon held in that slot"
 const SOLID_MASK := 1    ## collision layer of rocks and the dummy
@@ -99,6 +100,7 @@ var dash_recharge := 0.0
 var knock := Vector2.ZERO
 var _p := "p1_"
 var _dash_time := 0.0
+var _leap_settle_time := 0.0
 var _dash_vec := Vector2.RIGHT
 var _dash_speed := DASH_SPEED
 var _ghost := false        ## mid-dash: rocks do not block, only the hard walls
@@ -107,6 +109,10 @@ var _slow_left := 0.0
 var _slows: Array = []     ## active slows as [mult, seconds left]; the strongest one applies, each for its own time
 var _phase_left := 0.0     ## Shadow Step: untargetable and see-through
 var _cast_time := 0.0
+var _judgement_art: Judgement.Slam
+var _knight_sweep: HeroBasic.Sweep
+var _judgement_height := 0.0
+var _cast_facing := Vector2.ZERO
 var _queued := -1          ## buffered slot index, -1 = none
 var _queued_time := 0.0
 var _puppet := false       ## online and owned by another peer: no input, position comes from net_pos
@@ -232,15 +238,16 @@ static func is_local(n: Node) -> bool:
 ## camera shake only when `shaken` (the local human is the victim: shake means "you were hit", and landing a hit
 ## confirms with the freeze, spark, number and sound instead, so the shake never spoils your aim). `felt` (the local
 ## human dealt or took it) adds a beat to the freeze. Also used by the gym dummy.
-static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, shaken := false, attacker: Node = null) -> void:
+static func hit_fx(victim: Node2D, amount: int, felt: bool, killed := false, shaken := false, attacker: Node = null, show_impact := true) -> void:
 	if not victim.is_inside_tree():
 		return
 	var heavy := amount > KNOCK_LIGHT_DMG
-	var fx := SheetFrames.FX + ("AoE/FireAoE/" if heavy else "AoE/SwordAoE/")
-	var spark := SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 0, 40.0, 0.25 if heavy else 0.4)
-	spark.z_index = 20
-	if attacker is Player and attacker.hero:   # the spark wears the hitter's colour: you can read who hit whom
-		spark.modulate = attacker.hero.basic_color.lightened(0.35)
+	if show_impact:
+		var fx := SheetFrames.FX + ("AoE/FireAoE/" if heavy else "AoE/SwordAoE/")
+		var spark := SheetFrames.play_once(victim.get_parent(), victim.global_position + Vector2(0, -8), fx, 0, 40.0, 0.25 if heavy else 0.4)
+		spark.z_index = 20
+		if attacker is Player and attacker.hero:
+			spark.modulate = attacker.hero.basic_color.lightened(0.35)
 	var cam := victim.get_tree().get_first_node_in_group("camera") as GameCamera
 	if cam and shaken:
 		cam.shake(0.85 if killed else (0.6 if heavy else 0.3))
@@ -289,6 +296,14 @@ func _ready() -> void:
 	shape.position = Vector2(0, 14)
 	add_child(shape)
 	_sprite = AnimatedSprite2D.new()
+	if hero.id == "chaoslord":
+		var phase_material := ShaderMaterial.new()
+		phase_material.shader = preload("res://scenes/player/chaos_phase.gdshader")
+		_sprite.material = phase_material
+	elif hero.id == "knight":
+		var jump_material := ShaderMaterial.new()
+		jump_material.shader = preload("res://scenes/player/knight_air.gdshader")
+		_sprite.material = jump_material
 	_dirs = hero.dir_frames(TEAM_SPRITES[team] if team >= 0 else COLORS[player_index % COLORS.size()])
 	_sprite.sprite_frames = _dirs[1]
 	_sprite.offset = Vector2(0, -16)  # feet sit 41 px below the 128 px frame centre; at SPRITE_SCALE that lands them on the collider
@@ -668,6 +683,8 @@ func burdened() -> bool:
 	return crowned and crown_speed < 1.0
 
 func _draw() -> void:
+	if _judgement_height > 0.0 and not down:
+		KnightFx.draw_jump_shadow(self, _judgement_height / Judgement.HEIGHT)
 	if crowned and not down:
 		var beam := Color(1.0, 0.85, 0.3, 0.3)
 		draw_polygon(PackedVector2Array([Vector2(-20, 14), Vector2(20, 14), Vector2(9, -520), Vector2(-9, -520)]),
@@ -675,7 +692,7 @@ func _draw() -> void:
 		var c := PackedVector2Array([Vector2(-14, -92), Vector2(-14, -108), Vector2(-7, -100), Vector2(0, -112), Vector2(7, -100), Vector2(14, -108), Vector2(14, -92)])
 		draw_colored_polygon(c, Color(1.0, 0.85, 0.3))
 		draw_polyline(c + PackedVector2Array([c[0]]), Color.BLACK, 2.0)
-	if is_instance_valid(_hover) and not down:   # lock-on marker: this is who the next basic attack goes for
+	if is_instance_valid(_hover) and not down and not _target_in_fog(_hover):   # lock-on marker
 		var chasing := _hover == _chase   # orange while a held attack is walking to it
 		draw_arc(to_local(_hover.global_position) + Vector2(0, 14), 30.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.15, 0.95) if chasing else Color(1.0, 0.3, 0.25, 0.9), 4.0 if chasing else 3.0)
 	if not down:
@@ -819,8 +836,11 @@ func _physics_process(delta: float) -> void:
 	_move_in = move + chase
 	_tick_channel(delta)
 	if _dash_time > 0.0:
-		var part := minf(delta, _dash_time) / delta   # the last frame moves only what is left: no overshoot past the plan
+		var travel_left := maxf(_dash_time - _leap_settle_time, 0.0)
+		var part := minf(delta, travel_left) / delta   # end travel at the exact destination, then hold above it
 		_dash_time -= delta
+		if _leap_settle_time > 0.0 and _dash_time < 0.00001:
+			_dash_time = 0.0
 		velocity = _dash_vec * _dash_speed * part
 		if not _ghost and shore_guard(velocity) != velocity:   # a lunge (Shield Charge) runs on the ground: it stops at the shore
 			_dash_time = 0.0
@@ -832,7 +852,7 @@ func _physics_process(delta: float) -> void:
 		if _charge_slot >= 0:
 			cancel_charge()   # a stun breaks the draw
 	else:
-		if _dash_pressed() and dash_charges > 0 and not burdened() and _frozen_left <= 0.0 and _rooted_left <= 0.0 and _hex_left <= 0.0:
+		if can_start_dash() and _dash_pressed():
 			_start_dash(move)
 		if _frozen_left > 0.0:
 			chase = Vector2.ZERO   # rooted: a held attack cannot walk you anywhere either
@@ -865,7 +885,8 @@ func _tick_chase(move: Vector2) -> Vector2:
 	if not _held(0) or spell.reach() <= 0.0 or buffed("chicken") or _hex_left > 0.0:
 		_chase = null
 		return Vector2.ZERO
-	if not is_instance_valid(_chase) or _chase.down or _chase.global_position.distance_to(global_position) > CHASE_MAX:
+	if not is_instance_valid(_chase) or _chase.down or _target_in_fog(_chase) \
+			or _chase.global_position.distance_to(global_position) > CHASE_MAX:
 		_chase = null
 		if spell.target(self, aim_pos, aim_dir) == null:   # nobody lockable in reach already: pick the foe under the cursor
 			_chase = Spell.pick_foe(self, aim_pos, aim_dir, HeroBasic.LOCK_RADIUS, 0.0, CHASE_MAX)
@@ -875,7 +896,7 @@ func _tick_chase(move: Vector2) -> Vector2:
 		return Vector2.ZERO
 	var off := _chase.global_position - global_position
 	aim_dir = off.normalized()
-	if off.length() <= spell.reach() * 0.9:
+	if (off / spell.range_projection()).length() <= spell.reach() * 0.9:
 		return Vector2.ZERO
 	if _over_water(position + aim_dir * SHORE_LOOK):
 		return Vector2.ZERO
@@ -918,7 +939,7 @@ func _update_sink(delta: float) -> bool:
 
 ## Size, tint and wobble from the active forms (giant / chicken) and the sinking fade. self_modulate, so _flash() keeps its own tween.
 func _apply_look() -> void:
-	if burn != _burn_shown or _angel_left > 0.0 or _parry_left > 0.0 or _spin_left > 0.0 or _empowered_left > 0.0 or (ai and PlaySettings.bot_debug):
+	if burn != _burn_shown or _parry_left > 0.0 or _spin_left > 0.0 or _empowered_left > 0.0 or (ai and PlaySettings.bot_debug):
 		_burn_shown = burn
 		queue_redraw()   # the status marks below follow every frame while one is on
 	if charge_show > 0.0 or _charge_drawn:   # the aim line follows the aim every frame while drawing, on every screen
@@ -963,30 +984,28 @@ func _apply_look() -> void:
 	var sink := clampf(_sink / SINK_TIME, 0.0, 1.0)
 	_punch = move_toward(_punch, 0.0, get_physics_process_delta_time() * 7.0)
 	_sprite.scale = Vector2(1.0 + 0.3 * _punch, 1.0 - 0.3 * _punch) * s * (1.0 - 0.7 * sink) * SPRITE_SCALE
-	_sprite.position = Vector2(0, -(s - 1.0) * 20.0)   # keep the feet on the ground while resizing
+	_sprite.position = Vector2(0, -(s - 1.0) * 20.0 - _judgement_height)   # keep the feet on the ground while resizing
 	if _freeze > 0.0:
 		_freeze -= get_physics_process_delta_time()
 		_sprite.position.x += 3.0 if Engine.get_physics_frames() % 2 else -3.0   # shudder while the frame holds
-		if _freeze <= 0.0 and not down:
+		if _freeze <= 0.0 and not down and not is_instance_valid(_judgement_art) and (not is_instance_valid(_knight_sweep) or _cast_time <= 0.0):
 			_sprite.play()   # resumes the paused animation where it stopped
-	_sprite.self_modulate = Color(tint, (1.0 - sink) * (0.35 if _phase_left > 0.0 or veiled() else 1.0))
+	var phase_alpha := 0.87 if is_instance_valid(_judgement_art) else 0.35
+	_sprite.self_modulate = Color(tint, (1.0 - sink) * (phase_alpha if _phase_left > 0.0 or veiled() else 1.0))
 	modulate.a = 0.0 if veiled() and not is_local(self) else 1.0   # veiled: gone from everyone else's screen, name and bar too
 	if stalking() and not veiled():
 		if is_local(self):
 			_sprite.self_modulate.a *= 0.45   # you see yourself faded
 		else:
 			modulate.a = _stalk_alpha()
-	if MatchEvent.is_on(MatchEvent.FOG) and not is_local(self) and is_inside_tree():   # Fog: only what is near you shows
-		var viewer := _local_viewer(get_tree())
-		if viewer and viewer != self and not (team >= 0 and viewer.team == team):
-			var d := viewer.global_position.distance_to(global_position)
-			modulate.a = minf(modulate.a, clampf((FogOverlay.RADIUS + 40.0 - d) / 80.0, 0.0, 1.0))
 	if _vanish_left > 0.0:   # inside the Illusion Orb: gone (a ghost of himself on his own screen)
 		modulate.a = 0.25 if is_local(self) else 0.0
 	if (veiled() or stalking()) and not is_local(self) and is_inside_tree():
 		var me := _local_viewer(get_tree())
 		if me and me.sees_hidden(self):
 			modulate.a = maxf(modulate.a, 0.6)   # Darkvision: the Pactknight sees through it
+	if MatchEvent.is_on(MatchEvent.FOG) and not is_local(self) and is_inside_tree():
+		modulate.a = minf(modulate.a, FogOverlay.target_visibility(_local_viewer(get_tree()), self))
 
 ## Drowned: the owner announces the death, crediting the last player who hit us recently.
 func _fall() -> void:
@@ -1018,6 +1037,10 @@ func _dash_pressed() -> bool:
 	if _chat_locked():
 		return false
 	return ai.take_dash() if ai else Input.is_action_just_pressed(_p + "dash")
+
+func can_start_dash() -> bool:
+	return not down and _dash_time <= 0.0 and _stun_left <= 0.0 and _chrono_left <= 0.0 \
+		and dash_charges > 0 and not burdened() and _frozen_left <= 0.0 and _rooted_left <= 0.0 and _hex_left <= 0.0
 
 ## The mouse buttons (LMB, RMB) belong to the panel under the cursor; the ult's key still works.
 func _on_ui(slot: int) -> bool:
@@ -1055,14 +1078,18 @@ func lunge(vec: Vector2, time: float, spd: float) -> void:
 	_dash_vec = vec.normalized()
 	_dash_time = time
 	_dash_speed = spd
+	_leap_settle_time = 0.0
 
-## Jump by `offset` over `time` seconds (Judgement): a slow ghost dash, so it sails over rocks but not the room walls,
-## and lands on a free spot (_end_ghost). Owner only, like any movement.
-func leap(offset: Vector2, time: float) -> void:
+## Travel over rocks with the wall mask active. Settle in place before returning to the floor.
+## Only the owner moves the character.
+func leap(offset: Vector2, travel_time: float, settle_time := 0.0) -> void:
 	_cast_time = 0.0
 	_dash_vec = offset.normalized() if offset.length() > 1.0 else aim_dir
-	_dash_time = time
-	_dash_speed = offset.length() / maxf(time, 0.01)
+	_dash_time = travel_time + settle_time
+	_dash_speed = offset.length() / maxf(travel_time, 0.01)
+	_leap_settle_time = settle_time
+	if settle_time > 0.0:
+		velocity = Vector2.ZERO
 	_ghost = true
 	collision_mask = WALL_MASK
 	knock = Vector2.ZERO
@@ -1330,6 +1357,7 @@ func phase(secs: float) -> void:
 ## The dash is over: the rocks are solid again, so make sure we are not standing inside one.
 func _end_ghost() -> void:
 	_ghost = false
+	_leap_settle_time = 0.0
 	collision_mask = SOLID_MASK | WALL_MASK | LOW_MASK
 	position = free_spot(position)
 
@@ -1443,9 +1471,11 @@ func _start_dash(move: Vector2) -> void:
 	if dash_recharge <= 0.0:
 		dash_recharge = DASH_RECHARGE
 	_cast_time = 0.0  # dash cancels the cast lock
+	_clear_judgement_art()
 	Sfx.play("dash", global_position)
 	_dash_vec = move if move != Vector2.ZERO else aim_dir
 	_dash_time = dash_time_to_shore(global_position, _dash_vec * DASH_SPEED * DASH_TIME, DASH_TIME)
+	_leap_settle_time = 0.0
 	_dash_speed = DASH_SPEED
 	_ghost = true
 	collision_mask = WALL_MASK   # rocks are passable for the dash; the room walls still hold
@@ -1468,7 +1498,8 @@ func _firing() -> bool:
 func _chase_pending() -> bool:
 	if not is_instance_valid(_chase) or _chase.down:
 		return false
-	return global_position.distance_to(_chase.global_position) > spell_in(0).reach()
+	var spell := spell_in(0)
+	return ((_chase.global_position - global_position) / spell.range_projection()).length() > spell.reach()
 
 ## Hold-and-release (Power Shot). Owner only. Holding builds `charge` (faster standing still with Steady Aim), the aim
 ## stays free the whole time (puppets see it through the synced aim_dir and charge_show), and letting go, or holding to
@@ -1487,7 +1518,7 @@ func _tick_charge(delta: float) -> bool:
 	charge_show = clampf(_charge / spell.charge_time(), 0.01, 1.0)
 	if charge_show >= 1.0 and not was_full and is_local(self):
 		Sfx.play("crown", global_position, -6.0, 1.8)   # full draw: the ding that says let go
-	var release: bool = (not _held(_charge_slot)) if ai == null else (charge_show >= 1.0 or not ai.held[_charge_slot])   # a bot always draws to full
+	var release: bool = (not _held(_charge_slot)) if ai == null else (charge_show >= 1.0 or not ai.held[_charge_slot])
 	if release or _charge_held >= spell.max_hold():
 		var slot := _charge_slot
 		var p := charge_show
@@ -1518,6 +1549,8 @@ func on_hit_landed(amount: int) -> void:
 	var steal := hero.lifesteal + (ANGEL_STEAL if _angel_left > 0.0 else 0.0)
 	if steal > 0.0 and hp < max_hp:
 		heal(maxi(roundi(amount * steal), 1))
+		if hero.lifesteal > 0.0 and is_inside_tree():
+			SheetFrames.play_once(self, Vector2(0, -76), HammerThrow.SPARK_PATH, 1, 5.0, 1.2).z_index = 1
 		if online and is_inside_tree():
 			_net_hp.rpc(hp)
 
@@ -1572,6 +1605,8 @@ func _tick_status(delta: float) -> void:
 
 func guardian(secs: float) -> void:
 	_angel_left = secs
+	if secs > 0.0 and is_inside_tree():
+		GuardianAngel.show_mantle(self, secs)
 
 func parry(secs: float) -> void:
 	_parry_left = secs
@@ -1621,6 +1656,9 @@ func hidden_from(viewer: Node2D) -> bool:
 		return true
 	return stalking() and viewer != null and viewer.global_position.distance_to(global_position) > STALK_SEEN
 
+func _target_in_fog(target: Node2D) -> bool:
+	return FogOverlay.fogged(self, target) or (target is Dummy and target.hidden_from(self))
+
 ## How visible a faded Rogue is to this screen's player: 0 far away, a shimmer (0.35) once inside STALK_SEEN.
 func _stalk_alpha() -> float:
 	var me: Player = null
@@ -1645,6 +1683,8 @@ func focus_firing() -> bool:
 ## Returns true if it fired this frame.
 func _try_focus_fire() -> bool:
 	if not focus_firing() or _ff_target.down or spells.is_empty() or cooldowns[0] > 0.0 or weapon_active(0):
+		return false
+	if ai and _ff_target is Player and not ai.can_see_foe(_ff_target):
 		return false
 	var b := spell_in(0)
 	if global_position.distance_to(_ff_target.global_position) > b.reach() + 40.0:
@@ -1717,11 +1757,6 @@ func _draw_statuses() -> void:
 		draw_string_outline(font, Vector2(22, -64), "%d" % burn, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 4, Color.BLACK)
 		draw_string(font, Vector2(22, -64), "%d" % burn, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, col)
 	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.015)
-	if _angel_left > 0.0:   # a golden halo and wings of light
-		draw_arc(Vector2(0, -92), 16.0, 0.0, TAU, 24, Color(1.0, 0.9, 0.5, 0.9), 3.0)
-		draw_circle(Vector2(0, -20), 46.0 + 4.0 * pulse, Color(1.0, 0.9, 0.5, 0.15))
-		for sx in [-1.0, 1.0]:
-			draw_colored_polygon(PackedVector2Array([Vector2(8 * sx, -50), Vector2(46 * sx, -78), Vector2(36 * sx, -30)]), Color(1.0, 0.95, 0.7, 0.45))
 	if _parry_left > 0.0:   # a bright arc in front: hit me now and regret it
 		draw_arc(Vector2(0, -10), 40.0, aim_dir.angle() - 1.1, aim_dir.angle() + 1.1, 16, Color(0.75, 0.95, 1.0, 0.6 + 0.4 * pulse), 5.0)
 	if _spin_left > 0.0:
@@ -1835,7 +1870,19 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int, lock_path
 		BreakerWave.spawn(self, dir)
 	break_stalk()
 	rng.seed = seed_value
+	_cast_facing = Vector2.ZERO
+	_knight_sweep = null
+	_clear_judgement_art()
 	spell.lock = null if lock_path.is_empty() else get_node_or_null(lock_path) as Node2D   # node paths match on every peer
+	if hero and hero.id in ["chaoslord", "knight", "rogue"] and weapon == null:
+		var cast_direction := Stillwake.spot(global_position, pos) - global_position if spell is Stillwake else dir
+		if spell is SmokeScreen:
+			cast_direction = SmokeScreen.spot(global_position, pos) - global_position
+		elif spell is ReboundShield and is_instance_valid(spell.lock):
+			cast_direction = spell.lock.global_position - global_position
+		elif spell is Judgement:
+			cast_direction = pos - global_position
+		_face_cast(cast_direction)
 	spell.power = cast_power
 	var cd := spell.cast(self, dir, pos)
 	spell.lock = null
@@ -1853,29 +1900,62 @@ func _net_cast(slot: int, dir: Vector2, pos: Vector2, seed_value: int, lock_path
 	cooldowns[slot] = cd
 	cooldown_max[slot] = cd
 	_cast_time = clampf(cd, 0.25, SWING_TIME)  # cover fast-attack cooldowns so tapping never unlocks movement
+	if ai:
+		ai.on_spell_cast(slot)
 	_play_cast(slot, spell)
 
 ## The cast lock and its animation last this long at most, so the blade comes down when the hit lands
 ## (0.1 s windup + 0.12 s active) and you are free to move again right after.
 const SWING_TIME := 0.3
 
-## Alternates cast / cast2 on the basic, and stretches the anim to exactly fill the cast lock.
+## Alternates basic casts and stretches the chosen animation to fill the cast lock.
 func _play_cast(slot: int, spell: Spell) -> void:
 	Sfx.play(spell.sfx, global_position, spell.cast_vol, spell.cast_pitch)
-	if slot >= 1 and hero and is_inside_tree():   # a skill or an ult: a ring in the hero's colour at his feet, on every screen
+	var anim := "cast"
+	var frames := _sprite.sprite_frames
+	if slot == 0 and is_instance_valid(_knight_sweep) and frames.has_animation(_knight_sweep.pose):
+		anim = _knight_sweep.pose
+	elif slot == 0 and frames.has_animation("cast2"):
+		_swing = not _swing
+		anim = "cast2" if _swing else "cast"
+	elif slot == 1 and frames.has_animation("skill") and (not hero or hero.id != "knight" or spell is ReboundShield):
+		anim = "skill"
+	elif slot == ULT_SLOT and frames.has_animation("ult") and (not hero or hero.id != "knight" or spell is Judgement):
+		anim = "ult"
+	if anim == "cast" and slot >= 1 and hero and is_inside_tree():   # the default skill or ult ring
 		var flash := CastFlash.new()
 		flash.color = hero.basic_color
 		flash.big = slot == ULT_SLOT
 		flash.position = position
 		flash.z_index = 2
 		get_parent().add_child(flash)
-	var anim := "cast"
-	if slot == 0 and _sprite.sprite_frames.has_animation("cast2"):
-		_swing = not _swing
-		anim = "cast2" if _swing else "cast"
-	var frames := _sprite.sprite_frames
 	_sprite.speed_scale = frames.get_frame_count(anim) / frames.get_animation_speed(anim) / _cast_time
 	_sprite.play(anim)
+	if is_instance_valid(_judgement_art) and anim == "ult":
+		_sprite.pause()
+		_show_judgement_pose(0.0)
+	elif is_instance_valid(_knight_sweep) and anim == _knight_sweep.pose:
+		_sprite.pause()
+		_sprite.set_frame_and_progress(0, 0.0)
+
+func _show_judgement_pose(age: float) -> void:
+	if _sprite.animation != &"ult":
+		return
+	_sprite.set_frame_and_progress(Judgement.pose_at(age), 0.0)
+	_set_judgement_height(Judgement.height_at(age))
+
+func _set_judgement_height(height: float) -> void:
+	if _judgement_height == height:
+		return
+	_sprite.position.y += _judgement_height - height
+	_judgement_height = height
+	var material := _sprite.material as ShaderMaterial
+	material.set_shader_parameter("lift", smoothstep(0.0, 14.0, height))
+	queue_redraw()
+
+func _clear_judgement_art() -> void:
+	_judgement_art = null
+	_set_judgement_height(0.0)
 
 ## The cast flash (see _play_cast): one expanding ring for a skill, a ring and a glow for an ult.
 class CastFlash extends Node2D:
@@ -1904,10 +1984,20 @@ class CastFlash extends Node2D:
 const RUN_ANIMS := ["run", "strafe_r", "run_back", "strafe_l"]
 const RUN_SHEETS := {"run": "Run.png", "strafe_r": "StrafeRight.png", "run_back": "RunBackwards.png", "strafe_l": "StrafeLeft.png"}
 
+## Facing for the sprite and launch art only. Aim input is free to move during recovery.
+func _face_cast(direction: Vector2) -> void:
+	if direction.is_zero_approx() or not is_instance_valid(_sprite):
+		return
+	_cast_facing = direction.normalized()
+	_face_angle = direction.angle()
+	SheetFrames.face(_sprite, _dirs, _cast_facing, true)
+
 ## Always turns toward the aim (aim_dir is replicated, so puppets and bots show the same facing); the legs pick
 ## run / strafe / backpedal from the move direction relative to it, so walking away from the cursor never moonwalks.
 ## The turn is visual only: aim_dir, and so every hit, changes at once.
 func _animate(move: Vector2) -> void:
+	if is_instance_valid(_judgement_art) or (_cast_time > 0.0 and _cast_facing != Vector2.ZERO):
+		return
 	var turn := CAST_TURN_SPEED if _cast_time > 0.0 else TURN_SPEED
 	_face_angle = rotate_toward(_face_angle, aim_dir.angle(), turn * get_physics_process_delta_time())
 	SheetFrames.face(_sprite, _dirs, Vector2.from_angle(_face_angle))
@@ -1937,11 +2027,16 @@ func _run_anim(move: Vector2) -> String:
 ## Returns true when the hit landed (on other peers: when it looks like it did), so stuns and pulls skip a dodged hit.
 ## `cause` names the death in the kill feed when this hit kills ("" = "hit" from a player, "bomb" otherwise; an
 ## Explosion passes its own; "reflect" = Blademail, which also skips every attacker-side effect so it never chains).
-func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null, cause := "") -> bool:
+func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node = null, cause := "", impact_power := 0.0) -> bool:
 	if down:
 		return false
 	if attacker is Player and attacker != self and team >= 0 and attacker.team == team and not friendly_fire:
 		return false
+	var purify_impact := cause == PURIFY_IMPACT
+	var custom_impact := cause if has_custom_impact(cause) else ""
+	var shared_impact := not purify_impact and custom_impact == ""
+	if not shared_impact:
+		cause = ""   # use ordinary kill attribution for attacks with custom impact art
 	var reflected := cause == "reflect"
 	if not owns():
 		# Our own hit on somebody else's player: show the impact now instead of waiting for their peer's reply.
@@ -1949,7 +2044,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		if not silent and is_local(attacker):
 			_punch = 1.0
 			_flash()
-			hit_fx(self, amount, true, false, false, attacker)   # our hit on somebody else: the freeze, never a shake
+			hit_fx(self, amount, true, false, false, attacker, shared_impact)
 		if attacker is Player and attacker != self and attacker.owns() and not reflected:
 			attacker.on_hit_landed(amount)   # predicted like the impact above: the attacker's peer is the only one that banks it
 			_reflect(attacker, amount)
@@ -2020,13 +2115,21 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 		last_hit_peer = attacker.peer_id
 		last_hit_msec = Time.get_ticks_msec()
 	if not silent:   # rapid-tick hits (an ember field's burn) neither stagger nor grant i-frames
-		_iframes = ONLINE_HIT_IFRAMES if online else 0.7
-		knock = Vector2.ZERO if basic_hit else (global_position - from_pos).normalized() * knock_for(amount, float(hp) / max_hp) * form_knock(attacker)   # a basic only flinches its target
+		if not purify_impact:
+			_iframes = ONLINE_HIT_IFRAMES if online else 0.7
+		# Purify tracks one contact per sweep. It flinches without pushing foes past the returning ring.
+		knock = Vector2.ZERO if basic_hit or purify_impact else (global_position - from_pos).normalized() * knock_for(amount, float(hp) / max_hp) * form_knock(attacker)
 		var slow: Array = HIT_SLOW_HEAVY if amount > KNOCK_LIGHT_DMG else HIT_SLOW_LIGHT
 		apply_slow(slow[0], slow[1])
 		_punch = 1.0
+		if custom_impact != "" and amount > 0:
+			var impact_direction := (global_position - from_pos).normalized()
+			if online:
+				_net_custom_impact.rpc(custom_impact, impact_direction, impact_power)
+			else:
+				_net_custom_impact(custom_impact, impact_direction, impact_power)
 		if hp > 0 or not online:   # an online kill gets its bigger impact from _net_died, on every peer
-			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0, is_local(self), attacker)
+			hit_fx(self, amount, is_local(self) or is_local(attacker), hp == 0, is_local(self), attacker, shared_impact)
 	if reflected:   # Blademail: a grey number and a tink, so the attacker reads what just bit him
 		float_text("-%d" % amount, MatchEvent.color(MatchEvent.BLADEMAIL), 15)
 		Sfx.play("hit", global_position, -10.0, 1.7)
@@ -2043,7 +2146,7 @@ func take_damage(amount: int, from_pos: Vector2, silent := false, attacker: Node
 	if hp == 0:
 		if cause == "":
 			cause = "hit" if attacker is Player else "bomb"   # no attacker = an ownerless Explosion (the hot potato)
-		_net_died.rpc(attacker.peer_id if attacker is Player else 0, cause)
+		_net_died.rpc(attacker.peer_id if attacker is Player else 0, cause, custom_impact != "" and not silent)
 	else:
 		_net_hp.rpc(hp)
 	return true
@@ -2063,8 +2166,11 @@ func _hit_number(amount: int) -> void:
 	float_text(str(amount), Color(1.0, 0.9, 0.5), 16 + mini(amount / 2, 14))
 
 func _die() -> void:
+	_clear_judgement_art()
 	down = true
 	cancel_charge()
+	if ai:
+		ai.reset_intent()
 	stop_channel()
 	shield_hp = 0
 	queue_redraw()
@@ -2089,15 +2195,30 @@ func _net_hp(value: int) -> void:
 	hp = value
 	hp_changed.emit(hp, max_hp)
 
+static func has_custom_impact(kind: String) -> bool:
+	return ChaosFx.is_impact(kind) or KnightFx.is_impact(kind) or kind in [HeroBasic.ROGUE_STAB_HIT, HeroBasic.ROGUE_RUSH_HIT]
+
+static func play_custom_impact(victim: Node2D, kind: String, direction: Vector2, power: float) -> void:
+	if KnightFx.is_impact(kind):
+		KnightFx.victim_impact(victim, kind, direction)
+	elif ChaosFx.is_impact(kind):
+		ChaosFx.victim_impact(victim, kind, direction, power)
+	elif kind in [HeroBasic.ROGUE_STAB_HIT, HeroBasic.ROGUE_RUSH_HIT]:
+		HeroBasic.rogue_impact(victim, direction, kind == HeroBasic.ROGUE_RUSH_HIT)
+
 @rpc("authority", "call_local", "reliable")
-func _net_died(killer_peer: int, cause: String) -> void:
+func _net_custom_impact(kind: String, direction: Vector2, power: float) -> void:
+	play_custom_impact(self, kind, direction, power)
+
+@rpc("authority", "call_local", "reliable")
+func _net_died(killer_peer: int, cause: String, custom_impact := false) -> void:
 	hp = 0
 	hp_changed.emit(hp, max_hp)
 	Sfx.play("death", global_position)
 	_sink = SINK_TIME if cause == "fall" else 0.0   # a drowned player stays under until the respawn
 	_die()
 	if cause != "fall":   # everyone sees the burst; only the killer and the victim feel the shake and the freeze
-		hit_fx(self, 99, is_local(self) or (cause == "hit" and killer_peer == Net.local_id()), true, is_local(self))
+		hit_fx(self, 99, is_local(self) or (cause == "hit" and killer_peer == Net.local_id()), true, is_local(self), null, not custom_impact)
 	fragged.emit(self, killer_peer, cause)
 	if killer_peer != 0 and killer_peer != peer_id and is_inside_tree():   # Fiend's Toll
 		for n in get_tree().get_nodes_in_group("players"):
@@ -2117,6 +2238,7 @@ func _net_respawn(pos: Vector2) -> void:
 	net_pos = pos
 	knock = Vector2.ZERO
 	_dash_time = 0.0
+	_leap_settle_time = 0.0
 	_slows.clear()
 	_slow_left = 0.0
 	_slow_mult = 1.0
@@ -2134,6 +2256,7 @@ func _net_respawn(pos: Vector2) -> void:
 	_revealed_left = 0.0
 	_ff_left = 0.0
 	_phase_left = 0.0
+	_clear_judgement_art()
 	_hex_left = 0.0
 	_vanish_left = 0.0
 	_chrono_left = 0.0

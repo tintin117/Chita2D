@@ -19,19 +19,19 @@ config/icon="res://icon.svg"
 
 Net="*res://scripts/net/net.gd"
 Sfx="*res://scripts/sfx.gd"
+ClientDisplay="*res://scripts/client_display.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
-window/size/mode=3
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg", "res://addons/godotsteam/plugin.cfg")
+enabled=PackedStringArray("res://addons/chita_arena_builder/plugin.cfg", "res://addons/godot_ai/plugin.cfg", "res://addons/godotsteam/plugin.cfg")
 
 [input]
 

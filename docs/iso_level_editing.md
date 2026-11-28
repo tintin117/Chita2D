@@ -10,8 +10,32 @@ Main menu > Practice vs Bots > Arena.
 | Three Bridges | `three_bridges.tscn` |
 | The Wheel | `wheel.tscn` |
 | Archipelago | `archipelago.tscn` |
+| Colosseum | `colosseum.tscn` |
+| Brookside Village | `market_square.tscn` |
+| Forest Shrine | `forest_shrine.tscn` |
 
-The Colosseum is drawn by code (`scripts/world/colosseum.gd`) and is not editable this way.
+Brookside’s main fight is at the market bend. A service lane skirts the back of the shops and the orchard path wraps around the south. Keep the sprite foot and cover center on the same point when placing village props. The `GroundShadow` child follows its prop. Size the shadow to the wall, trunk or legs at ground level.
+
+Forest Shrine uses the painted `Ground` layer for walking and bot routes. The stair nodes draw on that layer’s 2:1 axes. Place columns and ruined walls as solid cover, and keep the tree line outside the routes to the crown.
+
+Colosseum has a continuous sand floor with staggered timber barricades under `FreeProps`. Its seating, arcade walls, portcullises, bridge threshold, and hard collision rim share the ellipse in `scenes/levels/colosseum_rim.gd`. Keep the painted floor aligned with that rim when reshaping the bowl. The canyon surrounds the bowl, and both gates are barred during matches.
+
+The scene-based arenas use a 2:1 ground grid. The original heroes stay upright and sort by their feet. Keep taller cover on the same Y-sorted plane, scale uniformly, and align its visible base to the collider. Shore faces extend down from the painted ground and are generated from the exposed front edges. They sit below the walkable surface.
+
+Use SmallScale Interactive's [Top-Down Pixel Characters 1](https://assetstore.unity.com/packages/2d/characters/top-down-pixel-characters-1-288147) and the publisher's [2D Fantasy Tileset](https://assetstore.unity.com/packages/2d/environments/2d-fantasy-tileset-336410) as the character and environment references. For architecture, compare both ground axes on the paving and wall bases. Match door and prop scale to a standing hero at combat zoom and check the overlap when the hero walks in front of and behind the prop. The 2:1 editor grid establishes the floor angle. Material detail, shading, silhouettes, and cast shadows establish the environment style.
+
+`arena_surfaces.png` contains the original projected floor and water tiles used for this redesign, with six variants per material. `court_pillar.png` and `court_pillar_broken.png` are original hand-drawn pixel sprites. The original prop atlas remains available in the TileSet.
+
+## Arena Builder dock
+
+Open **Arena Builder** in the right dock and pick an arena from the map dropdown. Switching maps opens the selected scene in the 2D editor and turns off placement. If the viewport opens on water, click **Select crown**, then press **F** over the 2D viewport to frame the arena center.
+
+1. Turn on **Place in viewport**. Pick **Solid cover**, **Decor**, **Team spawn**, or **Crown center**.
+2. Pick a prop thumbnail or the spawn to move. **Prop size** starts at 100% of the selected asset’s recommended size and can be set from 50% to 200%. The preview shows the sprite, contact point and scaled collision radius. A red marker indicates water.
+3. Click the viewport to place. Props are selectable instances under `FreeProps`. **Snap to ground cell** centers props and markers on the grid. A snapped prop replaces the existing snapped prop or painted tile in its category at that cell. Turn snap off to place at the cursor. Each click is undoable.
+4. Click **Validate arena** to see the bot routes and reported spawn problems. Repeat validation after terrain edits to refresh the shore and routes. Turn off **Place in viewport** to resume normal selection and TileMap painting.
+
+For the camera reference, open [Projection Lab](../scenes/levels/projection_lab.tscn) and press **F6**. It uses the current arena tiles, Paladin, Ranger, and a tall stone. Press **1** or **2** for the game’s normal zoom endpoints, **G** for the diamond guide, and **C** to compare Purify’s ground ring with the tile grid.
 
 ## New arena
 

@@ -34,9 +34,10 @@ static func length_along(from: Vector2, dir: Vector2, foes: Array[Node2D]) -> fl
 	return minf(reach, RANGE + BEHIND)
 
 class Trail extends Node2D:
-	## A fading streak from the start to the landing, and a frost ring on everyone caught.
 	var a := Vector2.ZERO
 	var b := Vector2.ZERO
+	var afterimage: Texture2D
+	var sprite_offset := Vector2.ZERO
 	var caught: Array[Vector2] = []
 	var _age := 0.0
 	const LIFE := 0.45
@@ -48,9 +49,15 @@ class Trail extends Node2D:
 		queue_redraw()
 
 	func _draw() -> void:
-		var k := 1.0 - _age / LIFE
-		draw_line(a, b, Color(ShadowRush.ICE, 0.25 * k), 26.0 * k + 2.0)
-		draw_line(a, b, Color(1, 1, 1, 0.7 * k), 4.0)
+		var k := clampf(1.0 - _age / LIFE, 0.0, 1.0)
+		if afterimage:
+			var size := afterimage.get_size() * Player.SPRITE_SCALE
+			for i in 3:
+				var point := a.lerp(b, 0.12 + 0.28 * i)
+				var strength := (0.29 + 0.10 * i) * k * k
+				draw_texture_rect(afterimage, Rect2(point + sprite_offset - size * 0.5, size), false,
+					Color(0.67, 0.76, 1.0, strength))
+		draw_line(a + Vector2(0, 18), b + Vector2(0, 18), Color(0.42, 0.53, 0.78, 0.35 * k), 2.0)
 		for p in caught:
 			draw_arc(p + Vector2(0, 14), 30.0 + 20.0 * (1.0 - k), 0.0, TAU, 24, Color(ShadowRush.ICE, k), 4.0)
 
@@ -72,21 +79,24 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 		if not wall.is_empty():
 			to = wall.position - dir * 24.0
 	var caught := hits(from, to, foes)
-	var dust := SheetFrames.FX + "AoE/DeathAoE/"
-	SheetFrames.play_once(caster.get_parent(), from + Vector2(0, 20), dust, 0, 30.0, 0.25)
 	caster.phase(PHASE)
 	var trail := Trail.new()
 	trail.z_index = 6
+	trail.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	trail.a = from
 	trail.b = to
+	if caster is Player and not caster._dirs.is_empty():
+		var art: SpriteFrames = caster._dirs[SheetFrames.facing_index(dir)]
+		if art.has_animation("skill"):
+			trail.afterimage = art.get_frame_texture("skill", 0)
+			trail.sprite_offset = caster._sprite.offset * Player.SPRITE_SCALE
 	for e in caught:
-		trail.caught.append(e.global_position)
-		if e.take_damage(damage, from, false, caster):   # dodged (dash / i-frames): no freeze
+		if e.take_damage(damage, from, false, caster, HeroBasic.ROGUE_RUSH_HIT):   # dodged (dash / i-frames): no freeze
 			Spell.freeze(e, FREEZE)
+			trail.caught.append(e.global_position)
 	if caster.owns():   # only the owner moves it; everyone else sees it arrive through the replicated position
 		caster.blink_to(to)
 		if not caught.is_empty():
 			caster.aim_dir = (caught.back().global_position - caster.global_position).normalized()   # turn to face the backs
 	caster.get_parent().add_child(trail)
-	SheetFrames.play_once(caster.get_parent(), to + Vector2(0, 20), dust, 0, 30.0, 0.25)
 	return cooldown

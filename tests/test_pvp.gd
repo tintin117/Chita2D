@@ -7,6 +7,28 @@ const PvpMatch := preload("res://scenes/pvp_match.gd")
 func suite_name() -> String:
 	return "pvp"
 
+func test_fog_targeting_uses_the_visual_cutoff() -> void:
+	var viewer := Player.new()
+	var enemy := Player.new()
+	track(viewer)
+	track(enemy)
+	viewer.team = 0
+	enemy.team = 1
+	var previous := MatchEvent.current
+	MatchEvent.current = MatchEvent.FOG
+	enemy.position.x = FogOverlay.ENEMY_FADE_START
+	assert_eq(FogOverlay.target_visibility(viewer, enemy), 1.0)
+	enemy.position.x = FogOverlay.RADIUS
+	assert_eq(FogOverlay.target_visibility(viewer, enemy), 0.5)
+	assert_false(FogOverlay.fogged(viewer, enemy))
+	enemy.position.x = FogOverlay.ENEMY_HIDE_DISTANCE
+	assert_eq(FogOverlay.target_visibility(viewer, enemy), 0.0)
+	assert_true(FogOverlay.fogged(viewer, enemy))
+	enemy.team = viewer.team
+	assert_eq(FogOverlay.target_visibility(viewer, enemy), 1.0)
+	assert_false(FogOverlay.fogged(viewer, enemy))
+	MatchEvent.current = previous
+
 func _arena() -> WorldMap:
 	var m := WorldMap.new()
 	track(m)
@@ -555,8 +577,10 @@ func test_classic_table_has_no_stat_sticks() -> void:
 
 func test_channel_time_per_tier_and_mode() -> void:
 	assert_eq(GameMode.channel_time("classic", PvpPickup.Tier.COMMON), 0.0, "commons: walk over them")
-	assert_eq(GameMode.channel_time("classic", PvpPickup.Tier.RARE), 0.8)
-	assert_eq(GameMode.channel_time("classic", PvpPickup.Tier.EPIC), 1.5)
+	assert_eq(GameMode.channel_time("classic", PvpPickup.Tier.RARE), 0.5)
+	assert_eq(GameMode.channel_time("classic", PvpPickup.Tier.EPIC), 1.0)
+	assert_eq(GameMode.channel_time("crown", PvpPickup.Tier.RARE), 0.5)
+	assert_eq(GameMode.channel_time("crown", PvpPickup.Tier.EPIC), 1.0)
 	assert_eq(GameMode.channel_time("friendslop", PvpPickup.Tier.EPIC), 0.0, "Friendslop: walk over it")
 	var c := GameMode.cfg("classic")
 	assert_eq(c.drop_after_deaths, 3, "no drops before the third death")

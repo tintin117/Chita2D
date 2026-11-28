@@ -4,6 +4,8 @@ extends Control
 const PICK_TIME := 30.0
 
 var _online := false
+var _solo_match := false
+var _has_roster := false
 var _time_left := PICK_TIME
 var _ready_btn: Button
 var _timer_label: Label
@@ -21,7 +23,6 @@ var _hero: Hero
 var _skill := 1            ## kit slot whose text is open; hovering a tile previews it without changing this
 var _cards: GridContainer
 var _card_group: ButtonGroup
-var _card_color := "Blue"
 var _konami := 0           ## how far into the Konami code the last presses got
 
 const KONAMI_KEYS := [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT, KEY_B, KEY_A]
@@ -74,14 +75,16 @@ func _input(event: InputEvent) -> void:
 func _unlock(hero: Hero) -> void:
 	PlaySettings.save()
 	Sfx.play("crown", Vector2.INF, 0.0, 0.8)
-	var card := _card(hero, _card_color, _card_group, false)
+	var card := _card(hero, _card_group, false)
 	_cards.columns = ceili(Hero.pickable().size() / 2.0)   # 7 + 6 or 7 + 7: still two rows, nothing pushed off the screen
 	_cards.add_child(card)
 	card.button_pressed = true
 	card.pressed.emit()   # picks him (Net.set_hero) and shows his card
 
 func _ready() -> void:
-	_online = not Net.roster.is_empty()
+	_solo_match = Net.solo
+	_online = not Net.roster.is_empty() and not _solo_match
+	_has_roster = not Net.roster.is_empty()
 	theme = ArenaUi.THEME
 	ArenaUi.backdrop(self, 0.92)
 
@@ -119,14 +122,9 @@ func _ready() -> void:
 	var group := ButtonGroup.new()
 	_card_group = group
 	var selected := Hero.by_id(Net.my_hero)
-	var color := Player.COLORS[0]
-	if _online and Net.roster.has(Net.local_id()):
-		var info: Dictionary = Net.roster[Net.local_id()]
-		color = Player.TEAM_SPRITES[info.team] if Net.is_team_mode() else Player.COLORS[info.slot % Player.COLORS.size()]
-	_card_color = color
 	var initial: Button
 	for hero in Hero.pickable():
-		var card := _card(hero, color, group, selected.id == hero.id)
+		var card := _card(hero, group, selected.id == hero.id)
 		cards.add_child(card)
 		if selected.id == hero.id:
 			initial = card
@@ -163,29 +161,31 @@ func _ready() -> void:
 		tile.toggle_mode = true
 		tile.button_group = group_skill
 		tile.button_pressed = slot == _skill
-		tile.focus_mode = Control.FOCUS_NONE
+		tile.focus_mode = Control.FOCUS_ALL
 		tile.custom_minimum_size = Vector2(72, 82)
-		tile.pressed.connect(func() -> void:
-			_skill = slot
-			_show_skill(slot))
+		tile.pressed.connect(_select_skill.bind(slot))
+		tile.focus_entered.connect(_select_skill.bind(slot))
 		tile.mouse_entered.connect(_show_skill.bind(slot))
 		tile.mouse_exited.connect(func() -> void: _show_skill(_skill))
 		kit.add_child(tile)
 		_tiles.append(tile)
+	for i in _tiles.size():
+		_tiles[i].focus_neighbor_left = _tiles[i].get_path_to(_tiles[posmod(i - 1, _tiles.size())])
+		_tiles[i].focus_neighbor_right = _tiles[i].get_path_to(_tiles[posmod(i + 1, _tiles.size())])
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.add_theme_constant_override("separation", 2)
 	kit.add_child(words)
-	_skill_name = ArenaUi.label("", 20, ArenaUi.SUN)
+	_skill_name = ArenaUi.label("", 24, ArenaUi.SUN)
 	words.add_child(_skill_name)
-	_skill_text = ArenaUi.label("", 16)
+	_skill_text = ArenaUi.label("", 17)
 	_skill_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_skill_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_skill_text.custom_minimum_size.y = 60
+	_skill_text.custom_minimum_size.y = 56
 	words.add_child(_skill_text)
+	words.add_child(ArenaUi.label("Browse skills with Q / E or LB / RB", 14, ArenaUi.MUTED))
 	_show_hero(selected)
 
-	if _online:
+	if _has_roster:
 		_roster = GridContainer.new()
 		_roster.columns = 4
 		_roster.add_theme_constant_override("v_separation", 3)
@@ -204,43 +204,49 @@ func _ready() -> void:
 		_ready_btn.toggle_mode = true
 		_ready_btn.custom_minimum_size.x = 152
 		actions.add_child(_ready_btn)
-		Net.roster_changed.connect(_refresh_status)
-		_refresh_status()
-		if Net.dev_enet or Net.solo_auto:
-			_ready_btn.button_pressed = true
-			_on_ready_toggled()
+	elif _solo_match:
+		_status = ArenaUi.label("", 16, ArenaUi.MUTED)
+		_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(_status)
+		actions.add_child(ArenaUi.button("Back to menu", Net.leave))
+		var start := ArenaUi.button("Start match", _start_solo_match, true)
+		start.custom_minimum_size.x = 152
+		actions.add_child(start)
 	else:
 		actions.add_child(ArenaUi.button("Back", _go_back))
 		var enter := ArenaUi.button("Enter Gym", func() -> void:
 			get_tree().change_scene_to_file("res://scenes/gym.tscn"), true)
 		enter.custom_minimum_size.x = 152
 		actions.add_child(enter)
+	if _has_roster:
+		Net.roster_changed.connect(_refresh_status)
+		_refresh_status()
+	if _online and (Net.dev_enet or Net.solo_auto):
+		_ready_btn.button_pressed = true
+		_on_ready_toggled()
+	elif _solo_match and Net.solo_auto:
+		call_deferred("_start_solo_match")
 	if is_instance_valid(initial) and not initial.disabled:
 		ArenaUi.defer_focus(initial)
 	var chat := ChatBox.new()   # online only (ChatBox.online_only)
 	chat.bottom_margin = 48.0
 	add_child(chat)
 
-func _card(hero: Hero, color: String, group: ButtonGroup, selected: bool) -> Button:
-	var card := ArenaUi.button("", func() -> void:
+func _card(hero: Hero, group: ButtonGroup, selected: bool) -> Button:
+	var card := FighterCard.new()
+	card.pressed.connect(func() -> void:
 		Net.set_hero(hero.id)
 		_show_hero(hero))
+	card.hero_name = hero.display_name
+	card.portrait = ArenaUi.selection_portrait(hero)
 	card.theme_type_variation = &"CardButton"
 	card.toggle_mode = true
 	card.button_group = group
 	card.button_pressed = selected
+	card.accessibility_name = hero.display_name
 	card.tooltip_text = hero.display_name
-	card.custom_minimum_size = Vector2(120, 112)   # 7 across still fits the 904 px column
+	card.custom_minimum_size = Vector2(120, 124)   # 7 across still fits the 904 px column
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.text = hero.display_name
-	card.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-	card.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card.expand_icon = false
-	card.add_theme_constant_override("icon_max_width", 76)
-	if hero.base_id != "":
-		card.modulate = hero.tint.lerp(Color.WHITE, 0.4)   # heroes 5-8 share sprite layouts with 1-4: the tint tells them apart
-	card.add_theme_font_size_override("font_size", 16)
-	card.icon = ArenaUi.portrait(hero, color)
 	_hero_buttons.append(card)
 	return card
 
@@ -257,9 +263,37 @@ func _show_hero(hero: Hero) -> void:
 
 func _show_skill(slot: int) -> void:
 	var info := ArenaUi.skill_info(_hero, slot)
-	_skill_name.text = "%s  /  %s" % [ArenaUi.skill_key(slot, 0), info[0]]
+	_skill_name.text = info[0]
 	_skill_name.add_theme_color_override("font_color", ArenaUi.skill_color(slot))
 	_skill_text.text = info[1]
+
+func _select_skill(slot: int) -> void:
+	_skill = slot
+	for tile in _tiles:
+		tile.button_pressed = tile.slot == slot
+	_show_skill(slot)
+
+func _step_skill(direction: int) -> void:
+	_select_skill(posmod(_skill + direction, ArenaUi.SKILL_SLOTS))
+
+class FighterCard extends Button:
+	var hero_name := ""
+	var portrait: Texture2D
+
+	func _draw() -> void:
+		const INSET := 7.0
+		const NAME_HEIGHT := 25.0
+		var art := Rect2(INSET, INSET, size.x - INSET * 2.0, size.y - INSET * 2.0 - NAME_HEIGHT)
+		var name_strip := Rect2(art.position.x, art.end.y, art.size.x, NAME_HEIGHT)
+		var art_bg := ArenaUi.SLATE if is_hovered() and not disabled else ArenaUi.SHADE
+		draw_rect(art, art_bg)
+		ArenaUi.draw_selection_portrait(self, portrait, art)
+		draw_rect(name_strip, ArenaUi.SUN if button_pressed else ArenaUi.NIGHT)
+		var ink := ArenaUi.NIGHT if button_pressed else ArenaUi.INK
+		var font := ArenaUi.BODY
+		const NAME_SIZE := 18
+		var baseline := name_strip.get_center().y + (font.get_ascent(NAME_SIZE) - font.get_descent(NAME_SIZE)) * 0.5
+		draw_string(font, Vector2(name_strip.position.x, roundf(baseline)), hero_name, HORIZONTAL_ALIGNMENT_CENTER, name_strip.size.x, NAME_SIZE, ink)
 
 ## One kit slot as a toggle button (lit while its text is open): the icon tile on top, its key under it. The theme
 ## draws the button frame, the tile is drawn over it.
@@ -278,15 +312,30 @@ class SkillTile extends Button:
 			ArenaUi.SHADE if button_pressed else ArenaUi.INK)   # a pressed tile is gold
 
 func _go_back() -> void:
-	if _online:
+	if _has_roster:
 		Net.leave()
 	else:
 		get_tree().change_scene_to_file(Net.MENU_SCENE)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if ChatBox.typing:
+		return
+	var key := event as InputEventKey
+	if key and key.pressed and not key.echo and key.keycode in [KEY_Q, KEY_E]:
+		_step_skill(-1 if key.keycode == KEY_Q else 1)
+		get_viewport().set_input_as_handled()
+		return
+	var pad := event as InputEventJoypadButton
+	if pad and pad.pressed and pad.button_index in [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER]:
+		_step_skill(-1 if pad.button_index == JOY_BUTTON_LEFT_SHOULDER else 1)
+		get_viewport().set_input_as_handled()
+		return
 	if ArenaUi.back_pressed(event) and not ChatBox.typing:
 		get_viewport().set_input_as_handled()
 		_go_back()
+
+func _start_solo_match() -> void:
+	Net.enter_arena()
 
 func _on_ready_toggled() -> void:
 	Net.set_ready(_ready_btn.button_pressed)
@@ -295,14 +344,21 @@ func _on_ready_toggled() -> void:
 		card.disabled = _ready_btn.button_pressed
 
 func _refresh_status() -> void:
+	if not is_instance_valid(_roster) or not is_instance_valid(_status):
+		return
 	for child in _roster.get_children():
 		_roster.remove_child(child)
 		child.queue_free()
 	var ids := Net.roster.keys()
 	ids.sort_custom(func(a: int, b: int) -> bool: return Net.roster[a].slot < Net.roster[b].slot)
 	var ready := 0
+	var bots := 0
 	for id: int in ids:
 		var member: Dictionary = Net.roster[id]
+		if _solo_match and id == Net.local_id():
+			continue
+		if _solo_match:
+			bots += 1
 		if member.ready:
 			ready += 1
 		var player := ArenaUi.label("%s / %s" % [member.name, Hero.by_id(member.hero).display_name], 16, ArenaUi.MOSS if member.ready else ArenaUi.MUTED)
@@ -310,7 +366,7 @@ func _refresh_status() -> void:
 		player.size_flags_horizontal = SIZE_EXPAND_FILL
 		player.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		_roster.add_child(player)
-	_status.text = "%d of %d players ready" % [ready, Net.roster.size()]
+	_status.text = "%d bot opponents" % bots if _solo_match else "%d of %d players ready" % [ready, Net.roster.size()]
 
 func _process(delta: float) -> void:
 	if not _online:

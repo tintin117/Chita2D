@@ -9,8 +9,11 @@ const OUT_SPEED := 760.0
 const BACK_SPEED := 900.0
 const HANG := 0.12            ## seconds it hangs at the far end
 const RADIUS := 30.0
-const COLOR := Color(1.0, 0.85, 0.3)
 const PICK_RADIUS := 150.0
+const ART_SCALE := 0.92
+const HAMMER := preload("res://assets/isometric_projecttile/Spells/Paladin/Hammer.png")
+const SPARK_PATH := "res://assets/isometric_projecttile/Spells/Paladin/HolySpark.png"
+const SPARK := preload(SPARK_PATH)
 
 var range_px := 260.0
 var might := 0.0
@@ -37,6 +40,7 @@ class Hammer extends Node2D:
 
 	func _ready() -> void:
 		z_index = 6
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		_start = global_position
 
 	func _physics_process(delta: float) -> void:
@@ -70,11 +74,11 @@ class Hammer extends Node2D:
 			Player.basic_hit = false
 
 	func _draw() -> void:
-		draw_circle(Vector2.ZERO, RADIUS * 0.9, Color(COLOR, 0.18))
-		var a := Vector2.from_angle(_spin)
-		draw_line(-a * 22.0, a * 22.0, Color(0.55, 0.42, 0.3), 6.0)   # the haft
-		draw_rect(Rect2(a * 18.0 - Vector2(11, 11), Vector2(22, 22)), COLOR)   # the head
-		draw_rect(Rect2(a * 18.0 - Vector2(11, 11), Vector2(22, 22)), Color(1, 1, 1, 0.8), false, 2.0)
+		var radiance := 0.22 + 0.15 * (0.5 + 0.5 * sin(_spin))
+		var flare_size := SPARK.get_size() * ART_SCALE
+		draw_texture_rect(SPARK, Rect2(-flare_size * 0.5, flare_size), false, Color(1.0, 1.0, 1.0, radiance))
+		draw_set_transform(Vector2.ZERO, _spin, Vector2.ONE * ART_SCALE)
+		draw_texture(HAMMER, -HAMMER.get_size() * 0.5)
 
 func _init() -> void:
 	display_name = "Hammer"

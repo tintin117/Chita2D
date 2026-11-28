@@ -13,7 +13,6 @@ const FALLOFF := [1.0, 0.75, 0.55]
 const RADIUS := 26.0
 const SLOW := [0.6, 1.0]      ## first foe hit: speed multiplier, seconds
 const PICK_RADIUS := 150.0
-const COLOR := Color(1.0, 0.62, 0.15)   ## the hero's signature colour (Hero.basic_color)
 
 ## The next foe a bounce goes for: the nearest one within BOUNCE of `from` not hit yet, or null.
 static func next_target(caster: Node2D, from: Vector2, hit: Array[Node]) -> Node2D:
@@ -37,11 +36,22 @@ class Disc extends Node2D:
 	var _left := RANGE
 	var _hits: Array[Node] = []
 	var _back := false
-	var _spin := 0.0
+	const FLIGHT_HEIGHT := Vector2(0, -20)
+	const LAUNCH_BLEND := 0.08
+	const CATCH_BLEND := 76.0
+	const WAKE_LENGTH := 9
+
+	var release_at: Vector2
+	var _age := 0.0
+	var _art_at: Vector2
+	var _wake := PackedVector2Array()
 
 	func _ready() -> void:
 		add_to_group("dodgeables")
-		z_index = 6
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		z_index = KnightFx.shield_depth(caster)
+		_art_at = release_at
+		KnightFx.shield_glint(caster, release_at, false)
 		if caster is Player:
 			caster.shield_out = true
 
@@ -53,15 +63,20 @@ class Disc extends Node2D:
 		if not is_instance_valid(caster) or caster.down:
 			queue_free()
 			return
-		_spin += delta * 26.0
+		_age += delta
 		var step := SPEED * delta
-		queue_redraw()
 		if _back:
 			var to: Vector2 = caster.global_position + Vector2(0, -6) - global_position
 			if to.length() <= step + 10.0:
-				queue_free()   # caught
+				KnightFx.shield_glint(caster, KnightFx.shield_point(caster, false), true)
+				queue_free()
 				return
-			global_position += to.normalized() * step
+			dir = to.normalized()
+			global_position += dir * step
+			var blend := 1.0 - smoothstep(0.0, CATCH_BLEND, to.length() - step)
+			_update_art((global_position + FLIGHT_HEIGHT).lerp(KnightFx.shield_point(caster, false), blend))
+			if blend > 0.55:
+				z_index = KnightFx.shield_depth(caster)
 			return
 		if is_instance_valid(target) and not target.down and not (target.has_method("dodging") and target.dodging()):
 			dir = (target.global_position + Vector2(0, -4) - global_position).normalized()
@@ -69,6 +84,10 @@ class Disc extends Node2D:
 			target = null
 		global_position += dir * step
 		velocity = dir * SPEED
+		var launch := smoothstep(0.0, LAUNCH_BLEND, _age)
+		_update_art(release_at.lerp(global_position + FLIGHT_HEIGHT, launch))
+		if launch >= 1.0:
+			z_index = 6
 		_left -= step
 		for e in Spell.foes(caster):
 			if e in _hits or e.global_position.distance_to(global_position) > RADIUS + 16.0:
@@ -81,7 +100,7 @@ class Disc extends Node2D:
 	func _strike(e: Node2D) -> void:
 		_hits.append(e)
 		var k: float = ReboundShield.FALLOFF[mini(_hits.size() - 1, ReboundShield.FALLOFF.size() - 1)]
-		var landed: bool = e.take_damage(maxi(roundi(dmg * k), 1), global_position - dir * 10.0, false, caster)
+		var landed: bool = e.take_damage(maxi(roundi(dmg * k), 1), global_position - dir * 10.0, false, caster, KnightFx.SHIELD)
 		if landed and _hits.size() == 1 and e.has_method("apply_slow"):
 			e.apply_slow(ReboundShield.SLOW[0], ReboundShield.SLOW[1])
 		Sfx.play("hit", global_position, -4.0, 1.4 + 0.15 * _hits.size())   # a rising "ting" per bounce
@@ -95,15 +114,26 @@ class Disc extends Node2D:
 		_left = ReboundShield.BOUNCE + 60.0
 		dir = (target.global_position - global_position).normalized()
 
+	func _update_art(at: Vector2) -> void:
+		_art_at = at
+		if _wake.is_empty() or _wake[-1].distance_squared_to(at) > 9.0:
+			_wake.append(at)
+			if _wake.size() > WAKE_LENGTH:
+				_wake.remove_at(0)
+		queue_redraw()
+
 	func _draw() -> void:
-		draw_circle(Vector2.ZERO, RADIUS, Color(COLOR, 0.22))
-		if not _back:
-			draw_line(Vector2.ZERO, -dir * 40.0, Color(COLOR, 0.45), 8.0)   # streak while it hunts
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.55 + 0.45 * absf(sin(_spin))))   # a disc turning in flight
-		draw_circle(Vector2.ZERO, 16.0, Color(0.35, 0.45, 0.7))
-		draw_circle(Vector2.ZERO, 11.0, Color(0.75, 0.85, 1.0))
-		draw_circle(Vector2.ZERO, 5.0, Color(0.9, 0.3, 0.3))
-		draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 20, Color.WHITE, 2.0)
+		var tint := KnightFx.STEEL if _back else KnightFx.GOLD
+		for i in range(1, _wake.size()):
+			var strength := float(i) / WAKE_LENGTH
+			var a := to_local(_wake[i - 1])
+			var b := to_local(_wake[i])
+			draw_line(a, b, Color(KnightFx.INK, strength * 0.45), 3.0 + strength * 10.0)
+			draw_line(a, b, Color(tint, strength * 0.8), 1.0 + strength * 4.0)
+			if i % 2 == 0:
+				var spark := a + (b - a).orthogonal().normalized() * (7.0 if i % 4 == 0 else -7.0)
+				draw_rect(Rect2(spark.round(), Vector2(2, 2)), Color(tint, strength * 0.8))
+		KnightFx.draw_disc(self, to_local(_art_at), dir, _age * (35.0 if _back else 45.0))
 
 func _init() -> void:
 	display_name = "Rebound Shield"
@@ -127,6 +157,7 @@ func cast(caster: Node2D, aim_dir: Vector2, _aim_pos: Vector2) -> float:
 	disc.dir = d
 	disc.dmg = damage
 	disc.target = lock if is_instance_valid(lock) else null
-	disc.position = caster.global_position + Vector2(0, -6) + d * 26.0
+	disc.release_at = KnightFx.shield_point(caster, true)
 	caster.get_parent().add_child(disc)
+	disc.global_position = caster.global_position + Vector2(0, -6) + d * 26.0
 	return cooldown

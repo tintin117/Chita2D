@@ -1,201 +1,191 @@
 class_name ColosseumArt extends Node2D
-## Placeholder art for the Colosseum, drawn from the same shapes as its collision (Colosseum), so what you see is
-## exactly where the water, rails and braziers are. Swap for real art later: keep the shapes, replace the drawing.
-## Sits at the map's centre, under everything (WorldMap puts it in the ground layer).
+## Visuals share the pool, bridge and rail geometry used by Colosseum.
 
-const SAND := Color("#d98f45")
-const SAND_LINE := Color("#c47c38")
-const STONE := Color("#cfc6b4")
-const STONE_LINE := Color("#b0a690")
-const RIM := Color("#4a4440")
-const STANDS := Color("#33251f")
-const TENT := Color("#b8302a")
-const WATER := Color("#1d5a75")
-const WATER_EDGE := Color("#2d7d9c")
-const RAIL := Color("#5c564e")
-const POST := Color("#77706a")
+const SAND := Color("#967e5b")
+const STONE := Color("#a49b82")
+const RIM := Color("#514b47")
+const WATER := Color("#244655")
+const WATER_EDGE := Color("#426978")
+const RAIL := Color("#44463f")
+const POST := Color("#938066")
+const GOLD := Color("#c49859")
 const FIRE := Color("#ffa53a")
+const HALF_TILE := Vector2(32.0, 16.0)
 
 var shape: Colosseum
 var _rng := RandomNumberGenerator.new()
-const TILE := 50.0   ## image px: the floor's tile grid
 
-## Image px -> this node's local px.
 func w(img: Vector2) -> Vector2:
 	return (img - Colosseum.IMG_C) * Colosseum.S
 
-func wr(r: Rect2) -> Rect2:
-	return Rect2(w(r.position), r.size * Colosseum.S)
+func _rect(r: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([w(r.position), w(Vector2(r.end.x, r.position.y)), w(r.end), w(Vector2(r.position.x, r.end.y))])
 
-## A rounded rectangle as a polygon (image space in, local out).
-func round_rect(r: Rect2, radius: float, steps := 10) -> PackedVector2Array:
+func _round_rect(r: Rect2, radius: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var corners := [Vector2(r.end.x - radius, r.position.y + radius), Vector2(r.end.x - radius, r.end.y - radius),
 		Vector2(r.position.x + radius, r.end.y - radius), Vector2(r.position.x + radius, r.position.y + radius)]
-	var start := [-PI / 2.0, 0.0, PI / 2.0, PI]
 	for i in 4:
-		for k in steps + 1:
-			var a: float = start[i] + PI / 2.0 * k / steps
+		for k in 13:
+			var a := (i - 1) * PI * 0.5 + PI * 0.5 * k / 12.0
 			pts.append(w(corners[i] + Vector2.from_angle(a) * radius))
 	return pts
 
+func _ellipse(center: Vector2, radius: Vector2, steps := 64) -> PackedVector2Array:
+	var rim := PackedVector2Array()
+	for step in steps:
+		rim.append(center + Vector2.from_angle(TAU * step / steps) * radius)
+	return rim
+
+func _outline(polygon: PackedVector2Array, color: Color, width: float) -> void:
+	draw_polyline(polygon + PackedVector2Array([polygon[0]]), color, width)
+
 func _draw() -> void:
 	var f := Colosseum.FLOOR
-	# the stands and the ring of red awnings round them
-	draw_rect(wr(f.grow(420.0)), STANDS)
-	var tents := round_rect(f.grow(250.0), Colosseum.CORNER + 250.0, 16)
-	draw_polyline(tents + PackedVector2Array([tents[0]]), TENT, 150.0 * Colosseum.S)
-	for i in range(0, tents.size(), 3):   # seams between awnings
-		draw_line(tents[i] * 0.93, tents[i] * 1.07, Color(TENT.darkened(0.45), 0.8), 4.0)
-	draw_colored_polygon(round_rect(f.grow(55.0), Colosseum.CORNER + 55.0), RIM)
-	# the gates: statues top and bottom, an entrance left and right
-	for g: Rect2 in [Rect2(870, 110, 260, 110), Rect2(870, 1195, 260, 110), Rect2(70, 600, 95, 215), Rect2(1835, 600, 95, 215)]:
-		draw_rect(wr(g), RIM.darkened(0.3))
-		draw_rect(wr(g.grow(-18.0)), Color("#6b625b"))
-	# sand and its tile grid
-	draw_colored_polygon(round_rect(f, Colosseum.CORNER), SAND)
-	_rng.seed = 4242   # the noise is the same on every screen and every run
-	_tile_noise(f, SAND, 0.06, func(c: Vector2) -> bool: return Colosseum.in_round_rect(c, f, Colosseum.CORNER - 40.0))
-	_speckles(f, 1400, func(c: Vector2) -> bool: return Colosseum.in_round_rect(c, f, Colosseum.CORNER - 10.0))
-	var y := f.position.y + 50.0
-	while y < f.end.y:
-		var x := _half_width(y)
-		draw_line(w(Vector2(Colosseum.IMG_C.x - x, y)), w(Vector2(Colosseum.IMG_C.x + x, y)), SAND_LINE, 1.0)
-		y += 50.0
-	var x0 := f.position.x + 50.0
-	while x0 < f.end.x:
-		var h := _half_height(x0)
-		draw_line(w(Vector2(x0, Colosseum.IMG_C.y - h)), w(Vector2(x0, Colosseum.IMG_C.y + h)), SAND_LINE, 1.0)
-		x0 += 50.0
-	# torches on the rim
-	var rim := round_rect(f.grow(28.0), Colosseum.CORNER + 28.0, 10)
-	for i in range(0, 44):
-		var p := rim[(i * rim.size()) / 44]
-		draw_circle(p, 6.0, FIRE)
-	# the corner pools, their inner corners cut by a circle of sand round the centre
-	for r: Rect2 in Colosseum.POOLS:
-		draw_rect(wr(r), WATER)
-		draw_rect(wr(r.grow(-10.0)), WATER_EDGE, false, 3.0)
-	for r: Rect2 in Colosseum.POOLS:
-		_ripples(r, 14, func(c: Vector2) -> bool: return c.distance_to(Colosseum.IMG_C) > Colosseum.POOL_CUT + 20.0)
-	draw_circle(Vector2.ZERO, Colosseum.POOL_CUT * Colosseum.S, SAND)
-	var band := Rect2(Colosseum.IMG_C - Vector2.ONE * Colosseum.POOL_CUT, Vector2.ONE * Colosseum.POOL_CUT * 2.0)
-	_tile_noise(band, SAND, 0.06, func(c: Vector2) -> bool: return c.distance_to(Colosseum.IMG_C) < Colosseum.POOL_CUT - 40.0)
-	_speckles(band, 300, func(c: Vector2) -> bool: return c.distance_to(Colosseum.IMG_C) < Colosseum.POOL_CUT - 8.0)
-	draw_arc(Vector2.ZERO, Colosseum.POOL_CUT * Colosseum.S, 0.0, TAU, 64, SAND_LINE, 2.0)
-	# the moat and the centre circle
-	draw_circle(Vector2.ZERO, Colosseum.MOAT.y * Colosseum.S, WATER)
-	draw_arc(Vector2.ZERO, (Colosseum.MOAT.y - 12.0) * Colosseum.S, 0.0, TAU, 64, WATER_EDGE, 3.0)
-	var moat := Rect2(Colosseum.IMG_C - Vector2.ONE * Colosseum.MOAT.y, Vector2.ONE * Colosseum.MOAT.y * 2.0)
-	_ripples(moat, 22, func(c: Vector2) -> bool:
-		var d := c.distance_to(Colosseum.IMG_C)
-		return d > Colosseum.MOAT.x + 12.0 and d < Colosseum.MOAT.y - 12.0)
-	draw_circle(Vector2.ZERO, Colosseum.MOAT.x * Colosseum.S, STONE)
-	var circle := Rect2(Colosseum.IMG_C - Vector2.ONE * Colosseum.MOAT.x, Vector2.ONE * Colosseum.MOAT.x * 2.0)
-	_tile_noise(circle, STONE, 0.05, func(c: Vector2) -> bool: return c.distance_to(Colosseum.IMG_C) < Colosseum.MOAT.x - 36.0)
-	for k in range(-4, 5):   # floor tiles on the circle
-		var off := k * 50.0
-		var half := sqrt(maxf(Colosseum.MOAT.x * Colosseum.MOAT.x - off * off, 0.0))
-		draw_line(w(Colosseum.IMG_C + Vector2(-half, off)), w(Colosseum.IMG_C + Vector2(half, off)), STONE_LINE, 1.0)
-		draw_line(w(Colosseum.IMG_C + Vector2(off, -half)), w(Colosseum.IMG_C + Vector2(off, half)), STONE_LINE, 1.0)
-	for rr in [95.0, 75.0, 55.0]:   # the ring in the middle: where the crown appears
-		draw_arc(Vector2.ZERO, rr * Colosseum.S, 0.0, TAU, 48, Color("#a5786a"), 7.0)
-	# bridges, side platforms and their stairs
-	for b: Rect2 in Colosseum.BRIDGES:
-		draw_rect(wr(b), STONE)
-		_tile_noise(b, STONE, 0.05, func(c: Vector2) -> bool: return b.grow(-25.0).has_point(c))
-		var bx := b.position.x + 50.0
-		while bx < b.end.x:
-			draw_line(w(Vector2(bx, b.position.y)), w(Vector2(bx, b.end.y)), STONE_LINE, 1.0)
-			bx += 50.0
-	for pl: Rect2 in Colosseum.PLATFORMS:
-		draw_rect(wr(pl.grow(6.0)), Color(0, 0, 0, 0.25))   # a drop shadow: it is raised
-		draw_rect(wr(pl), STONE)
-		_tile_noise(pl, STONE, 0.05, func(c: Vector2) -> bool: return pl.grow(-25.0).has_point(c))
-		draw_rect(wr(pl), STONE_LINE, false, 2.0)
-	for st: Rect2 in Colosseum.STAIRS:
-		draw_rect(wr(st), Color("#a89c8a"))
-		var sy := st.position.y + 12.0
-		while sy < st.end.y:
-			draw_line(w(Vector2(st.position.x, sy)), w(Vector2(st.end.x, sy)), Color("#7d7264"), 2.0)
-			sy += 12.0
-	# rails with posts
-	for seg in shape.rails():
-		var a: Vector2 = seg[0] - shape.center
-		var b2: Vector2 = seg[1] - shape.center
-		draw_line(a, b2, RAIL, Colosseum.RAIL_W)
-		draw_line(a, b2, POST, 3.0)
-		for p: Vector2 in [a, b2]:
-			draw_rect(Rect2(p - Vector2(11, 11), Vector2(22, 22)), POST)
-			draw_rect(Rect2(p - Vector2(11, 11), Vector2(22, 22)), RAIL, false, 2.0)
-	# braziers
-	for c: Vector2 in Colosseum.BRAZIERS:
-		var at := w(c)
-		var half := Colosseum.BRAZIER_HALF * Colosseum.S
-		draw_rect(Rect2(at - Vector2(half, half), Vector2(half, half) * 2.0), Color("#3c3836"))
-		draw_rect(Rect2(at - Vector2(half, half) * 0.7, Vector2(half, half) * 1.4), Color("#5a524c"))
-		draw_circle(at, half * 0.45, FIRE)
-		draw_circle(at, half * 0.22, Color("#fff1b0"))
+	var floor := _round_rect(f, Colosseum.CORNER)
+	draw_rect(Rect2(w(f.grow(760.0).position), f.grow(760.0).size * Colosseum.S), Color("#232427"))
+	_stands(f)
+	_rng.seed = 4242
+	_masonry(floor, SAND, false)
+	for pool: Rect2 in Colosseum.POOLS:
+		for clipped in Geometry2D.intersect_polygons(floor, _rect(pool)):
+			draw_colored_polygon(clipped, WATER)
+			_outline(clipped, WATER_EDGE, 3.0)
+		_ripples(pool, 12, func(at: Vector2) -> bool:
+			return shape.water_at(shape.to_world(at)) and at.distance_to(Colosseum.IMG_C) > Colosseum.POOL_CUT + 24.0)
+	# The inner corners of the pools are cut out by this dry band.
+	var cut := Colosseum.POOL_CUT * Colosseum.S
+	_masonry(_ellipse(Vector2.ZERO, Vector2.ONE * cut), SAND, false)
+	var moat := Colosseum.MOAT.y * Colosseum.S
+	var dais := Colosseum.MOAT.x * Colosseum.S
+	var rim := _ellipse(Vector2.ZERO, Vector2.ONE * moat)
+	draw_colored_polygon(rim, WATER)
+	_outline(rim, WATER_EDGE, 4.0)
+	_ripples(Rect2(Colosseum.IMG_C - Vector2.ONE * Colosseum.MOAT.y, Vector2.ONE * Colosseum.MOAT.y * 2.0), 85,
+		func(at: Vector2) -> bool:
+			var radius := at.distance_to(Colosseum.IMG_C)
+			return radius > Colosseum.MOAT.x + 20.0 and radius < Colosseum.MOAT.y - 14.0)
+	var terrace := _ellipse(Vector2.ZERO, Vector2.ONE * dais)
+	draw_colored_polygon(Transform2D(0.0, Vector2(0, 11)) * terrace, STONE.darkened(0.42))
+	_masonry(terrace, STONE, true)
+	_outline(terrace, STONE.lightened(0.15), 3.0)
+	_crown_mosaic()
+	for causeway: Rect2 in Colosseum.POOL_CAUSEWAYS:
+		var deck := _rect(causeway)
+		draw_colored_polygon(Transform2D(0.0, Vector2(0, 8)) * deck, RIM.darkened(0.25))
+		_masonry(deck, Color("#8d765b"), true)
+	for bridge: Rect2 in Colosseum.BRIDGES:
+		var deck := _rect(bridge)
+		draw_colored_polygon(Transform2D(0.0, Vector2(0, 12)) * deck, RIM.darkened(0.25))
+		_masonry(deck, STONE, true)
+	for platform: Rect2 in Colosseum.PLATFORMS:
+		var deck := _rect(platform)
+		draw_colored_polygon(Transform2D(0.0, Vector2(0, 10)) * deck, RIM.darkened(0.30))
+		_masonry(deck, STONE, true)
+		_outline(deck, STONE.lightened(0.14), 3.0)
+	for stair: Rect2 in Colosseum.STAIRS:
+		draw_colored_polygon(_rect(stair), STONE.darkened(0.14))
+		for step in range(1, 7):
+			var y := lerpf(stair.position.y, stair.end.y, step / 7.0)
+			var from := w(Vector2(stair.position.x, y))
+			var to := w(Vector2(stair.end.x, y))
+			draw_line(from + Vector2(0, 3), to + Vector2(0, 3), RIM, 5.0)
+			draw_line(from, to, STONE.lightened(0.13), 2.0)
+	_rails()
 
-## Half the floor's width at image row `y` (the rounded ends pull it in near the top and bottom).
-func _half_width(y: float) -> float:
-	var f := Colosseum.FLOOR
-	var r := Colosseum.CORNER
-	var half := f.size.x / 2.0
-	var dy := 0.0
-	if y < f.position.y + r:
-		dy = f.position.y + r - y
-	elif y > f.end.y - r:
-		dy = y - (f.end.y - r)
-	return half - r + sqrt(maxf(r * r - dy * dy, 0.0))
+func _stands(floor: Rect2) -> void:
+	for tier in range(4, 0, -1):
+		var width := 48.0 * tier
+		var rim := _round_rect(floor.grow(width), Colosseum.CORNER + width)
+		var rise := Vector2(0.0, -9.0 * tier)
+		draw_colored_polygon(Transform2D(0.0, rise) * rim, RIM.lightened(tier * 0.035))
+		_outline(Transform2D(0.0, rise) * rim, Color("#302b2a"), 9.0)
+		_outline(Transform2D(0.0, rise + Vector2(0, -6)) * rim, Color("#797065"), 3.0)
+	var points := _round_rect(floor.grow(35.0), Colosseum.CORNER + 35.0)
+	for i in range(0, points.size(), 3):
+		var foot := points[i]
+		draw_line(foot, foot + Vector2(0, -23), POST, 5.0)
+		draw_circle(foot + Vector2(0, -25), 4.0, FIRE)
+	for gate: Vector2 in [Vector2(1000, 175), Vector2(1000, 1228), Vector2(105, 707), Vector2(1895, 707)]:
+		var at := w(gate)
+		for side: float in [-1.0, 1.0]:
+			var foot := at + Vector2(side * 42.0, 0.0)
+			draw_colored_polygon(_ellipse(foot, Vector2(16, 8), 8), RIM.darkened(0.4))
+			draw_line(foot, foot + Vector2(0, -49), POST, 15.0)
+			draw_line(foot + Vector2(-4, -7), foot + Vector2(-4, -47), STONE, 3.0)
+		var pennant := PackedVector2Array([at + Vector2(-28, -44), at + Vector2(28, -44),
+			at + Vector2(28, -6), at + Vector2(0, 8), at + Vector2(-28, -6)])
+		draw_colored_polygon(pennant, Color("#723f3a"))
+		draw_line(pennant[0], pennant[1], GOLD, 4.0)
 
-## Half the floor's height at image column `x`.
-func _half_height(x: float) -> float:
-	var f := Colosseum.FLOOR
-	var r := Colosseum.CORNER
-	var half := f.size.y / 2.0
-	var dx := 0.0
-	if x < f.position.x + r:
-		dx = f.position.x + r - x
-	elif x > f.end.x - r:
-		dx = x - (f.end.x - r)
-	return half - r + sqrt(maxf(r * r - dx * dx, 0.0))
+func _masonry(outline: PackedVector2Array, base: Color, joints: bool) -> void:
+	draw_colored_polygon(outline, base)
+	var bounds := Rect2(outline[0], Vector2.ZERO)
+	for p in outline:
+		bounds = bounds.expand(p)
+	for y in range(floori(bounds.position.y / HALF_TILE.y), ceili(bounds.end.y / HALF_TILE.y) + 1):
+		for x in range(floori(bounds.position.x / 64.0) - 1, ceili(bounds.end.x / 64.0) + 1):
+			var at := Vector2(64 * x + 32 * posmod(y, 2), HALF_TILE.y * y)
+			var diamond := PackedVector2Array([at - Vector2(0, HALF_TILE.y),
+				at + Vector2(HALF_TILE.x, 0), at + Vector2(0, HALF_TILE.y), at - Vector2(HALF_TILE.x, 0)])
+			# Sample by coordinates so the sand inside the cut matches the surrounding floor.
+			var noise := posmod(x * 239 + y * 97 + x * y * 11, 17) / 100.0 - 0.08
+			var color := base.lightened(noise) if noise > 0.0 else base.darkened(-noise)
+			for polygon in Geometry2D.intersect_polygons(outline, diamond):
+				draw_colored_polygon(polygon, color)
+				if joints:
+					_outline(polygon, base.darkened(0.15), 1.5)
+				elif posmod(x * 13 + y * 17, 7) == 0 and Geometry2D.is_point_in_polygon(at, polygon):
+					draw_line(at + Vector2(-3, 1), at + Vector2(3, -2), base.darkened(0.16), 2.0)
 
-# --- noise (placeholder texture): fixed seed, drawn once ---------------------------------------------------------
+func _crown_mosaic() -> void:
+	for radius in [106.0, 139.0]:
+		var ring := _ellipse(Vector2.ZERO, Vector2(radius, radius * 0.5))
+		_outline(ring, RIM, 6.0)
+		_outline(ring, GOLD, 3.0)
+	for i in 8:
+		var a := Vector2.from_angle(i * TAU / 8.0)
+		draw_line(a * Vector2(110, 55), a * Vector2(135, 67.5), GOLD, 3.0)
 
-## Every TILE square of `area` whose centre passes `keep` gets a slightly lighter or darker shade of `base` (+- amount),
-## so the floor reads as laid tiles instead of a flat fill.
-func _tile_noise(area: Rect2, base: Color, amount: float, keep: Callable) -> void:
-	var y := area.position.y
-	while y < area.end.y:
-		var x := area.position.x
-		while x < area.end.x:
-			var c := Vector2(x + TILE / 2.0, y + TILE / 2.0)
-			if keep.call(c):
-				var k := _rng.randf_range(-amount, amount)
-				var col := base.lightened(k) if k > 0.0 else base.darkened(-k)
-				draw_rect(wr(Rect2(x + 1.0, y + 1.0, TILE - 2.0, TILE - 2.0)), col)
-			x += TILE
-		y += TILE
-
-## `count` small grains (pebbles, dark sand) scattered over `area`, only where `keep` passes.
-func _speckles(area: Rect2, count: int, keep: Callable) -> void:
-	for i in count:
-		var c := Vector2(_rng.randf_range(area.position.x, area.end.x), _rng.randf_range(area.position.y, area.end.y))
-		if not keep.call(c):
-			continue
-		var dark := _rng.randf() < 0.7
-		var col := SAND_LINE.darkened(_rng.randf_range(0.0, 0.25)) if dark else SAND.lightened(_rng.randf_range(0.15, 0.3))
-		draw_circle(w(c), _rng.randf_range(1.5, 4.0), Color(col, _rng.randf_range(0.5, 0.9)))
-
-## `count` light ripple arcs on water inside `area`, only where `keep` passes.
 func _ripples(area: Rect2, count: int, keep: Callable) -> void:
 	for i in count:
-		var c := Vector2(_rng.randf_range(area.position.x, area.end.x), _rng.randf_range(area.position.y, area.end.y))
-		if not keep.call(c):
+		var sample := Vector2(_rng.randf_range(area.position.x, area.end.x),
+			_rng.randf_range(area.position.y, area.end.y))
+		if not keep.call(sample):
 			continue
-		var r := _rng.randf_range(10.0, 26.0) * Colosseum.S
-		var a := _rng.randf_range(0.0, TAU)
-		draw_arc(w(c), r, a, a + _rng.randf_range(0.8, 1.8), 10, Color(WATER_EDGE.lightened(0.25), 0.55), 2.0)
-		if _rng.randf() < 0.3:   # a fish shadow now and then
-			draw_circle(w(c) + Vector2(r, 0).rotated(a), 5.0, Color(0.05, 0.2, 0.28, 0.5))
+		var at := w(sample)
+		var width := _rng.randf_range(10.0, 32.0)
+		draw_line(at - Vector2(width, 0), at + Vector2(width, 0), WATER_EDGE, 2.0)
+		if i % 3 == 0:
+			draw_line(at + Vector2(4, 5), at + Vector2(width + 8, 5), WATER_EDGE.darkened(0.16), 2.0)
+
+func _rails() -> void:
+	for segment in shape.rails():
+		var a: Vector2 = segment[0] - shape.center
+		var b: Vector2 = segment[1] - shape.center
+		var rise := Vector2(0.0, -16.0)
+		draw_line(a, b, RAIL, Colosseum.RAIL_W)
+		if absf(a.x - b.x) > 0.01:
+			draw_colored_polygon(PackedVector2Array([a, b, b + rise, a + rise]), RAIL)
+		draw_line(a + rise, b + rise, POST, 5.0)
+		for foot in [a, b]:
+			draw_line(foot, foot + rise, POST.darkened(0.15), 8.0)
+			draw_circle(foot + rise, 5.0, STONE)
+
+## A separate y-sorted child of the matching solid body.
+class Brazier extends Node2D:
+	func _draw() -> void:
+		var r := Colosseum.BRAZIER_HALF * Colosseum.S
+		var foot := PackedVector2Array([Vector2(0, -r * .45), Vector2(r, 0),
+			Vector2(0, r * .45), Vector2(-r, 0)])
+		draw_colored_polygon(Transform2D(0.0, Vector2(4, 11)) * foot, Color(0.05, 0.08, 0.1, 0.55))
+		draw_colored_polygon(foot, RAIL)
+		var bowl := Transform2D(0.0, Vector2(.78, .78), 0.0, Vector2(0, -37)) * foot
+		draw_colored_polygon(PackedVector2Array([foot[3], foot[2], bowl[2], bowl[3]]), RIM)
+		draw_colored_polygon(PackedVector2Array([foot[2], foot[1], bowl[1], bowl[2]]), RIM.darkened(0.27))
+		draw_colored_polygon(bowl, POST)
+		draw_colored_polygon(Transform2D(0.0, Vector2(.61, .61), 0.0, Vector2(0, -37)) * foot, Color("#46342d"))
+		draw_colored_polygon(PackedVector2Array([Vector2(-20, -43), Vector2(-17, -62), Vector2(-6, -54),
+			Vector2(5, -81), Vector2(10, -63), Vector2(21, -68), Vector2(19, -45), Vector2(5, -37)]), FIRE)
+		draw_colored_polygon(PackedVector2Array([Vector2(-10, -45), Vector2(-4, -60), Vector2(2, -54),
+			Vector2(9, -64), Vector2(12, -47), Vector2(4, -40)]), Color("#ffe1a0"))

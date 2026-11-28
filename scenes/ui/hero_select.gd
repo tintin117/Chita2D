@@ -15,8 +15,6 @@ const PANEL_H := 206.0
 const ICON := 48.0
 const GAP := 8.0
 const INPUT_DELAY := 0.4
-const COLORS := ["Blue", "Yellow"]
-
 var _pickers: Array[Picker] = []
 var _age := 0.0
 var _started := false
@@ -106,7 +104,7 @@ class Picker extends Control:
 		_p = "p%d_" % (index + 1)
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		for h in Hero.all():
-			_portraits.append(ArenaUi.portrait(h, HeroSelect.COLORS[index % 2]))
+			_portraits.append(ArenaUi.selection_portrait(h))
 
 	## The strip of screen this player owns, between the title and the START button.
 	func _area() -> Rect2:
@@ -203,15 +201,17 @@ class Picker extends Control:
 			var r := _tile(i)
 			var sel := i == cursor
 			var accent := _accent(h)
-			var ps := r.size.y - 30.0
+			var name_strip := Rect2(r.position + Vector2(0, r.size.y - 26), Vector2(r.size.x, 26))
+			var highlight := Color(0.6, 1, 0.6) if confirmed else ArenaUi.SUN
 			draw_rect(r, Color(0.14, 0.12, 0.2, 0.98) if sel else Color(0.08, 0.07, 0.12, 0.96))
-			# heroes 5-8 share sprite layouts with 1-4: the tint tells them apart
-			var tint := h.tint.lerp(Color.WHITE, 0.4) if h.base_id != "" else Color.WHITE
-			draw_texture_rect(_portraits[i], Rect2(r.position + Vector2((r.size.x - ps) / 2.0, 4), Vector2(ps, ps)), false, tint)
-			draw_rect(Rect2(r.position + Vector2(0, r.size.y - 26), Vector2(r.size.x, 26)), Color(accent, 0.5 if sel else 0.3))
-			draw_string(font, r.position + Vector2(0, r.size.y - 8), h.display_name, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16, Color.WHITE)
+			ArenaUi.draw_selection_portrait(self, _portraits[i], Rect2(r.position, Vector2(r.size.x, name_strip.position.y - r.position.y)))
+			draw_rect(name_strip, highlight if sel else ArenaUi.NIGHT.lerp(accent, 0.18))
+			var name_width := font.get_string_size(h.display_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			var name_size := clampi(floori(16.0 * (r.size.x - 8.0) / name_width), 10, 16)
+			var baseline := name_strip.get_center().y + (font.get_ascent(name_size) - font.get_descent(name_size)) * 0.5
+			draw_string(font, Vector2(r.position.x, roundf(baseline)), h.display_name, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, name_size, ArenaUi.NIGHT if sel else ArenaUi.INK)
 			if sel:
-				draw_rect(r, Color(0.6, 1, 0.6) if confirmed else Color(1, 0.95, 0.5), false, 4.0)
+				draw_rect(r, highlight, false, 4.0)
 			elif i == _hover:
 				draw_rect(r, Color(1, 1, 1, 0.55), false, 3.0)     # hover only previews, click to select
 			else:
@@ -258,8 +258,8 @@ class Picker extends Control:
 		box.size.x = p.end.x - 12.0 - box.position.x
 		draw_rect(box, Color(0, 0, 0, 0.35))
 		draw_rect(box, Color(ArenaUi.skill_color(shown), 0.6), false, 1.0)
-		draw_string(font, box.position + Vector2(8, 17), info[0], HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 16, 14, ArenaUi.skill_color(shown))
-		draw_multiline_string(font, box.position + Vector2(8, 34), info[1], HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 16, 11, 4, Color(0.85, 0.85, 0.8))
+		draw_string(font, box.position + Vector2(8, 21), info[0], HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 16, 17, ArenaUi.skill_color(shown))
+		draw_multiline_string(font, box.position + Vector2(8, 40), info[1], HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 16, 11, 4, Color(0.85, 0.85, 0.8))
 		draw_rect(p, Color(accent, 0.6), false, 2.0)
 
 	func _stat(pos: Vector2, label: String, frac: float, col: Color, bar := 112.0) -> void:

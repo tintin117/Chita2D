@@ -4,7 +4,7 @@ extends Node2D
 ## and area skills (Shadow Rush, Arrow Rain, Meteor) catch more than one. Dummies slide when knocked back and say when
 ## a stun or freeze lands. The side panel (GymPanel) swaps heroes and holds the tools and settings. Keys: Tab /
 ## Shift+Tab swap hero, R resets the dummies and cooldowns and fills the ult, Esc shows / hides the panel. A gamepad's
-## Start goes back to the menu.
+## Start opens the paused panel controls; B closes them.
 ## Free spells (panel toggle): the skill is ready again after FREE_CD and the ult is always full. The basic keeps its pace.
 
 const FREE_CD := 0.4   ## not 0: a button held for a few frames would cast once per frame
@@ -36,22 +36,39 @@ func _ready() -> void:
 	var heroes := Hero.pickable()
 	_hero_i = maxi(heroes.find(Hero.by_id(Net.my_hero)), 0)
 	_spawn_hero(_map.spawn_point + Vector2(-260, 0))
+	var fog := FogOverlay.new()
+	fog.preview_targets.assign(_dummies)
+	fog.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(fog)
 
 	var ui := CanvasLayer.new()
 	ui.layer = 10
 	var hint := Label.new()
-	hint.text = "WASD move   LMB basic   RMB skill   F / E ult   Space dash   Esc: panel"
+	hint.text = "WASD / LS move   LMB / X basic   RMB / B skill   Space / A dash\nF / E / Y ult   Esc / Start: panel   D-pad: navigate   A: select   B: close"
 	hint.theme = ArenaUi.THEME
 	hint.add_theme_font_size_override("font_size", 18)
 	hint.add_theme_stylebox_override("normal", ArenaUi.THEME.get_stylebox("panel", "HudPlate"))
 	hint.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	hint.position = Vector2(GymPanel.WIDTH + 32.0, 12)
+	hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	hint.offset_left = GymPanel.WIDTH + 32.0
+	hint.offset_right = -16.0
+	hint.offset_top = 12.0
+	hint.offset_bottom = 66.0
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	ui.add_child(hint)
 	_panel = GymPanel.new()
 	_panel.hero_picked.connect(_swap_hero)
 	_panel.free_spells.connect(func(on: bool) -> void: _free_spells = on)
+	_panel.fog_preview.connect(func(on: bool) -> void:
+		fog.preview_enabled = on
+		_player.queue_redraw())
 	_panel.reset.connect(_reset)
 	_panel.quit.connect(_quit)
+	_panel.controller_toggle_requested.connect(_toggle_controller_panel)
+	_panel.controller_close_requested.connect(_close_controller_panel)
+	_panel.keyboard_toggle_requested.connect(_toggle_keyboard_panel)
 	ui.add_child(_panel)
 	add_child(ui)
 	_panel.show_hero(_hero_i)
@@ -92,15 +109,6 @@ func _swap_hero(i: int) -> void:
 	_panel.show_hero(i)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		get_viewport().set_input_as_handled()
-		_panel.toggle()
-		return
-	var pad := event as InputEventJoypadButton
-	if pad and pad.pressed and pad.button_index == JOY_BUTTON_START:   # the panel takes no focus: a gamepad's way out
-		get_viewport().set_input_as_handled()
-		_quit()
-		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
@@ -118,7 +126,28 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _quit() -> void:
+	get_tree().paused = false
+	_panel.set_controller_navigation(false)
 	get_tree().change_scene_to_file(Net.MENU_SCENE)
+
+func _toggle_controller_panel() -> void:
+	if _panel.controller_navigation:
+		_close_controller_panel()
+	else:
+		_panel.set_controller_navigation(true)
+		get_tree().paused = true
+
+func _toggle_keyboard_panel() -> void:
+	_panel.toggle()
+
+func _close_controller_panel() -> void:
+	_panel.set_controller_navigation(false)
+	if _panel.body_open():
+		_panel.toggle()
+	get_tree().paused = false
+
+func _exit_tree() -> void:
+	get_tree().paused = false
 
 func _reset() -> void:
 	for i in _dummies.size():
